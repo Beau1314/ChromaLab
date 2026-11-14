@@ -78,6 +78,13 @@ class PreviewController final : public QObject {
     // engine-side setting — setDi goes through changed() and re-renders the
     // session, never the Layer 2 fast path, and never re-decodes.
     Q_PROPERTY(QVariantMap di READ di NOTIFY settingsChanged)
+    // RFC-024's virtual contrast mask: {"active", "highlights", "shadows",
+    // "core", "scale"} over the current photo's RenderSettings. The same
+    // engine-side shape as the DI — setMask goes through changed() and
+    // re-renders the session, never the Layer 2 fast path, never re-decodes,
+    // and is refused for slide film (the engine prints a positive scan
+    // without the mask).
+    Q_PROPERTY(QVariantMap mask READ mask NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap adjustments READ adjustments NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap layer2 READ layer2 NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList libraryItems READ libraryItems NOTIFY libraryChanged)
@@ -139,6 +146,13 @@ public:
     // engine has no negative to reverse) and no-ops on unchanged values.
     QVariantMap di() const;
     Q_INVOKABLE void setDi(const QString& name, bool value);
+    // RFC-024's contrast mask. name: "active" turns the mask on/off,
+    // "highlights"/"shadows" set the two amounts in stops (0..3), "core" the
+    // identity core's half-width (0..3 stops), "scale" the base extractor's
+    // sigma as a long-edge fraction (0.002..0.12). Ignored for slide film
+    // and no-ops on unchanged values.
+    QVariantMap mask() const;
+    Q_INVOKABLE void setMask(const QString& name, const QVariant& value);
     QVariantMap adjustments() const;
     // Layer 2 — the scan-side grade. Keys: enabled + the ten scalar sliders +
     // curves{channel: point list} + colorBalance{zone:{hue,saturation,luminance}}

@@ -2,6 +2,8 @@
 #include "spektralab/spk_engine.h"
 
 #include <array>
+#include <cmath>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -43,12 +45,15 @@ int main(int argc, char** argv) {
         const char* capabilities = spk_capabilities(engine.get());
         require(capabilities && std::string(capabilities).find("unsupported_features") != std::string::npos,
                 "Windows capabilities must disclose unported effects");
-        // The Cineon Digital Intermediate and RFC-023's Scene Latitude Mapping
-        // were ported (phase 2); neither may stay on the disclosed refusal list.
+        // The Cineon Digital Intermediate, RFC-023's Scene Latitude Mapping
+        // and RFC-024's contrast mask were ported (phase 2); none may stay on
+        // the disclosed refusal list.
         require(std::string(capabilities).find("\"digital_intermediate\"") == std::string::npos,
                 "ported digital intermediate still listed as unsupported");
         require(std::string(capabilities).find("scene_latitude_mapping") == std::string::npos,
                 "ported scene latitude mapping still listed as unsupported");
+        require(std::string(capabilities).find("\"contrast_mask\"") == std::string::npos,
+                "ported contrast mask still listed as unsupported");
 
         std::vector<float> pixels(32 * 16 * 3);
         for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = 0.025f + float(i % 31) * 0.025f;
@@ -74,8 +79,9 @@ int main(int argc, char** argv) {
         const std::string before = params(session.get());
 
         struct Feature { const char* key; const char* label; };
-        const std::array<Feature, 3> features{{
-            {"contrast_mask_active", "contrast mask"},
+        // RFC-024's contrast mask was ported in the same phase; its refusal
+        // row is gone and the field request below covers it instead.
+        const std::array<Feature, 2> features{{
             {"overscan_active", "overscan"},
             {"date_imprint_active", "date imprint"},
         }};
@@ -216,6 +222,68 @@ int main(int argc, char** argv) {
                     "a slide film still must be refused the DI: " + slide_error);
         }
 
+        // The contrast mask is an ordinary engine parameter now (RFC-024's
+        // port): enabling it applies with a supported change, the render
+        // carries the mask, and `spk_contrast_mask_field` returns the real
+        // analysis grid -- but only once the tier's negative exists (its own
+        // contract: the field is analysed on the cached negative, it does not
+        // develop one). The deltas are the RFC's bounded stops.
+        require(spk_set_params(session.get(),
+                               "{\"contrast_mask_active\":true,\"contrast_mask_highlights\":1.25,"
+                               "\"contrast_mask_shadows\":0.75,\"print_exposure\":1.25}",
+                               nullptr) == SPK_OK,
+                "ported contrast mask delta was refused");
+        require(params(session.get()) != before, "contrast mask delta did not change params");
+        render(engine.get(), session.get());
+        {
+            spk_session* fresh = spk_open(
+                engine.get(), &input,
+                "{\"contrast_mask_active\":true,\"contrast_mask_highlights\":1.25}", nullptr);
+            require(bool(fresh), std::string("fresh mask session failed to open: ") +
+                                     spk_last_error(engine.get()));
+            const float* early = nullptr;
+            uint32_t early_w = 0, early_h = 0;
+            const spk_status early_status = spk_contrast_mask_field(fresh, "full", &early, &early_w, &early_h);
+            spk_session_release(fresh);
+            require(early_status == SPK_ERR_USER && !early && early_w == 0 && early_h == 0 &&
+                        std::string(spk_last_error(engine.get())).find("render it first") != std::string::npos,
+                    "the field must refuse a tier that has no negative yet");
+        }
+        {
+            const float* field = nullptr;
+            uint32_t field_w = 0, field_h = 0;
+            const spk_status field_status =
+                spk_contrast_mask_field(session.get(), "full", &field, &field_w, &field_h);
+            require(field_status == SPK_OK && field && field_w > 0 && field_h > 0,
+                    std::string("enabled contrast mask must expose its field: ") +
+                        spk_last_error(engine.get()));
+            const std::vector<float> first(field, field + size_t(field_w) * field_h);
+            for (uint32_t i = 0; i < field_w * field_h; ++i)
+                require(std::isfinite(first[i]) && std::fabs(first[i]) < 6.0,
+                        "the field's deltas must be the bounded stops");
+            // The grid base is extracted on the host through the worker pool
+            // (line_pool.hpp): which worker takes which line, or how many
+            // workers there are, may change every run, but no bit of the field
+            // may. Eight re-extractions of the same session's negative must be
+            // byte-identical to the first.
+            for (int run = 0; run < 8; ++run) {
+                const float* again = nullptr;
+                uint32_t again_w = 0, again_h = 0;
+                require(spk_contrast_mask_field(session.get(), "full", &again, &again_w, &again_h) ==
+                                SPK_OK &&
+                            again && again_w == field_w && again_h == field_h &&
+                            std::memcmp(again, first.data(), first.size() * sizeof(float)) == 0,
+                        "re-extracted field must be bit-identical across worker interleavings");
+            }
+        }
+        require(spk_set_params(session.get(),
+                               "{\"contrast_mask_active\":false,\"contrast_mask_highlights\":0.0,"
+                               "\"contrast_mask_shadows\":0.0,\"print_exposure\":1.0}",
+                               nullptr) == SPK_OK,
+                "contrast mask could not be reverted");
+        require(params(session.get()) == before, "mask parameter round trip changed other params");
+        render(engine.get(), session.get());
+
         const float* mask = nullptr;
         uint32_t width = 0, height = 0;
         require(spk_contrast_mask_field(session.get(), "full", &mask, &width, &height) == SPK_OK &&
@@ -233,7 +301,8 @@ int main(int argc, char** argv) {
         require(latitude_status == SPK_OK && latitude_valid, "latitude analysis failed: " + latitude_error);
         require(params(session.get()) == before, "latitude analysis mutated the session");
         render(engine.get(), session.get());
-        std::cout << "Windows feature boundaries passed (3 flags, DI + scene latitude mapped and reverted, "
+        std::cout << "Windows feature boundaries passed (2 flags, DI + scene latitude + contrast mask "
+                     "mapped and reverted, mask field round trip, "
                      "slide refused, mask off, latitude analysis)\n";
         return 0;
     } catch (const std::exception& error) {

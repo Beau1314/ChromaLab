@@ -34,8 +34,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include <dispatch/dispatch.h>
-
+#include "line_pool.hpp"
 #include "pipeline.hpp"
 
 namespace spk {
@@ -92,18 +91,9 @@ void box(const std::vector<double>& in, std::vector<double>& out, uint32_t w, ui
     box_1d(tmp, out, w, h, r, false);
 }
 
-// `fn(line)` for every line, across the cores. Each line writes only its own
-// outputs and reads only shared inputs, and each output is still accumulated
-// in the same order by one thread -- so the result is bit-identical to the
-// serial loop; only the wall time changes. Measured on a 45 MP frame at the
-// live tier: the serial Gaussian was ~260 ms of a 275 ms reprint at scale
-// 0.03 and ~600 of 631 at 0.093.
-template <class F>
-void for_each_line(uint32_t lines, F&& fn) {
-    struct Ctx { F* fn; } ctx{&fn};
-    dispatch_apply_f(lines, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), &ctx,
-                     [](void* c, size_t line) { (*static_cast<Ctx*>(c)->fn)(uint32_t(line)); });
-}
+// `for_each_line(lines, fn)` lives in line_pool.hpp: the same-order
+// accumulation contract that keeps the blur bit-identical to the serial loop
+// is stated once there, next to the GCD and worker-pool implementations.
 
 void gaussian(const std::vector<double>& in, std::vector<double>& out, uint32_t w, uint32_t h,
               double sigma) {

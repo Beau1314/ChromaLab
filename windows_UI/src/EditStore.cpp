@@ -127,7 +127,12 @@ QJsonObject stateJson(const State& state) {
         {"scene_latitude_shadow_knee", s.scene_latitude_shadow_knee},
         {"scene_latitude_shadow_room", s.scene_latitude_shadow_room},
         {"scene_latitude_rolloff", s.scene_latitude_rolloff},
-        {"scene_latitude_max_lift", s.scene_latitude_max_lift}}},
+        {"scene_latitude_max_lift", s.scene_latitude_max_lift},
+        {"contrast_mask_active", s.contrast_mask_active},
+        {"contrast_mask_highlights", s.contrast_mask_highlights},
+        {"contrast_mask_shadows", s.contrast_mask_shadows},
+        {"contrast_mask_core", s.contrast_mask_core},
+        {"contrast_mask_scale", s.contrast_mask_scale}}},
         {"decodeMode", mode}, {"geometry", QJsonObject{
             {"crop", QJsonObject{{"x", g.crop.x()}, {"y", g.crop.y()},
                                   {"width", g.crop.width()}, {"height", g.crop.height()}}},
@@ -169,6 +174,15 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
                              "scene_latitude_highlight_knee", "scene_latitude_highlight_room",
                              "scene_latitude_shadow_knee", "scene_latitude_shadow_room",
                              "scene_latitude_rolloff", "scene_latitude_max_lift"});
+    // RFC-024's mask arrived with the phase-2 port (like the DI pair, its keys
+    // are optional so an old history still loads); records that carry one mask
+    // key must carry all five.
+    const bool hasContrastMask = s.contains(QLatin1String("contrast_mask_active"));
+    if (hasContrastMask)
+        setting_keys.insert(setting_keys.end(),
+                            {"contrast_mask_active", "contrast_mask_highlights",
+                             "contrast_mask_shadows", "contrast_mask_core",
+                             "contrast_mask_scale"});
     keys(s, setting_keys, QStringLiteral("settings"));
     auto& out = state.settings;
     out.film_stock = stockId(s, "film_stock", catalog ? &catalog->films : nullptr).toStdString();
@@ -212,6 +226,13 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
         out.scene_latitude_shadow_room = number(s, "scene_latitude_shadow_room", 0.0, 24.0);
         out.scene_latitude_rolloff = number(s, "scene_latitude_rolloff", 1.0, 4.0);
         out.scene_latitude_max_lift = number(s, "scene_latitude_max_lift", 0.25, 12.0);
+    }
+    if (hasContrastMask) {
+        out.contrast_mask_active = boolean(s, "contrast_mask_active");
+        out.contrast_mask_highlights = number(s, "contrast_mask_highlights", 0.0, 3.0);
+        out.contrast_mask_shadows = number(s, "contrast_mask_shadows", 0.0, 3.0);
+        out.contrast_mask_core = number(s, "contrast_mask_core", 0.0, 3.0);
+        out.contrast_mask_scale = number(s, "contrast_mask_scale", 0.002, 0.12);
     }
     const auto mode = string(value, "decodeMode");
     require(mode == "compatible16" || mode == "headroom",

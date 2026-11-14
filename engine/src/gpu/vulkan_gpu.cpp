@@ -91,6 +91,8 @@ constexpr KernelSpec kKernels[] = {
     {"spk_di_encode", 4, kWorkgroup},
     {"spk_scene_latitude", 4, kWorkgroup},
     {"spk_scene_curve", 5, kWorkgroup},
+    {"spk_mask_reduce", 7, kWorkgroup},
+    {"spk_mask_epilogue", 8, kWorkgroup},
 };
 
 const KernelSpec* find_kernel(const char* name) {

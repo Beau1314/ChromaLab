@@ -157,6 +157,40 @@ ApplicationWindow {
             onMoved: preview.setAdjustment(adjustment.setting, value)
         }
     }
+    component MaskSlider: ColumnLayout {
+        id: maskSlider
+        // RFC-024's contrast mask: reads preview.mask, writes
+        // preview.setMask(name, value) -- the engine-parameter path (a moved
+        // slider re-renders the print, never re-decodes). The ranges are the
+        // engine schema's own rows.
+        property string label
+        property string name
+        property real from: 0
+        property real to: 3
+        property real step: 0.05
+        property int decimals: 2
+        property string suffix: ""
+        readonly property real current: preview.mask[name] === undefined ? 0 : Number(preview.mask[name])
+        readonly property bool available: preview.settingsEditable && !preview.filmIsPositive
+        Layout.fillWidth: true; spacing: 2
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: maskSlider.label; color: maskSlider.available ? Theme.text : Theme.muted; font.pixelSize: 11 }
+            Item { Layout.fillWidth: true }
+            Text { text: maskSlider.current.toFixed(maskSlider.decimals) + maskSlider.suffix; color: Theme.muted; font.pixelSize: 10 }
+        }
+        Slider {
+            Layout.fillWidth: true; implicitHeight: 24
+            from: maskSlider.from; to: maskSlider.to; stepSize: maskSlider.step
+            value: maskSlider.current
+            enabled: maskSlider.available
+            onPressedChanged: {
+                if (pressed) preview.beginEditGesture("mask:" + maskSlider.name)
+                else preview.endEditGesture()
+            }
+            onMoved: preview.setMask(maskSlider.name, value)
+        }
+    }
     component Layer2Adjustment: ColumnLayout {
         id: layer2Adjustment
         property string label
@@ -377,6 +411,47 @@ ApplicationWindow {
                             }
                             Adjustment { label: "黄色滤镜"; setting: "yFilterShift"; from: -1; to: 1; step: 0.01; decimals: 2; available: !preview.filmIsPositive }
                             Adjustment { label: "洋红滤镜"; setting: "mFilterShift"; from: -1; to: 1; step: 0.01; decimals: 2; available: !preview.filmIsPositive }
+                            // 遮罩 (RFC-024, phase 2): the contrast mask is an
+                            // engine parameter on Windows now. The switch turns
+                            // it on and the four sliders set the curve's
+                            // amounts, core and scale; the scheme stays the
+                            // product default (gaussian) and is not exposed.
+                            // Slide film never reaches the print, so the group
+                            // is dead there like the DI's rows.
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    objectName: "contrastMaskSwitch"
+                                    text: "遮罩"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: preview.mask.active
+                                    enabled: preview.settingsEditable && !preview.filmIsPositive
+                                    onToggled: preview.setMask("active", checked)
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: !preview.mask.active ? "关闭" : "已应用"
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            MaskSlider { label: "高光提升"; name: "highlights"; from: 0; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
+                            MaskSlider { label: "阴影压低"; name: "shadows"; from: 0; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
+                            MaskSlider { label: "核心宽度"; name: "core"; from: 0.1; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
+                            MaskSlider { label: "作用范围"; name: "scale"; from: 0.002; to: 0.12; step: 0.002; decimals: 3 }
+                            ActionButton {
+                                objectName: "resetMaskButton"
+                                Layout.fillWidth: true
+                                text: "重置遮罩"
+                                enabled: preview.settingsEditable && !preview.filmIsPositive && preview.hasFrame
+                                onClicked: {
+                                    preview.setMask("active", false)
+                                    preview.setMask("highlights", 0)
+                                    preview.setMask("shadows", 0)
+                                    preview.setMask("core", 1.0)
+                                    preview.setMask("scale", 0.03)
+                                }
+                            }
+                            Note { text: "对比遮罩按画面局部提升相纸高光、压低阴影：开关与滑块走引擎参数，重新渲染而不重解码。" }
                         }
                     }
                 }

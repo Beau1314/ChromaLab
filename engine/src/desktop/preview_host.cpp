@@ -99,6 +99,13 @@ bool validate_settings(const RenderSettings& settings, const Catalog& catalog) {
     range(settings.glare_amount, 0.0, 30.0, "Glare amount");
     range(settings.y_filter_shift, -1.0, 1.0, "Yellow filter shift");
     range(settings.m_filter_shift, -1.0, 1.0, "Magenta filter shift");
+    // The mask's amounts are stops and the core is a half-width in the same
+    // units; the scale is the base extractor's sigma as a long-edge fraction.
+    // The ranges are the engine schema's own rows (params.cpp).
+    range(settings.contrast_mask_highlights, 0.0, 3.0, "Contrast mask highlights");
+    range(settings.contrast_mask_shadows, 0.0, 3.0, "Contrast mask shadows");
+    range(settings.contrast_mask_core, 0.0, 3.0, "Contrast mask core");
+    range(settings.contrast_mask_scale, 0.002, 0.12, "Contrast mask scale");
     // The WB override is the decode's own protocol range (R2, mirrored by
     // the engine host): 0 = As Shot, otherwise an illuminant in Kelvin the
     // decoder must be able to neutralise. The Robertson mapping clamps to
@@ -161,6 +168,13 @@ Json opening_params(const RenderSettings& settings, bool scan_film) {
     params.set("scene_latitude_shadow_room", Json(settings.scene_latitude_shadow_room));
     params.set("scene_latitude_rolloff", Json(settings.scene_latitude_rolloff));
     params.set("scene_latitude_max_lift", Json(settings.scene_latitude_max_lift));
+    // The contrast mask's curve travels with every open too: a saved mask-on
+    // session must restore as one when the photograph is reopened.
+    params.set("contrast_mask_active", Json(settings.contrast_mask_active));
+    params.set("contrast_mask_highlights", Json(settings.contrast_mask_highlights));
+    params.set("contrast_mask_shadows", Json(settings.contrast_mask_shadows));
+    params.set("contrast_mask_core", Json(settings.contrast_mask_core));
+    params.set("contrast_mask_scale", Json(settings.contrast_mask_scale));
     return params;
 }
 
@@ -217,6 +231,18 @@ Json changed_params(const RenderSettings& before, const RenderSettings& after, b
         delta.set("scene_latitude_rolloff", Json(after.scene_latitude_rolloff));
     if (before.scene_latitude_max_lift != after.scene_latitude_max_lift)
         delta.set("scene_latitude_max_lift", Json(after.scene_latitude_max_lift));
+    // The mask's curve: the toggle alone, or the amounts with it -- the same
+    // engine-parameter channel the DI and the mapping travel by.
+    if (before.contrast_mask_active != after.contrast_mask_active)
+        delta.set("contrast_mask_active", Json(after.contrast_mask_active));
+    if (before.contrast_mask_highlights != after.contrast_mask_highlights)
+        delta.set("contrast_mask_highlights", Json(after.contrast_mask_highlights));
+    if (before.contrast_mask_shadows != after.contrast_mask_shadows)
+        delta.set("contrast_mask_shadows", Json(after.contrast_mask_shadows));
+    if (before.contrast_mask_core != after.contrast_mask_core)
+        delta.set("contrast_mask_core", Json(after.contrast_mask_core));
+    if (before.contrast_mask_scale != after.contrast_mask_scale)
+        delta.set("contrast_mask_scale", Json(after.contrast_mask_scale));
     return delta;
 }
 

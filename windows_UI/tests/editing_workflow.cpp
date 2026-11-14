@@ -65,12 +65,17 @@ struct Desired {
     bool autoExposure=true;
     bool diActive=false,diBlueCompensation=false;
     bool sceneLatitudeActive=false;
+    bool maskActive=false;
+    double maskHighlights=0,maskShadows=0,maskCore=1,maskScale=0.03;
 };
 Desired desired(const PreviewController& c) {
     return {c.filmIndex(),c.paperIndex(),c.decodeMode(),c.exposureEv(),c.adjustments(),geometry(c),
         c.wbTemperature(),c.wbTint(),c.autoExposure(),
         c.di()["active"].toBool(),c.di()["blueCompensation"].toBool(),
-        c.sceneLatitudeActive()};
+        c.sceneLatitudeActive(),
+        c.mask()["active"].toBool(),
+        c.mask()["highlights"].toDouble(),c.mask()["shadows"].toDouble(),
+        c.mask()["core"].toDouble(),c.mask()["scale"].toDouble()};
 }
 bool matches(const PreviewController& c,const Desired& expected) {
     return c.filmIndex()==expected.film&&c.paperIndex()==expected.paper&&c.decodeMode()==expected.decode&&
@@ -79,7 +84,12 @@ bool matches(const PreviewController& c,const Desired& expected) {
         c.autoExposure()==expected.autoExposure&&
         c.di()["active"].toBool()==expected.diActive&&
         c.di()["blueCompensation"].toBool()==expected.diBlueCompensation&&
-        c.sceneLatitudeActive()==expected.sceneLatitudeActive;
+        c.sceneLatitudeActive()==expected.sceneLatitudeActive&&
+        c.mask()["active"].toBool()==expected.maskActive&&
+        near(c.mask()["highlights"].toDouble(),expected.maskHighlights)&&
+        near(c.mask()["shadows"].toDouble(),expected.maskShadows)&&
+        near(c.mask()["core"].toDouble(),expected.maskCore)&&
+        near(c.mask()["scale"].toDouble(),expected.maskScale);
 }
 bool samePixels(const QImage& left,const QImage& right) {
     if(left.isNull()||right.isNull()||left.size()!=right.size())return false;
@@ -462,6 +472,41 @@ int main(int argc,char** argv) {
                       "Without the DI the print returns to the paper pixels");
             }
 
+            // 对比遮罩 (RFC-024, phase 2 port): an engine parameter like the
+            // DI — the toggle and the four scalars re-render the session
+            // (spk_mask_reduce + spk_mask_epilogue on Vulkan) without decode
+            // work. With both amounts at zero the mask is not wanted, so the
+            // print stays byte-identical; amounts on, the print visibly
+            // changes; undo walks back across the re-renders; turning the
+            // mask off returns to the paper pixels.
+            {
+                const auto paper=c.frame();const auto paperShown=c.previewImage().copy();
+                check(!c.mask()["active"].toBool(),"The contrast mask begins off");
+                c.setMask("active",true);idle(c,"Mask toggle render");
+                check(c.frame()!=paper&&c.frame()->settings.contrast_mask_active&&
+                      c.frame()->timings.decode_ms==0,
+                      "Enabling the mask re-renders without re-decoding");
+                check(samePixels(c.previewImage(),paperShown),
+                      "The mask with no amounts leaves the print untouched");
+                c.setMask("highlights",1.5);idle(c,"Mask highlights render");
+                check(near(c.frame()->settings.contrast_mask_highlights,1.5),
+                      "The highlight amount lands as an engine parameter");
+                check(!samePixels(c.previewImage(),paperShown),
+                      "The mask's amounts visibly lift the print highlights");
+                c.undo();idle(c,"Mask highlights undo re-render");
+                check(near(c.frame()->settings.contrast_mask_highlights,0.0),
+                      "Undo removes the highlight amount but keeps the mask on");
+                check(samePixels(c.previewImage(),paperShown),
+                      "Without the amount the print returns to the paper pixels");
+                c.redo();idle(c,"Mask highlights redo re-render");
+                check(near(c.frame()->settings.contrast_mask_highlights,1.5),
+                      "Redo restores the highlight amount");
+                c.setMask("active",false);idle(c,"Mask off re-render");
+                check(!c.frame()->settings.contrast_mask_active,"The mask returns off");
+                check(closePixels(c.previewImage(),paperShown,2),
+                      "Without the mask the print returns to the paper pixels");
+            }
+
             // 宽容度映射 (RFC-023, phase 2 port): the analysis card's
             // engine side. The toggle is an engine parameter through changed()
             // (re-renders, never re-decodes); with nothing committed the
@@ -539,6 +584,13 @@ int main(int argc,char** argv) {
             // settings: reopening must restore the mapping with its solved
             // pull-backs (the gate block above left them committed).
             c.setSceneLatitude(true);
+            // The mask's curve rides the same saved settings: reopening must
+            // restore the mask with its amounts (all five keys persisted).
+            c.setMask("active",true);
+            c.setMask("highlights",0.9);
+            c.setMask("shadows",0.6);
+            c.setMask("core",1.4);
+            c.setMask("scale",0.05);
             c.rotateCounterClockwise();savedFirst=desired(c);
             check(c.dirty()&&!c.busy(),"Persistence checkpoint contains pending unrendered edits");
             check(c.persistenceWarning().isEmpty(),"No persistence warnings before destruction");

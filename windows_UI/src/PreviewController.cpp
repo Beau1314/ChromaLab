@@ -423,6 +423,35 @@ void PreviewController::setDi(const QString& name,const bool value) {
     extra_settings_=next;changed(QStringLiteral("di:")+name);
 }
 
+// --- Contrast mask: RFC-024's print-side engine parameters -------------------
+
+QVariantMap PreviewController::mask() const {
+    const auto& s=extra_settings_;
+    return {{"active",s.contrast_mask_active},{"highlights",s.contrast_mask_highlights},
+        {"shadows",s.contrast_mask_shadows},{"core",s.contrast_mask_core},
+        {"scale",s.contrast_mask_scale}};
+}
+void PreviewController::setMask(const QString& name,const QVariant& value) {
+    // Slide film never reaches the print (RFC-024 §7.5), so the group is dead
+    // there like the DI's; the positive-paper and LUT cases cannot arise from
+    // the desktop's own settings.
+    if(!settingsEditable()||filmIsPositive())return;
+    auto next=extra_settings_;
+    if(name==QLatin1String("active"))next.contrast_mask_active=value.toBool();
+    else {
+        bool ok=false;const double v=value.toDouble(&ok);if(!ok||!std::isfinite(v))return;
+        // The engine schema's own rows (params.cpp): the amounts and the core
+        // are stops in [0, 3], the scale is the sigma as a long-edge fraction.
+        if(name==QLatin1String("highlights")){if(v<0||v>3)return;next.contrast_mask_highlights=v;}
+        else if(name==QLatin1String("shadows")){if(v<0||v>3)return;next.contrast_mask_shadows=v;}
+        else if(name==QLatin1String("core")){if(v<0||v>3)return;next.contrast_mask_core=v;}
+        else if(name==QLatin1String("scale")){if(v<0.002||v>0.12)return;next.contrast_mask_scale=v;}
+        else return;
+    }
+    if(next==extra_settings_)return;
+    extra_settings_=next;changed(QStringLiteral("mask:")+name);
+}
+
 // --- Scene Latitude Mapping: the analysis card's engine side -----------------
 
 void PreviewController::setSceneLatitude(const bool value) {

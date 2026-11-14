@@ -47,6 +47,7 @@ set(SPEKTRALAB_DEPS_DIR "${SPEKTRALAB_REPO_ROOT}/build/deps" CACHE PATH
 # runnable engine still requires an implementation of gpu::Gpu.
 add_library(spektralab_pipeline OBJECT
     src/pipeline/blur.cpp
+    src/pipeline/contrast_mask.cpp
     src/pipeline/disk_checkpoint.cpp
     src/pipeline/engine.cpp
     src/pipeline/pipeline.cpp
@@ -54,8 +55,7 @@ add_library(spektralab_pipeline OBJECT
 )
 set_target_properties(spektralab_pipeline PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(APPLE)
-    target_sources(spektralab_pipeline PRIVATE
-        src/pipeline/contrast_mask.cpp src/pipeline/overscan.cpp)
+    target_sources(spektralab_pipeline PRIVATE src/pipeline/overscan.cpp)
 else()
     target_sources(spektralab_pipeline PRIVATE src/pipeline/windows_unported.cpp)
 endif()
@@ -122,6 +122,7 @@ if(NOT APPLE)
             spk_zoom_bilinear_mirror spk_geometry_resample_df
             spk_lut3d_trilinear spk_di_normalise spk_di_encode
             spk_scene_latitude spk_scene_curve
+            spk_mask_reduce spk_mask_epilogue
             CACHE INTERNAL "")
         set(vulkan_spirv)
         file(GLOB vulkan_includes "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/vulkan/*.glsl")
@@ -259,7 +260,7 @@ if(NOT APPLE)
             add_test(NAME spk_vulkan_smoke
                 COMMAND spk_vulkan_smoke "${vulkan_resource_dir}")
 
-            foreach(probe grain pointwise di_encode resample transfer geometry lut_di scene_latitude scene_curve)
+            foreach(probe grain pointwise di_encode resample transfer geometry lut_di scene_latitude scene_curve mask)
                 add_executable(spk_vulkan_${probe} tests/gpu_vulkan_${probe}.cpp)
                 target_include_directories(spk_vulkan_${probe} PRIVATE
                     "${CMAKE_CURRENT_SOURCE_DIR}/include"
@@ -269,6 +270,14 @@ if(NOT APPLE)
                 add_test(NAME spk_vulkan_${probe}
                     COMMAND spk_vulkan_${probe} "${vulkan_resource_dir}")
             endforeach()
+
+            # The worker pool behind the contrast mask's blurs: the threaded
+            # path must stay bit-identical to the serial loop (the contract in
+            # line_pool.hpp). Header-only, so it needs no engine library.
+            add_executable(spk_for_each_line_checks tests/for_each_line_checks.cpp)
+            target_include_directories(spk_for_each_line_checks PRIVATE
+                "${CMAKE_CURRENT_SOURCE_DIR}/src")
+            add_test(NAME spk_for_each_line_checks COMMAND spk_for_each_line_checks)
 
             if(SPEKTRALAB_BUILD_TEST_DLL)
                 add_executable(spk_windows_feature_boundaries tests/windows_feature_boundaries.cpp)

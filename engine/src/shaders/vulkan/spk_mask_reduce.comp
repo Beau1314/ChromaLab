@@ -1,0 +1,84 @@
+#version 450
+
+// RFC-024's virtual contrast mask, the analysis: one thread per grid cell, the
+// mean of `x` over the cell's pixels (contrast_mask.metal `spk_mask_reduce`,
+// :80, with its inline helpers :34/:47). The cells partition the frame
+// (`[cx*W/gw, (cx+1)*W/gw)`), so every pixel is counted exactly once whatever
+// the tier's size; the host extracts the mask's base from these means in
+// double and uploads it back as per-cell coefficients (a, b).
+//
+// p is the one parameter block both mask kernels read (contrast_mask.metal
+// :20-26):
+//   0..2  the enlarger's setup gain (image exposure only)
+//   3..5  1 / A_ref
+//   6..8  the pre-flash offset (epilogue only)
+//   9 k_lo  10 h_lo  11 lo_on    -- the print-highlight branch
+//   12 k_hi 13 h_hi  14 hi_on    -- the print-shadow branch
+//   15 the gain limit, stops
+//
+// meta is {W, H, gw, gh, nl}: the frame's pixels, the grid's cells and the
+// wavelength count. The float64 gate tests/gpu_vulkan_mask.cpp checks this
+// against the double transcription.
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Cmy { float value[]; } cmy;
+layout(set = 0, binding = 1, std430) readonly buffer Characteristic { float value[]; } characteristic;
+layout(set = 0, binding = 2, std430) readonly buffer Base { float value[]; } base_data;
+layout(set = 0, binding = 3, std430) readonly buffer Integral { float value[]; } integral_data;
+layout(set = 0, binding = 4, std430) readonly buffer Parameters { float value[]; } parameters;
+layout(set = 0, binding = 5, std430) readonly buffer Meta { uint value[]; } meta;
+layout(set = 0, binding = 6, std430) writeonly buffer Output { float value[]; } output_data;
+
+// vulkan_gpu.cpp folds a dispatch past maxComputeWorkGroupCount[0] (65535 on
+// lavapipe and Intel) into rows of workgroups; this is the 1D index it means.
+uint spk_global_index() {
+    return gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+}
+
+// :34 `mask_image_exposure`: the enlarger's spectral integral over the CMY
+// triple, then the setup gain -- the image exposure the mask's x is measured
+// on (the pre-flash offset is deliberately not here; §7.2's contract).
+vec3 mask_image_exposure(uint i) {
+    float c0 = cmy.value[3u * i], c1 = cmy.value[3u * i + 1u], c2 = cmy.value[3u * i + 2u];
+    float a0 = 0.0, a1 = 0.0, a2 = 0.0;
+    for (uint l = 0u; l < meta.value[4u]; ++l) {
+        float d = c0 * characteristic.value[3u * l]
+                + c1 * characteristic.value[3u * l + 1u]
+                + c2 * characteristic.value[3u * l + 2u]
+                + base_data.value[l];
+        float t = exp2(-d * 3.321928094887362);
+        a0 += t * integral_data.value[3u * l];
+        a1 += t * integral_data.value[3u * l + 1u];
+        a2 += t * integral_data.value[3u * l + 2u];
+    }
+    return vec3(a0 * parameters.value[0], a1 * parameters.value[1], a2 * parameters.value[2]);
+}
+
+// :47 `mask_x`: the equal-weight mean over the three paper channels of
+// log2(A_c / A_ref_c); x = 0 is mid-grey. The floor under log2 is a numerical
+// guard (2^-20, ~6 densities below mid-grey), not a signal. GLSL leaves
+// log2(0) undefined, so the floor is taken first for r == 0 -- for r > 0 this
+// is exactly Metal's max(log2(r), floor).
+float mask_x(vec3 a) {
+    float s = 0.0;
+    for (uint c = 0u; c < 3u; ++c) {
+        float r = max(a[c] * parameters.value[3u + c], 0.0);
+        float lr = r > 0.0 ? log2(r) : -20.0;
+        s += max(lr, -20.0);
+    }
+    return s * (1.0 / 3.0);
+}
+
+void main() {
+    uint cell = spk_global_index();
+    uint W = meta.value[0u], H = meta.value[1u], gw = meta.value[2u], gh = meta.value[3u];
+    if (cell >= gw * gh) return;
+    uint cy = cell / gw, cx = cell % gw;
+    uint x0 = (cx * W) / gw, x1 = max(((cx + 1u) * W) / gw, x0 + 1u);
+    uint y0 = (cy * H) / gh, y1 = max(((cy + 1u) * H) / gh, y0 + 1u);
+    x1 = min(x1, W); y1 = min(y1, H);
+    float acc = 0.0;
+    for (uint y = y0; y < y1; ++y)
+        for (uint x = x0; x < x1; ++x)
+            acc += mask_x(mask_image_exposure(y * W + x));
+    output_data.value[cell] = acc / float((x1 - x0) * (y1 - y0));
+}

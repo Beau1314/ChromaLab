@@ -1,0 +1,120 @@
+#version 450
+
+// RFC-024's virtual contrast mask, the application (contrast_mask.metal
+// `spk_mask_epilogue`, :109). The unmasked print path still runs
+// spk_spectral_epilogue unchanged; this is that kernel's integral with one
+// change in the epilogue: the image exposure is multiplied by the mask's gain
+// **before** the pre-flash offset is added.
+//
+//     today:   E = max(a * gain + flash, 0) + 1e-10
+//     masked:  E = max(2^delta * (a * gain) + flash, 0) + 1e-10
+//
+// which is RFC-024 §4's `P * [2^delta * A + F]` with `P` left to the existing
+// spk_print_exposure node. The base is `a * x + b` with (a, b) sampled
+// bilinearly from the grid: the guided filter's coefficients when edge-aware
+// (so the base follows this pixel's own x across an edge), a = 0 and the
+// Gaussian base otherwise (the product scheme). The bounded curve and the
+// log10 shape match the unmasked epilogue.
+//
+// p is the shared 16-float row (see spk_mask_reduce.comp); coef is the grid's
+// interleaved (a, b) pairs; meta is {n, nl, W, H, row0, gw, gh}. `row0` is the
+// band's first row in the frame, so a strip reads the field at the frame's
+// coordinates and a striped render samples exactly what the whole-frame one
+// does (contrast_mask.metal:102-104).
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Cmy { float value[]; } cmy;
+layout(set = 0, binding = 1, std430) readonly buffer Characteristic { float value[]; } characteristic;
+layout(set = 0, binding = 2, std430) readonly buffer Base { float value[]; } base_data;
+layout(set = 0, binding = 3, std430) readonly buffer Integral { float value[]; } integral_data;
+layout(set = 0, binding = 4, std430) readonly buffer Parameters { float value[]; } parameters;
+layout(set = 0, binding = 5, std430) readonly buffer Coefficients { float value[]; } coefficients;
+layout(set = 0, binding = 6, std430) readonly buffer Meta { uint value[]; } meta;
+layout(set = 0, binding = 7, std430) writeonly buffer Output { float value[]; } output_data;
+
+uint spk_global_index() {
+    return gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+}
+
+// :34 `mask_image_exposure` -- identical to the reduce's (the contract: derive
+// A here, never by subtracting the flash back out of a logged total).
+vec3 mask_image_exposure(uint i) {
+    float c0 = cmy.value[3u * i], c1 = cmy.value[3u * i + 1u], c2 = cmy.value[3u * i + 2u];
+    float a0 = 0.0, a1 = 0.0, a2 = 0.0;
+    for (uint l = 0u; l < meta.value[1u]; ++l) {
+        float d = c0 * characteristic.value[3u * l]
+                + c1 * characteristic.value[3u * l + 1u]
+                + c2 * characteristic.value[3u * l + 2u]
+                + base_data.value[l];
+        float t = exp2(-d * 3.321928094887362);
+        a0 += t * integral_data.value[3u * l];
+        a1 += t * integral_data.value[3u * l + 1u];
+        a2 += t * integral_data.value[3u * l + 2u];
+    }
+    return vec3(a0 * parameters.value[0], a1 * parameters.value[1], a2 * parameters.value[2]);
+}
+
+// :47 `mask_x` -- with the same explicit log2(0) floor (GLSL leaves log2(0)
+// undefined; Metal's comment names it -inf, then the floor).
+float mask_x(vec3 a) {
+    float s = 0.0;
+    for (uint c = 0u; c < 3u; ++c) {
+        float r = max(a[c] * parameters.value[3u + c], 0.0);
+        float lr = r > 0.0 ? log2(r) : -20.0;
+        s += max(lr, -20.0);
+    }
+    return s * (1.0 / 3.0);
+}
+
+// :58 RFC-023's m = 2 branch, `D * H / sqrt(H^2 + D^2)`: slope 1 at the knee,
+// asymptote H.
+float mask_g(float d, float h) { return d * h * inversesqrt(h * h + d * d); }
+
+// :62 delta = f(b) - b, bounded. Exactly 0.0 inside the core and on a disabled
+// branch, so the gain there is exp2(0) = 1. The same smooth-min bounds the
+// gain itself (RFC-023 §15's fix for an unbounded shadow gain):
+// |delta| < limit for any base.
+float mask_delta(float b) {
+    float delta = 0.0;
+    if (parameters.value[11] != 0.0 && b < parameters.value[9]) {
+        float d = parameters.value[9] - b;
+        delta = d - mask_g(d, parameters.value[10]);
+    } else if (parameters.value[14] != 0.0 && b > parameters.value[12]) {
+        float d = b - parameters.value[12];
+        delta = mask_g(d, parameters.value[13]) - d;
+    }
+    float lim = parameters.value[15];
+    return delta * lim * inversesqrt(lim * lim + delta * delta);
+}
+
+void main() {
+    uint i = spk_global_index();
+    uint n = meta.value[0u];
+    if (i >= n) return;
+    uint W = meta.value[2u], H = meta.value[3u], row0 = meta.value[4u];
+    uint gw = meta.value[5u], gh = meta.value[6u];
+    vec3 a = mask_image_exposure(i);
+
+    uint px = i % W, py = row0 + i / W;
+    float u = clamp((float(px) + 0.5) * float(gw) / float(W) - 0.5, 0.0, float(gw - 1u));
+    float v = clamp((float(py) + 0.5) * float(gh) / float(H) - 0.5, 0.0, float(gh - 1u));
+    uint u0 = uint(floor(u)), v0 = uint(floor(v));
+    uint u1 = min(u0 + 1u, gw - 1u), v1 = min(v0 + 1u, gh - 1u);
+    float tu = u - float(u0), tv = v - float(v0);
+    vec2 c00 = vec2(coefficients.value[2u * (v0 * gw + u0)], coefficients.value[2u * (v0 * gw + u0) + 1u]);
+    vec2 c01 = vec2(coefficients.value[2u * (v0 * gw + u1)], coefficients.value[2u * (v0 * gw + u1) + 1u]);
+    vec2 c10 = vec2(coefficients.value[2u * (v1 * gw + u0)], coefficients.value[2u * (v1 * gw + u0) + 1u]);
+    vec2 c11 = vec2(coefficients.value[2u * (v1 * gw + u1)], coefficients.value[2u * (v1 * gw + u1) + 1u]);
+    vec2 ab = mix(mix(c00, c01, tu), mix(c10, c11, tu), tv);
+
+    float b = ab.x * mask_x(a) + ab.y;
+    float k = exp2(mask_delta(b));
+    float v0e = max(k * a.x + parameters.value[6u], 0.0) + 1e-10;
+    float v1e = max(k * a.y + parameters.value[7u], 0.0) + 1e-10;
+    float v2e = max(k * a.z + parameters.value[8u], 0.0) + 1e-10;
+    // Metal's log10(v); GLSL 450 has no scalar log10 overload on this target,
+    // so log10(v) is written ln(v) / ln(10) -- the same constant
+    // spk_spectral_epilogue.comp carries.
+    output_data.value[3u * i] = log(v0e) * 0.4342944819032518;
+    output_data.value[3u * i + 1u] = log(v1e) * 0.4342944819032518;
+    output_data.value[3u * i + 2u] = log(v2e) * 0.4342944819032518;
+}

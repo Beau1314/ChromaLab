@@ -68,6 +68,20 @@ struct RenderSettings {
     double scene_latitude_shadow_room = 0.0;
     double scene_latitude_rolloff = 2.0;
     double scene_latitude_max_lift = 4.0;
+    // RFC-024's virtual contrast mask (ported in phase 2, `spk_mask_reduce` /
+    // `spk_mask_epilogue` on Vulkan): the print-side local contrast that lifts
+    // print highlights and lowers print shadows past its identity core. Like
+    // the DI and the mapping these are engine parameters -- a change re-renders
+    // without re-decoding. The engine keeps the mask off for slide film (a
+    // directly scanned positive), a positive paper, and the LUT path
+    // (RFC-024 §7.5), so the UI gates the rows on the film's catalog metadata.
+    // The scheme is not a setting: only "gaussian" is a product scheme
+    // (params.hpp), and the UI never exposes a second one.
+    bool contrast_mask_active = false;
+    double contrast_mask_highlights = 0.0;  ///< stops raised, print-highlight side
+    double contrast_mask_shadows = 0.0;     ///< stops lowered, print-shadow side
+    double contrast_mask_core = 1.0;        ///< half-width of the identity core, stops
+    double contrast_mask_scale = 0.03;      ///< base extractor's sigma, long-edge fraction
 
     bool operator==(const RenderSettings&) const = default;
 };
