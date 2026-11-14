@@ -31,6 +31,19 @@ struct RenderSettings {
     double glare_amount = 1.0;
     double y_filter_shift = 0.0;
     double m_filter_shift = 0.0;
+    // Decode-side white balance as Temperature/Tint (Adobe DNG semantics;
+    // the RAW decoder turns a non-zero override into multipliers via the
+    // file's own camera matrix). 0/0 = As Shot, the sentinel the UI shows as
+    // 自动. Because it is a decode parameter, changing it re-opens the image
+    // (a transactional decode+render) instead of re-rendering the session.
+    double wb_temperature_k = 0.0;
+    double wb_tint = 0.0;
+    // The camera's meter. true is the engine's own default (params.hpp) and
+    // this port's, so an unchanged settings tree renders what an unedited
+    // open always rendered; false removes the meter's placement, leaving
+    // exposure_compensation_ev as the raw film placement. Unlike the WB pair
+    // this is an engine parameter: a change re-renders without re-decoding.
+    bool auto_exposure = true;
 
     bool operator==(const RenderSettings&) const = default;
 };

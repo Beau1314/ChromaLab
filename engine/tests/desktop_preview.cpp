@@ -82,6 +82,7 @@ void settings_defaults() {
     const spk::Params engine;
     check(settings.print_exposure == engine.enlarger.print_exposure, "desktop print default differs from engine");
     check(settings.film_exposure_ev == engine.camera.exposure_compensation_ev, "desktop film exposure default differs from engine");
+    check(settings.auto_exposure == engine.camera.auto_exposure, "desktop meter default differs from engine");
     check(settings.film_format_mm == engine.camera.film_format_mm, "desktop film format default differs from engine");
     check(settings.grain_active == engine.film_render.grain.active && settings.grain_amount == engine.film_render.grain.amount,
           "desktop grain defaults differ from engine");

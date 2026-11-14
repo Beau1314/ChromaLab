@@ -61,13 +61,18 @@ struct Desired {
     double exposure=0;
     QVariantMap adjustments;
     output::Geometry geometry;
+    double wbTemperature=0,wbTint=0;
+    bool autoExposure=true;
 };
 Desired desired(const PreviewController& c) {
-    return {c.filmIndex(),c.paperIndex(),c.decodeMode(),c.exposureEv(),c.adjustments(),geometry(c)};
+    return {c.filmIndex(),c.paperIndex(),c.decodeMode(),c.exposureEv(),c.adjustments(),geometry(c),
+        c.wbTemperature(),c.wbTint(),c.autoExposure()};
 }
 bool matches(const PreviewController& c,const Desired& expected) {
     return c.filmIndex()==expected.film&&c.paperIndex()==expected.paper&&c.decodeMode()==expected.decode&&
-        near(c.exposureEv(),expected.exposure)&&c.adjustments()==expected.adjustments&&geometry(c)==expected.geometry;
+        near(c.exposureEv(),expected.exposure)&&c.adjustments()==expected.adjustments&&geometry(c)==expected.geometry&&
+        near(c.wbTemperature(),expected.wbTemperature)&&near(c.wbTint(),expected.wbTint)&&
+        c.autoExposure()==expected.autoExposure;
 }
 bool samePixels(const QImage& left,const QImage& right) {
     if(left.isNull()||right.isNull()||left.size()!=right.size())return false;
@@ -369,7 +374,55 @@ int main(int argc,char** argv) {
                       "Latitude analysis leaves the published histogram unchanged");
             }
 
-            c.selectImage(1);idle(c,"Select untouched second photograph");checkPhoto(c,1,second);
+            // White balance (Task 9): a decode-side Temperature/Tint override.
+        // Changing it re-opens the photo transactionally (decode with the new
+        // multipliers + render in one job, geometry and grade retained); As
+        // Shot backfills the decoder-reported as-shot numbers as the edited
+        // value and must stay a pixel-level no-op; undo restores across
+        // re-decodes, not just re-renders.
+        {
+            const auto retained=c.frame();const auto shown=c.previewImage().copy();
+            const int engineOps=engineOperations();
+            check(near(c.wbTemperature(),0)&&near(c.wbTint(),0)&&c.wbAsShotAvailable(),
+                  "White balance begins at As Shot with a decoder-reported illuminant");
+            c.setWb(5500,10);idle(c,"White balance re-decode");
+            check(c.frame()!=retained&&engineOperations()>engineOps,
+                  "A white-balance edit re-decodes into a new frame through a decode+render job");
+            check(near(c.wbTemperature(),5500)&&near(c.wbTint(),10),
+                  "White-balance controls keep the edited numbers");
+            check(near(c.frame()->settings.wb_temperature_k,5500)&&near(c.frame()->settings.wb_tint,10),
+                  "The frame records the applied white balance");
+            check(!samePixels(c.previewImage(),shown),"A daylight-ish override visibly shifts the decode");
+            c.applyWbAsShot();idle(c,"As Shot backfill re-decode");
+            const double asShotK=c.wbTemperature();
+            check(asShotK>0&&near(asShotK,c.frame()->metadata.as_shot_temperature_k)&&
+                  near(c.wbTint(),c.frame()->metadata.as_shot_tint),
+                  "As Shot backfilled the decoder-reported non-zero illuminant");
+            check(closePixels(c.previewImage(),shown,2),
+                  "Decoding the backfilled As Shot numbers stays a pixel-level no-op");
+            c.applyWbPreset("tungsten");idle(c,"Preset re-decode");
+            check(near(c.wbTemperature(),3200)&&near(c.wbTint(),0),"The tungsten preset applies its numbers");
+            check(!samePixels(c.previewImage(),shown),"The tungsten preset visibly shifts the decode");
+            c.undo();c.undo();c.undo();idle(c,"White-balance undo re-decodes back");
+            check(near(c.wbTemperature(),0)&&near(c.wbTint(),0)&&samePixels(c.previewImage(),shown),
+                  "Three undos restore As Shot and the original decode pixel for pixel");
+            c.applyWbPreset("flash");idle(c,"Flash preset applied for the persistence checkpoint");
+            check(near(c.wbTemperature(),5500)&&near(c.wbTint(),10),"The flash preset applies its numbers");
+
+            // 测光 (camera.auto_exposure) is an engine parameter, unlike the WB
+            // pair: toggling it re-renders without any decode work.
+            {
+                const auto metered=c.frame();
+                c.setAutoExposure(false);idle(c,"Metering off re-render");
+                check(c.frame()!=metered&&c.frame()->settings.auto_exposure==false&&
+                      c.frame()->timings.decode_ms==0,
+                      "Toggling the meter re-renders without re-decoding");
+                c.setAutoExposure(true);idle(c,"Metering restored");
+                check(c.frame()->settings.auto_exposure==true,"The meter returns on");
+            }
+        }
+
+        c.selectImage(1);idle(c,"Select untouched second photograph");checkPhoto(c,1,second);
             check(!c.canUndo()&&!c.canRedo()&&near(c.exposureEv(),0)&&c.quarterTurns()==0,
                   "Second photograph has independent empty history and geometry");
             c.setCropRect(secondCrop);c.setExposureEv(-.7);
@@ -378,10 +431,12 @@ int main(int argc,char** argv) {
             c.selectAllPhotos(true);c.syncSelectedSettings(false);
             c.selectImage(1);idle(c,"Open synchronized recipient");
             check(near(c.exposureEv(),.4)&&c.cropRect()==secondCrop&&c.quarterTurns()==0,"Synchronization retains recipient geometry");
-            c.undo();check(near(c.exposureEv(),-.7)&&c.adjustments()["grainActive"].toBool()&&c.cropRect()==secondCrop,
+            c.undo();check(near(c.exposureEv(),-.7)&&c.adjustments()["grainActive"].toBool()&&c.cropRect()==secondCrop&&
+                           near(c.wbTemperature(),0),
                            "Recipient independently undoes synchronized parameters");
             check(c.libraryItems()[1].toMap()["thumbnail"].value<QImage>().isNull(),"Pending history render does not republish old thumbnail");
-            c.redo();check(near(c.exposureEv(),.4)&&!c.adjustments()["grainActive"].toBool(),"Recipient can redo synchronized parameters");
+            c.redo();check(near(c.exposureEv(),.4)&&!c.adjustments()["grainActive"].toBool()&&
+                           near(c.wbTemperature(),5500)&&near(c.wbTint(),10),"Recipient can redo synchronized parameters");
             c.undo();c.selectImage(0);idle(c,"Return to first before persistence checkpoint");
 
             // Leave every supported family changed, but deliberately do not

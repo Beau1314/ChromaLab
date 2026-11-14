@@ -35,6 +35,13 @@ struct RawMetadata {
     // normalises it. These are the multipliers after that processing step.
     std::array<float, 4> post_scale_pre_mul{};
     bool as_shot_wb_applied = false;
+    // The as-shot illuminant as Temperature/Tint (Adobe DNG semantics;
+    // engine/host/white_balance.hpp), solved from the opened file's camera
+    // matrix before dcraw_process normalises the multipliers it applies.
+    // Both zero when the file cannot provide one (no three-colour XYZ
+    // matrix); a UI backfills "As Shot" numbers from them.
+    double as_shot_temperature_k = 0.0;
+    double as_shot_tint = 0.0;
     std::uint32_t black = 0;
     // Includes common black; a repeated spatial black pattern, if present,
     // remains separate because it cannot be represented by four scalars.
@@ -78,9 +85,28 @@ struct DecodedRaw {
 bool decode_raw_compatible(const std::filesystem::path& source,
                            DecodedRaw& out, std::string& error);
 
+// A decode-side white-balance override in Temperature/Tint (Adobe DNG
+// semantics -- engine/host/white_balance.hpp). temperature_k == 0 means As
+// Shot (no override), the sentinel RenderSettings and the UI share.
+struct RawWhiteBalance {
+    double temperature_k = 0;
+    double tint = 0;
+};
+
+// The same policy with a caller-chosen illuminant in place of the as-shot
+// one: the multipliers are resolved from the opened file's own camera matrix
+// (spkhost::multipliers_for) and go through LibRaw's user_mul path. The
+// temperature must be positive Kelvin; 0 is the no-override overload above.
+// Either way the decode result's metadata reports the file's as-shot
+// illuminant, so a UI can backfill the numbers a custom decode replaced.
+bool decode_raw_compatible(const std::filesystem::path& source,
+                           const RawWhiteBalance& white_balance,
+                           DecodedRaw& out, std::string& error);
+
 // The same policy with caller-chosen white-balance multipliers (R, G, B, G2;
 // LibRaw's user_mul) in place of the as-shot ones. nullptr is the overload
-// above. Used by spektralab-host for Temperature/Tint at decode.
+// above. Used by spektralab-host for Temperature/Tint at decode, with the
+// multipliers it resolved itself from a separate probe open.
 bool decode_raw_compatible(const std::filesystem::path& source, const std::array<float, 4>* user_mul,
                            DecodedRaw& out, std::string& error);
 

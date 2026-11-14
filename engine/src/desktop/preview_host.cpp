@@ -99,6 +99,19 @@ bool validate_settings(const RenderSettings& settings, const Catalog& catalog) {
     range(settings.glare_amount, 0.0, 30.0, "Glare amount");
     range(settings.y_filter_shift, -1.0, 1.0, "Yellow filter shift");
     range(settings.m_filter_shift, -1.0, 1.0, "Magenta filter shift");
+    // The WB override is the decode's own protocol range (R2, mirrored by
+    // the engine host): 0 = As Shot, otherwise an illuminant in Kelvin the
+    // decoder must be able to neutralise. The Robertson mapping clamps to
+    // 1700..50000 K internally; outside the protocol range is a caller bug,
+    // not a clamp case.
+    if (settings.wb_temperature_k != 0.0) {
+        require(std::isfinite(settings.wb_temperature_k) &&
+                    settings.wb_temperature_k >= 2000.0 && settings.wb_temperature_k <= 50000.0,
+                "White balance temperature must be 2000..50000 K, or 0 for As Shot");
+    }
+    require(std::isfinite(settings.wb_tint) &&
+                settings.wb_tint >= -150.0 && settings.wb_tint <= 150.0,
+            "White balance tint must be between -150 and 150");
     return film->is_positive;
 }
 
@@ -120,6 +133,11 @@ Json opening_params(const RenderSettings& settings, bool scan_film) {
     params.set("print_stock", Json(settings.print_stock));
     params.set("print_exposure", Json(settings.print_exposure));
     params.set("exposure_compensation_ev", Json(settings.film_exposure_ev));
+    // The meter switch and its intent travel together (the schema's own
+    // neighbouring rows), so a fresh open and a later toggle can never
+    // disagree about which metering is in effect.
+    params.set("auto_exposure", Json(settings.auto_exposure));
+    params.set("auto_exposure_method", Json(std::string("center_weighted")));
     params.set("film_format_mm", Json(settings.film_format_mm));
     params.set("grain_active", Json(settings.grain_active));
     params.set("grain_amount", Json(settings.grain_amount));
@@ -148,6 +166,12 @@ Json changed_params(const RenderSettings& before, const RenderSettings& after, b
     // Send only changed fields: an unchanged SHOOT field in a paper-only
     // delta would unnecessarily invalidate the cached grain realization.
     if (before.film_exposure_ev != after.film_exposure_ev) delta.set("exposure_compensation_ev", Json(after.film_exposure_ev));
+    // The intent only matters while the meter is on, and the toggle already
+    // invalidates the SHOOT-stage state it belongs to, so it travels with it.
+    if (before.auto_exposure != after.auto_exposure) {
+        delta.set("auto_exposure", Json(after.auto_exposure));
+        delta.set("auto_exposure_method", Json(std::string("center_weighted")));
+    }
     if (before.film_format_mm != after.film_format_mm) delta.set("film_format_mm", Json(after.film_format_mm));
     if (before.grain_active != after.grain_active) delta.set("grain_active", Json(after.grain_active));
     if (before.grain_amount != after.grain_amount) delta.set("grain_amount", Json(after.grain_amount));
@@ -239,6 +263,11 @@ FramePtr PreviewHost::open_raw(const fs::path& source, DecodeMode mode, const Re
     const auto started = Clock::now();
     const bool scan_film = validate_settings(settings, impl_->catalog);
     require(mode == DecodeMode::compatible16 || mode == DecodeMode::headroom, "Unknown RAW decode mode");
+    // The WB override is a decode-side parameter and the headroom policy
+    // keeps the file's own as-shot multipliers, so the pair is refused
+    // instead of silently ignored.
+    require(!(settings.wb_temperature_k != 0.0 && mode == DecodeMode::headroom),
+            "A custom white balance is not available in headroom decode mode");
     const auto path = fs::absolute(source);
     require(fs::is_regular_file(path), "RAW input is missing: " + utf8(path));
     auto next = std::shared_ptr<Frame>(new Frame());
@@ -249,9 +278,12 @@ FramePtr PreviewHost::open_raw(const fs::path& source, DecodeMode mode, const Re
     io::DecodedRaw decoded;
     std::string error;
     auto t = Clock::now();
+    const io::RawWhiteBalance white_balance{settings.wb_temperature_k, settings.wb_tint};
     const bool decoded_ok = mode == DecodeMode::headroom
         ? io::decode_raw_headroom(path, decoded, error)
-        : io::decode_raw_compatible(path, decoded, error);
+        : settings.wb_temperature_k != 0.0
+            ? io::decode_raw_compatible(path, white_balance, decoded, error)
+            : io::decode_raw_compatible(path, decoded, error);
     require(decoded_ok, "RAW decode: " + error);
     next->timings.decode_ms = elapsed(t);
     next->metadata = decoded.metadata;

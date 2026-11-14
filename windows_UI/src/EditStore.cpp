@@ -105,7 +105,9 @@ QJsonObject stateJson(const State& state) {
         {"grain_amount", s.grain_amount}, {"halation_active", s.halation_active},
         {"halation_amount", s.halation_amount}, {"glare_active", s.glare_active},
         {"glare_amount", s.glare_amount}, {"y_filter_shift", s.y_filter_shift},
-        {"m_filter_shift", s.m_filter_shift}}},
+        {"m_filter_shift", s.m_filter_shift},
+        {"wb_temperature_k", s.wb_temperature_k}, {"wb_tint", s.wb_tint},
+        {"auto_exposure", s.auto_exposure}}},
         {"decodeMode", mode}, {"geometry", QJsonObject{
             {"crop", QJsonObject{{"x", g.crop.x()}, {"y", g.crop.y()},
                                   {"width", g.crop.width()}, {"height", g.crop.height()}}},
@@ -123,9 +125,19 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
         keys(value, {"settings", "decodeMode", "geometry"}, QStringLiteral("state"));
     State state;
     const auto s = object(value, "settings");
-    keys(s, {"film_stock", "print_stock", "print_exposure", "film_exposure_ev", "film_format_mm",
-             "grain_active", "grain_amount", "halation_active", "halation_amount", "glare_active",
-             "glare_amount", "y_filter_shift", "m_filter_shift"}, QStringLiteral("settings"));
+    // The white-balance row arrived after the first records (like layer2, its
+    // keys are optional so an old history still loads); records that carry it
+    // must carry all three of its keys.
+    const bool hasWhiteBalance = s.contains(QLatin1String("wb_temperature_k"));
+    if (hasWhiteBalance)
+        keys(s, {"film_stock", "print_stock", "print_exposure", "film_exposure_ev", "film_format_mm",
+                 "grain_active", "grain_amount", "halation_active", "halation_amount", "glare_active",
+                 "glare_amount", "y_filter_shift", "m_filter_shift",
+                 "wb_temperature_k", "wb_tint", "auto_exposure"}, QStringLiteral("settings"));
+    else
+        keys(s, {"film_stock", "print_stock", "print_exposure", "film_exposure_ev", "film_format_mm",
+                 "grain_active", "grain_amount", "halation_active", "halation_amount", "glare_active",
+                 "glare_amount", "y_filter_shift", "m_filter_shift"}, QStringLiteral("settings"));
     auto& out = state.settings;
     out.film_stock = stockId(s, "film_stock", catalog ? &catalog->films : nullptr).toStdString();
     out.print_stock = stockId(s, "print_stock", catalog ? &catalog->papers : nullptr).toStdString();
@@ -140,6 +152,17 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
     out.glare_amount = number(s, "glare_amount", 0.0, 30.0);
     out.y_filter_shift = number(s, "y_filter_shift", -1.0, 1.0);
     out.m_filter_shift = number(s, "m_filter_shift", -1.0, 1.0);
+    if (hasWhiteBalance) {
+        out.wb_temperature_k = number(s, "wb_temperature_k", 0.0, 50000.0);
+        require(out.wb_temperature_k == 0.0 || out.wb_temperature_k >= 2000.0,
+                QStringLiteral("Saved white balance temperature is outside its valid range"));
+        out.wb_tint = number(s, "wb_tint", -150.0, 150.0);
+        // The two decode fields travel together: 0 kelvin is the As Shot
+        // reset and carries no tint of its own.
+        require(out.wb_temperature_k > 0.0 || out.wb_tint == 0.0,
+                QStringLiteral("Saved white balance pair is inconsistent"));
+        out.auto_exposure = boolean(s, "auto_exposure");
+    }
     const auto mode = string(value, "decodeMode");
     require(mode == "compatible16" || mode == "headroom",
             QStringLiteral("Saved edits contain an unsupported RAW decode mode"));

@@ -55,6 +55,19 @@ class PreviewController final : public QObject {
     Q_PROPERTY(int paperIndex READ paperIndex WRITE setPaperIndex NOTIFY settingsChanged)
     Q_PROPERTY(int decodeMode READ decodeMode WRITE setDecodeMode NOTIFY settingsChanged)
     Q_PROPERTY(double exposureEv READ exposureEv WRITE setExposureEv NOTIFY settingsChanged)
+    // White balance (RAW decode side, Adobe DNG Temperature/Tint). 0/0 is
+    // As Shot — no override, shown as 自动; the As Shot buttons backfill the
+    // decoder-reported as-shot numbers as the edited value. A change re-decodes
+    // the photo (transactional re-open), so unlike the render-side grade rows
+    // it is not instant.
+    Q_PROPERTY(double wbTemperature READ wbTemperature NOTIFY settingsChanged)
+    Q_PROPERTY(double wbTint READ wbTint NOTIFY settingsChanged)
+    // True while the open photo's decoder reported an as-shot illuminant to
+    // backfill (needs a three-colour camera matrix; absent values stay 0).
+    Q_PROPERTY(bool wbAsShotAvailable READ wbAsShotAvailable NOTIFY frameChanged)
+    // The camera's meter (engine camera.auto_exposure, center-weighted). An
+    // engine parameter: a toggle re-renders without re-decoding.
+    Q_PROPERTY(bool autoExposure READ autoExposure WRITE setAutoExposure NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap adjustments READ adjustments NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap layer2 READ layer2 NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList libraryItems READ libraryItems NOTIFY libraryChanged)
@@ -106,6 +119,11 @@ public:
     int paperIndex() const { return paper_index_; }
     int decodeMode() const { return decode_mode_; }
     double exposureEv() const { return exposure_ev_; }
+    double wbTemperature() const { return extra_settings_.wb_temperature_k; }
+    double wbTint() const { return extra_settings_.wb_tint; }
+    bool wbAsShotAvailable() const;
+    bool autoExposure() const { return extra_settings_.auto_exposure; }
+    void setAutoExposure(bool value);
     QVariantMap adjustments() const;
     // Layer 2 — the scan-side grade. Keys: enabled + the ten scalar sliders +
     // curves{channel: point list} + colorBalance{zone:{hue,saturation,luminance}}
@@ -142,6 +160,18 @@ public:
     Q_INVOKABLE void selectAllPhotos(bool selected);
     Q_INVOKABLE void syncSelectedSettings(bool includeCrop=false);
     Q_INVOKABLE void setAdjustment(const QString& name, const QVariant& value);
+    // White balance edits (each an ordinary undoable adjustment that re-decodes
+    // the photo): setWb applies an explicit illuminant, applyWbPreset one of
+    // the camera's named ones (daylight/cloudy/shade/tungsten/fluorescent/
+    // flash), applyWbAsShot backfills the decoder-reported as-shot numbers as
+    // the edited value, and resetWb returns to 0/0 = As Shot. Refused while
+    // the experimental headroom decode is selected — that policy keeps the
+    // file's own multipliers — and no-ops without an undo step when the value
+    // already matches.
+    Q_INVOKABLE void setWb(double kelvin, double tint);
+    Q_INVOKABLE void applyWbPreset(const QString& name);
+    Q_INVOKABLE void applyWbAsShot();
+    Q_INVOKABLE void resetWb();
     // Layer 2 edits run on the fast path: they republish the retained print
     // through the grade and never re-render the engine, so a job in flight
     // stays valid. Range contracts match the desktop's adjustment sliders.
@@ -231,6 +261,9 @@ private:
     void openItem(int index);
     void changed(const QString& editKey={});
     void schedulePreview();
+    // The shared write path behind the four WB invokables: pairs the two
+    // decode fields, refuses the headroom decode, and skips no-op values.
+    void setWbEdit(double kelvin, double tint, const QString& editKey);
     // Layer 2 fast path: grade the retained print without the engine.
     QImage gradedDisplayImage(const spk::desktop::FramePtr&, const spk::desktop::layer2::Adjustments&) const;
     void changedLayer2(const QString& editKey={});

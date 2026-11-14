@@ -1,5 +1,6 @@
 #include "raw_decoder.hpp"
 #include "raw_headroom.hpp"
+#include "white_balance.hpp"
 
 #include <libraw/libraw.h>
 
@@ -128,6 +129,19 @@ bool capture_source_metadata(const LibRaw& raw, RawMetadata& metadata,
     return true;
 }
 
+// The Adobe DNG Temperature/Tint of the as-shot illuminant, solved from the
+// same opened file the custom-white-balance path reads its camera matrix
+// from. Both paths call this before dcraw_process: scale_colors() normalises
+// the multipliers it applies, and the metadata describes the file. A file
+// without a usable matrix simply reports no as-shot illuminant (both zero).
+void capture_as_shot_illuminant(const LibRaw& raw, RawMetadata& metadata) {
+    double kelvin = 0.0, tint = 0.0;
+    if (spkhost::as_shot_temperature_tint(raw, kelvin, tint)) {
+        metadata.as_shot_temperature_k = kelvin;
+        metadata.as_shot_tint = tint;
+    }
+}
+
 bool supported_headroom_source(LibRaw& raw, std::string& error) {
     const auto& data = raw.imgdata;
     if (data.idata.colors != 3 || data.idata.filters <= 1000 ||
@@ -207,13 +221,19 @@ protected:
 
 }  // namespace
 
-bool decode_raw_compatible(const std::filesystem::path& source,
-                           DecodedRaw& out, std::string& error) {
-    return decode_raw_compatible(source, nullptr, out, error);
-}
+namespace {
 
-bool decode_raw_compatible(const std::filesystem::path& source, const std::array<float, 4>* user_mul,
-                           DecodedRaw& out, std::string& error) {
+// The option superset behind the three compatible overloads: the
+// caller-multipliers path (spektralab-host resolved them from its own probe
+// open) and the illuminant path (Temperature/Tint resolved from this decode's
+// own opened file) share one body. At most one pointer is non-null.
+struct CompatibleOptions {
+    const std::array<float, 4>* user_mul = nullptr;
+    const RawWhiteBalance* illuminant = nullptr;
+};
+
+bool decode_compatible(const std::filesystem::path& source, const CompatibleOptions& options,
+                       DecodedRaw& out, std::string& error) {
     error.clear();
     const auto total_start = Clock::now();
     try {
@@ -224,16 +244,16 @@ bool decode_raw_compatible(const std::filesystem::path& source, const std::array
         // LibRaw carries substantial metadata; keep it off the Windows stack.
         auto raw = std::make_unique<LibRaw>(LIBRAW_OPTIONS_NO_DATAERR_CALLBACK);
         configure_compatible(raw->imgdata.params);
-        if (user_mul) {
+        if (options.user_mul) {
             // A caller-chosen white balance (the host's Temperature/Tint):
             // LibRaw's own user multipliers replace the as-shot ones, through
             // the same scale_colors() step.
             for (unsigned c = 0; c < 4; ++c) {
-                if (!std::isfinite((*user_mul)[c]) || (*user_mul)[c] <= 0.0f) {
+                if (!std::isfinite((*options.user_mul)[c]) || (*options.user_mul)[c] <= 0.0f) {
                     error = "RAW process: invalid user white-balance multiplier";
                     return false;
                 }
-                raw->imgdata.params.user_mul[c] = (*user_mul)[c];
+                raw->imgdata.params.user_mul[c] = (*options.user_mul)[c];
             }
             raw->imgdata.params.use_camera_wb = 0;
         }
@@ -256,6 +276,33 @@ bool decode_raw_compatible(const std::filesystem::path& source, const std::array
         }
         if (!capture_source_metadata(*raw, decoded.metadata, error)) return false;
         if (const char* name = raw->unpack_function_name()) decoded.metadata.decoder_name = name;
+        capture_as_shot_illuminant(*raw, decoded.metadata);
+        if (options.illuminant) {
+            // A caller-chosen illuminant (the host's Temperature/Tint): the
+            // multipliers come from this decode's own opened file, then take
+            // the same LibRaw user_mul path as the overload above.
+            if (!(std::isfinite(options.illuminant->temperature_k) &&
+                  options.illuminant->temperature_k > 0.0)) {
+                error = "RAW process: white-balance temperature must be positive Kelvin "
+                        "(0 is As Shot)";
+                return false;
+            }
+            std::array<float, 4> mul{};
+            std::string wb_error;
+            if (!spkhost::multipliers_for(*raw, options.illuminant->temperature_k,
+                                          options.illuminant->tint, mul, wb_error)) {
+                error = "RAW process: " + wb_error;
+                return false;
+            }
+            for (unsigned c = 0; c < 4; ++c) {
+                if (!std::isfinite(mul[c]) || mul[c] <= 0.0f) {
+                    error = "RAW process: invalid user white-balance multiplier";
+                    return false;
+                }
+                raw->imgdata.params.user_mul[c] = mul[c];
+            }
+            raw->imgdata.params.use_camera_wb = 0;
+        }
 
         start = Clock::now();
         const int process_status = raw->dcraw_process();
@@ -267,7 +314,11 @@ bool decode_raw_compatible(const std::filesystem::path& source, const std::array
         }
         const auto& color = raw->imgdata.color;
         decoded.metadata.process_warnings = raw->imgdata.process_warnings;
-        if (!user_mul && (decoded.metadata.process_warnings & LIBRAW_WARN_BAD_CAMERA_WB)) {
+        // Only the plain decode still asks LibRaw for the camera's own WB; a
+        // rejected one is fatal there and irrelevant when the caller replaced
+        // it (either override path sets use_camera_wb = 0).
+        if (!options.user_mul && !options.illuminant &&
+            (decoded.metadata.process_warnings & LIBRAW_WARN_BAD_CAMERA_WB)) {
             error = "RAW process: LibRaw rejected camera/as-shot white balance";
             return false;
         }
@@ -327,6 +378,24 @@ bool decode_raw_compatible(const std::filesystem::path& source, const std::array
     }
 }
 
+}  // namespace
+
+bool decode_raw_compatible(const std::filesystem::path& source,
+                           DecodedRaw& out, std::string& error) {
+    return decode_compatible(source, {}, out, error);
+}
+
+bool decode_raw_compatible(const std::filesystem::path& source,
+                           const RawWhiteBalance& white_balance,
+                           DecodedRaw& out, std::string& error) {
+    return decode_compatible(source, {nullptr, &white_balance}, out, error);
+}
+
+bool decode_raw_compatible(const std::filesystem::path& source, const std::array<float, 4>* user_mul,
+                           DecodedRaw& out, std::string& error) {
+    return decode_compatible(source, {user_mul, nullptr}, out, error);
+}
+
 bool decode_raw_headroom(const std::filesystem::path& source,
                          DecodedRaw& out, std::string& error) {
     error.clear();
@@ -359,6 +428,10 @@ bool decode_raw_headroom(const std::filesystem::path& source,
         if (!capture_source_metadata(*raw, decoded.metadata, error) ||
             !supported_headroom_source(*raw, error)) return false;
         if (const char* name = raw->unpack_function_name()) decoded.metadata.decoder_name = name;
+        // The headroom policy always decodes with the as-shot WB, but the
+        // as-shot illuminant is still worth reporting: the UI's As Shot
+        // backfill reads it the same way in either decode mode.
+        capture_as_shot_illuminant(*raw, decoded.metadata);
 
         start = Clock::now();
         const int process_status = raw->dcraw_process();

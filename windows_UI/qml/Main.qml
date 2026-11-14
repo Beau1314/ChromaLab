@@ -808,9 +808,85 @@ ApplicationWindow {
                             Note { text: "负值压暗画面边缘，正值加亮；中点决定暗角从画面何处开始。" }
                         }
                         Section {
+                            id: cameraSection
                             title: "输入 / 相机"
                             Adjustment { label: "胶片曝光"; setting: "filmExposureEv"; from: -4; to: 4; step: 0.1; decimals: 1; suffix: " EV" }
                             Note { text: "在胶片曝光前调整场景亮度。每张照片的效果与裁切自动保存，下次导入时恢复。" }
+                            // 白平衡（RAW 解码侧的 Temperature/Tint，Adobe DNG 口径）：
+                            // 0 = 自动（As Shot）。改动是解码参数，会重新解码当前照片
+                            // 而不是增量重渲染；高光扩展解码不接受覆盖，控件随之禁用。
+                            readonly property bool wbEditable: preview.hasFrame && preview.decodeMode === 0
+                            readonly property bool wbAsShot: preview.wbTemperature <= 0
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "温度"; color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Item { Layout.fillWidth: true }
+                                Text { text: cameraSection.wbAsShot ? "自动（As Shot）" : Math.round(preview.wbTemperature) + " K"; color: Theme.muted; font.pixelSize: 10 }
+                                ActionButton { text: "As Shot"; implicitHeight: 23; font.pixelSize: 10; enabled: preview.settingsEditable && cameraSection.wbEditable && preview.wbAsShotAvailable; onClicked: preview.applyWbAsShot(); ToolTip.visible: hovered; ToolTip.text: "回填照片解码回报的拍摄白平衡数值" }
+                            }
+                            Slider {
+                                objectName: "wbTemperatureSlider"
+                                Layout.fillWidth: true; implicitHeight: 24
+                                from: 2000; to: 50000; stepSize: 50
+                                value: cameraSection.wbAsShot ? 5500 : preview.wbTemperature
+                                enabled: preview.settingsEditable && cameraSection.wbEditable
+                                onPressedChanged: { if (pressed) preview.beginEditGesture("wb"); else preview.endEditGesture() }
+                                onMoved: preview.setWb(value, preview.wbTint)
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "色调"; color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Item { Layout.fillWidth: true }
+                                Text { text: cameraSection.wbAsShot ? "自动（As Shot）" : (preview.wbTint > 0 ? "+" : "") + Math.round(preview.wbTint); color: Theme.muted; font.pixelSize: 10 }
+                                ActionButton { text: "As Shot"; implicitHeight: 23; font.pixelSize: 10; enabled: preview.settingsEditable && cameraSection.wbEditable && preview.wbAsShotAvailable; onClicked: preview.applyWbAsShot(); ToolTip.visible: hovered; ToolTip.text: "回填照片解码回报的拍摄白平衡数值" }
+                            }
+                            Slider {
+                                objectName: "wbTintSlider"
+                                Layout.fillWidth: true; implicitHeight: 24
+                                from: -150; to: 150; stepSize: 1
+                                value: preview.wbTint
+                                enabled: preview.settingsEditable && cameraSection.wbEditable
+                                onPressedChanged: { if (pressed) preview.beginEditGesture("wb"); else preview.endEditGesture() }
+                                onMoved: preview.setWb(cameraSection.wbAsShot ? 5500 : preview.wbTemperature, value)
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "白平衡"; color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ComboBox {
+                                    objectName: "wbPresetCombo"
+                                    Layout.fillWidth: true
+                                    model: ["自动（As Shot）", "日光 5500K", "阴天 6500K", "阴影 8000K", "钨丝灯 3200K", "荧光灯 4000K", "闪光灯 5500K"]
+                                    readonly property var presets: ["", "daylight", "cloudy", "shade", "tungsten", "fluorescent", "flash"]
+                                    enabled: preview.settingsEditable && cameraSection.wbEditable
+                                    currentIndex: {
+                                        var k = preview.wbTemperature, t = preview.wbTint
+                                        if (k <= 0) return 0
+                                        if (k === 5500 && t === 0) return 1
+                                        if (k === 6500 && t === 0) return 2
+                                        if (k === 8000 && t === 0) return 3
+                                        if (k === 3200 && t === 0) return 4
+                                        if (k === 4000 && t === 20) return 5
+                                        if (k === 5500 && t === 10) return 6
+                                        return -1
+                                    }
+                                    displayText: currentIndex < 0 ? "自定" : currentText
+                                    onActivated: presets[currentIndex] === "" ? preview.resetWb() : preview.applyWbPreset(presets[currentIndex])
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    id: meterSwitch
+                                    text: "测光"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: preview.autoExposure
+                                    enabled: preview.settingsEditable
+                                    onToggled: preview.autoExposure = checked
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text { text: meterSwitch.checked ? "中心加权平均" : "关闭（不经测光放置场景）"; color: Theme.muted; font.pixelSize: 10 }
+                            }
+                            Note { text: "白平衡作用于 RAW 解码，改动会重新解码当前照片；As Shot 回填解码回报的拍摄白平衡数值。测光关闭时，胶片曝光直接决定场景放置。" }
                         }
                         Section {
                             title: "胶片画幅与效果"

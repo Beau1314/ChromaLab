@@ -286,15 +286,25 @@ void PreviewController::apply() {
     if(!frame_||busy_||dialog_open_)return;
     const auto s=settings();const auto shown=frame_;const auto gen=++generation_;const auto revision=settings_revision_;
     const auto mode=decode_mode_?desktop::DecodeMode::headroom:desktop::DecodeMode::compatible16;
-    submit([s,shown,gen,revision,mode](auto& host){Reply r;r.generation=gen;r.settings_revision=revision;r.operation="render";
+    // White balance is a decode-side parameter: when it moved, the update is
+    // a transactional re-open — decode with the new multipliers plus render,
+    // one job, the current library index, geometry and grade retained (the
+    // "render" reply keeps all of them). While a job is in flight the edit
+    // stays pending: the debounced apply() returns without submitting, and
+    // the reply's superseded branch reschedules — the same hold-and-reschedule
+    // shape the layer2 fast path keeps in layer2_pending_.
+    const bool wbChanged=s.wb_temperature_k!=shown->settings.wb_temperature_k||
+                          s.wb_tint!=shown->settings.wb_tint;
+    submit([s,shown,gen,revision,mode,wbChanged](auto& host){Reply r;r.generation=gen;r.settings_revision=revision;r.operation="render";
         try {
             // Publication can fail after a successful worker open (for example,
             // a display allocation failure). Reconcile against the image the
             // user is actually editing before reusing the worker's session.
             const auto active=host.current();
-            r.frame=active&&active->source==shown->source&&active->decode_mode==mode
+            r.frame=active&&active->source==shown->source&&active->decode_mode==mode&&!wbChanged
                 ?host.render(s):host.open_raw(shown->source,mode,s);
-        }catch(const std::exception& e){r.error=text(e.what());}return r;},QStringLiteral("正在更新胶片效果…"),"render");
+        }catch(const std::exception& e){r.error=text(e.what());}return r;},
+        wbChanged?QStringLiteral("正在按白平衡重新解码…"):QStringLiteral("正在更新胶片效果…"),"render");
 }
 void PreviewController::exportTiff(const QUrl& url) {
     exportImage(url,0,95,0);
@@ -336,6 +346,65 @@ void PreviewController::setAdjustment(const QString& name,const QVariant& value)
     }
     if(next==extra_settings_)return;
     extra_settings_=next;changed(name);
+}
+
+// --- White balance: the RAW decode's Temperature/Tint -------------------------
+
+bool PreviewController::wbAsShotAvailable() const {
+    // The decoder reports the as-shot illuminant only when the file carries
+    // a three-colour camera matrix; the tint may legitimately be zero, so
+    // availability rides on the kelvin alone.
+    return bool(frame_)&&frame_->metadata.as_shot_temperature_k>0;
+}
+void PreviewController::setWbEdit(const double kelvin,const double tint,const QString& editKey) {
+    // The headroom decode keeps the file's own as-shot multipliers, so a WB
+    // override has nothing to attach to there (matching the engine host's
+    // refusal). The sliders are disabled in that mode too.
+    if(!settingsEditable()||decode_mode_==1)return;
+    auto next=extra_settings_;
+    next.wb_temperature_k=kelvin;next.wb_tint=tint;
+    if(next.wb_temperature_k==extra_settings_.wb_temperature_k&&
+        next.wb_tint==extra_settings_.wb_tint)return; // 复位不记录撤销步（无变化）
+    extra_settings_=next;changed(editKey);
+}
+void PreviewController::setWb(const double kelvin,const double tint) {
+    // Decode protocol ranges (the engine host's own): 0 kelvin is reserved
+    // for the As Shot reset, never a partial state, so it is refused here.
+    if(!std::isfinite(kelvin)||!std::isfinite(tint)||kelvin<2000||kelvin>50000||
+        tint<-150||tint>150)return;
+    setWbEdit(kelvin,tint,QStringLiteral("wb"));
+}
+void PreviewController::applyWbPreset(const QString& name) {
+    if(!settingsEditable())return;
+    double kelvin=0,tint=0;
+    // The camera's named illuminants (Adobe/Lightroom's own numbers).
+    if(name==QLatin1String("daylight"))kelvin=5500;
+    else if(name==QLatin1String("cloudy"))kelvin=6500;
+    else if(name==QLatin1String("shade"))kelvin=8000;
+    else if(name==QLatin1String("tungsten"))kelvin=3200;
+    else if(name==QLatin1String("fluorescent")){kelvin=4000;tint=20;}
+    else if(name==QLatin1String("flash")){kelvin=5500;tint=10;}
+    else return;
+    setWbEdit(kelvin,tint,QStringLiteral("wbPreset:")+name);
+}
+void PreviewController::applyWbAsShot() {
+    if(!settingsEditable()||!frame_)return;
+    // Backfill the decoder-reported as-shot numbers as the edited value:
+    // decoding with them reproduces the as-shot multipliers (white_balance.hpp's
+    // no-op property), so this makes the implicit numbers explicit and
+    // editable without moving the picture.
+    const double kelvin=frame_->metadata.as_shot_temperature_k;
+    const double tint=frame_->metadata.as_shot_tint;
+    if(!(kelvin>0))return;
+    setWbEdit(kelvin,tint,QStringLiteral("wbAsShot"));
+}
+void PreviewController::resetWb() {
+    if(!settingsEditable())return;
+    setWbEdit(0,0,QStringLiteral("wbReset"));
+}
+void PreviewController::setAutoExposure(const bool value) {
+    if(!settingsEditable()||value==extra_settings_.auto_exposure)return;
+    extra_settings_.auto_exposure=value;changed(QStringLiteral("autoExposure"));
 }
 
 // --- Layer 2: the scan-side grade on the controller's fast path ---------------

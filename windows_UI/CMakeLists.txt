@@ -88,6 +88,17 @@ if(BUILD_TESTING)
     target_compile_features(spk_qt_histogram_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_histogram_test PRIVATE Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_histogram COMMAND spk_qt_histogram_test)
+    # The Temperature/Tint math the white-balance row drives is pure engine
+    # host code (engine/host/white_balance.cpp, compiled into spk_image_io
+    # beside its raw_decoder caller): Robertson mapping, its inverse and the
+    # as-shot solve. LibRaw is linked only to construct the synthetic camera
+    # structure the math reads -- no RAW file, GPU or engine session.
+    qt_add_executable(spk_qt_wb_math_test tests/wb_math.cpp)
+    target_compile_features(spk_qt_wb_math_test PRIVATE cxx_std_20)
+    target_include_directories(spk_qt_wb_math_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../engine/host")
+    target_link_libraries(spk_qt_wb_math_test PRIVATE spk_desktop_host spk_libraw)
+    add_test(NAME spk_qt_wb_math COMMAND spk_qt_wb_math_test)
     if(WIN32)
         # Specify each test's DLL search path: CTest on this Windows host can
         # restore the pre-launch PATH between tests. Ambient PATH alone makes
