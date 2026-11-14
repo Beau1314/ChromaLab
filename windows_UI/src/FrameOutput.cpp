@@ -9,8 +9,10 @@
 #include <QTransform>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -92,6 +94,33 @@ QImage framePixels(const FramePtr& frame) {
     // The caller retains its immutable FramePtr for every use of this view.
     return QImage(reinterpret_cast<const uchar*>(result.rgba16),int(result.width),int(result.height),
                   qsizetype(result.row_stride_px)*8,QImage::Format_RGBA64);
+}
+
+// The graded print behind every entry point: the Layer 2 grade lands on the
+// full, uncropped original, before any geometry. Neutral adjustments return
+// the input unchanged — a frame view stays the zero-copy wrap of the
+// FramePtr's buffer, so the neutral path is byte-identical to the ungraded
+// one. Otherwise the RGBA16 rows are copied out (honouring the source's row
+// pitch), graded in place, and returned as an owned Format_RGBA64 image
+// built the same way framePixels builds its view.
+QImage gradedImage64(const QImage& fullRgba64,const layer2::Adjustments& adjustments) {
+    if(layer2::isNeutral(adjustments))return fullRgba64;
+    const int width=fullRgba64.width(),height=fullRgba64.height();
+    if(fullRgba64.format()!=QImage::Format_RGBA64 || width<=0 || height<=0)
+        fail(QStringLiteral("The photograph has no RGBA16 pixels to grade"));
+    std::vector<std::uint16_t> rgba(std::size_t(width)*std::size_t(height)*4);
+    for(int y=0;y<height;++y)
+        std::memcpy(rgba.data()+std::size_t(y)*width*4,fullRgba64.constScanLine(y),std::size_t(width)*8);
+    layer2::applyRgba16(rgba,width,height,adjustments);
+    QImage graded(width,height,QImage::Format_RGBA64);
+    if(graded.isNull())fail(QStringLiteral("Cannot allocate the graded print"));
+    for(int y=0;y<height;++y)
+        std::memcpy(graded.scanLine(y),rgba.data()+std::size_t(y)*width*4,std::size_t(width)*8);
+    return graded;
+}
+
+QImage gradedPrint64(const FramePtr& frame,const layer2::Adjustments& adjustments) {
+    return gradedImage64(framePixels(frame),adjustments);
 }
 
 QImage straighten(const QImage& source,double degrees) {
@@ -187,23 +216,28 @@ QImage displayImage(const QImage& full8,const Geometry& geometry) {
     return output;
 }
 
-QImage exportImage(const QImage& fullRgba64,QRectF crop,const ExportOptions& options) {
-    return exportImage(fullRgba64,Geometry{crop},options);
+QImage exportImage(const QImage& fullRgba64,QRectF crop,const ExportOptions& options,
+                   const layer2::Adjustments& adjustments) {
+    return exportImage(fullRgba64,Geometry{crop},options,adjustments);
 }
 
-QImage exportImage(const QImage& fullRgba64,const Geometry& geometry,const ExportOptions& options) {
+QImage exportImage(const QImage& fullRgba64,const Geometry& geometry,const ExportOptions& options,
+                   const layer2::Adjustments& adjustments) {
     validateOptions(options);
     if(fullRgba64.isNull() || fullRgba64.format()!=QImage::Format_RGBA64)
         fail(QStringLiteral("Export requires an RGBA16 frame"));
-    validateGeometry(fullRgba64.size(),geometry);
-    const auto rect=cropPixels(fullRgba64.size(),geometry.crop);
+    // The grade is the print's: it lands on the full original, before any
+    // geometry, exactly as the canvas shader and the Mac's layer2 kernel do.
+    const QImage print=gradedImage64(fullRgba64,adjustments);
+    validateGeometry(print.size(),geometry);
+    const auto rect=cropPixels(print.size(),geometry.crop);
     // Validate only the exported region: padding is not part of the image.
     for(int y=rect.top();y<=rect.bottom();++y) {
-        const auto* row=reinterpret_cast<const QRgba64*>(fullRgba64.constScanLine(y));
+        const auto* row=reinterpret_cast<const QRgba64*>(print.constScanLine(y));
         for(int x=rect.left();x<=rect.right();++x)
             if(row[x].alpha()!=65535)fail(QStringLiteral("Export requires opaque pixels"));
     }
-    QImage output=applyGeometry(fullRgba64,geometry);
+    QImage output=applyGeometry(print,geometry);
     if(options.maxLongEdge && std::max(output.width(),output.height())>options.maxLongEdge) {
         const double ratio=double(options.maxLongEdge)/std::max(output.width(),output.height());
         const QSize size(std::max(1,int(std::lround(output.width()*ratio))),
@@ -217,8 +251,9 @@ QImage exportImage(const QImage& fullRgba64,const Geometry& geometry,const Expor
     return output;
 }
 
-QImage displayFrame(const FramePtr& frame,const Geometry& geometry) {
-    const auto pixels=exportImage(framePixels(frame),geometry,{});
+QImage displayFrame(const FramePtr& frame,const Geometry& geometry,
+                    const layer2::Adjustments& adjustments) {
+    const auto pixels=exportImage(gradedPrint64(frame,adjustments),geometry,{});
     auto output=pixels.convertToFormat(QImage::Format_ARGB32);
     if(output.isNull())fail(QStringLiteral("Cannot allocate the transformed preview"));
     output.setColorSpace(QColorSpace::SRgb);
@@ -236,12 +271,14 @@ bool formatAvailable(Format format) {
 }
 
 void exportImageFile(const QImage& fullRgba64,const fs::path& destination,
-                     QRectF crop,const ExportOptions& options,const fs::path& resources) {
-    exportImageFile(fullRgba64,destination,Geometry{crop},options,resources);
+                     QRectF crop,const ExportOptions& options,const fs::path& resources,
+                     const layer2::Adjustments& adjustments) {
+    exportImageFile(fullRgba64,destination,Geometry{crop},options,resources,adjustments);
 }
 
 void exportImageFile(const QImage& fullRgba64,const fs::path& destination,
-                     const Geometry& geometry,const ExportOptions& options,const fs::path& resources) {
+                     const Geometry& geometry,const ExportOptions& options,const fs::path& resources,
+                     const layer2::Adjustments& adjustments) {
     validateOptions(options);
     if(!formatAvailable(options.format))fail(QStringLiteral("This export format is not installed"));
     if(destination.empty() || destination.filename().empty())fail(QStringLiteral("Choose an export file name"));
@@ -249,7 +286,7 @@ void exportImageFile(const QImage& fullRgba64,const fs::path& destination,
     validateExtension(target,options.format);
     if(target.exists() || target.isSymLink())fail(QStringLiteral("The export file already exists"));
     if(!target.absoluteDir().exists())fail(QStringLiteral("The export folder does not exist"));
-    auto pixels=exportImage(fullRgba64,geometry,options);
+    auto pixels=exportImage(fullRgba64,geometry,options,adjustments);
     pixels.setColorSpace(profile(resources));
     QTemporaryDir staging(target.absoluteDir().filePath(QStringLiteral(".spektralab-export-XXXXXX")));
     if(!staging.isValid())fail(QStringLiteral("Cannot create an export temporary file in this folder"));
@@ -276,14 +313,16 @@ void exportImageFile(const QImage& fullRgba64,const fs::path& destination,
 }
 
 void exportFrame(const FramePtr& frame,const fs::path& destination,QRectF crop,
-                 const ExportOptions& options,const fs::path& resources) {
-    exportFrame(frame,destination,Geometry{crop},options,resources);
+                 const ExportOptions& options,const fs::path& resources,
+                 const layer2::Adjustments& adjustments) {
+    exportFrame(frame,destination,Geometry{crop},options,resources,adjustments);
 }
 
 void exportFrame(const FramePtr& frame,const fs::path& destination,const Geometry& geometry,
-                 const ExportOptions& options,const fs::path& resources) {
+                 const ExportOptions& options,const fs::path& resources,
+                 const layer2::Adjustments& adjustments) {
     // The caller's immutable FramePtr stays alive throughout this synchronous
     // function; crop/downsize/detach cannot modify its retained RGBA16 result.
-    exportImageFile(framePixels(frame),destination,geometry,options,resources);
+    exportImageFile(gradedPrint64(frame,adjustments),destination,geometry,options,resources);
 }
 } // namespace spk::desktop::output

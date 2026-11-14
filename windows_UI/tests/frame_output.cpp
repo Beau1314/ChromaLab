@@ -1,6 +1,7 @@
 // Real encoders, real files and an asymmetric 16-bit fixture. The TIFF reader
 // below is independent of the writer and Qt's image plugins. No RAW/GPU needed.
 #include "FrameOutput.hpp"
+#include "Layer2.hpp"
 #include <QColorSpace>
 #include <QCoreApplication>
 #include <QDir>
@@ -8,6 +9,7 @@
 #include <QImageReader>
 #include <QTemporaryDir>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <barrier>
 #include <cmath>
@@ -301,6 +303,81 @@ int main(int argc,char** argv) {
         const auto winner=load(racePath,icc);check(winner.pixelColor(0,0)==QColor(Qt::red)||winner.pixelColor(0,0)==QColor(Qt::blue),"racing output corrupted");
         compare64(winner,winner.pixelColor(0,0)==QColor(Qt::red)?red:blue);cleanPartials(folder);
 
+        // Layer 2 integration: the grade is the print's, laid over the full
+        // original before any geometry. Pinned here on synthetic RGBA64
+        // pixels; the frame entry points are reached through signatures and
+        // rejections because no RAW fixture belongs in this test.
+        {
+            namespace layer2=spk::desktop::layer2;
+            auto quantize=[](double value) {
+                return quint16(std::clamp(std::lround(value*65535.0),0L,65535L));
+            };
+            auto graded64=[&](const layer2::Uniforms& u) {
+                QImage expected(gradient.size(),QImage::Format_RGBA64);
+                for(int y=0;y<gradient.height();++y)for(int x=0;x<gradient.width();++x) {
+                    const auto in=sample(gradient,x,y);
+                    const std::array<double,3> out=layer2::pixel(
+                        {in.red()/65535.0,in.green()/65535.0,in.blue()/65535.0},u,nullptr,
+                        (x+.5)/gradient.width(),(y+.5)/gradient.height());
+                    reinterpret_cast<QRgba64*>(expected.scanLine(y))[x]=
+                        QRgba64::fromRgba64(quantize(out[0]),quantize(out[1]),quantize(out[2]),65535);
+                }
+                return expected;
+            };
+            const auto bytes=[](const QImage& image) {
+                return QByteArray(reinterpret_cast<const char*>(image.constBits()),image.sizeInBytes());
+            };
+            const output::ExportOptions tiff{output::Format::TIFF16,95,0};
+
+            // 1. A graded export equals the pixel() formula, sample by sample,
+            //    both as a returned image and inside the encoded TIFF file.
+            layer2::Adjustments graded;graded.exposure=1;
+            const auto exposureExpected=graded64(layer2::uniforms(graded,layer2::kMidGreySrgb));
+            compare64(output::exportImage(gradient,QRectF{0,0,1,1},tiff,graded),exposureExpected);
+            const auto gradedPath=QDir(folder).filePath("graded16.tif");
+            output::exportImageFile(gradient,native(gradedPath),QRectF{0,0,1,1},tiff,resources,graded);
+            verifyTiff(gradedPath,exposureExpected,icc);
+            cleanPartials(folder);
+
+            // 2. Neutral adjustments are byte-identical regressions of the
+            //    ungraded calls, on images and through the file encoders.
+            const layer2::Adjustments neutral;
+            check(layer2::isNeutral(neutral),"default adjustments are not neutral");
+            const auto plain=output::exportImage(gradient,QRectF{0,0,1,1},tiff);
+            check(bytes(output::exportImage(gradient,QRectF{0,0,1,1},tiff,neutral))==bytes(plain),
+                  "neutral crop export changed the pixels");
+            const output::Geometry turned{QRectF(.17,.19,.62,.66),1,true,false,0};
+            check(bytes(output::exportImage(gradient,turned,tiff,neutral))
+                  ==bytes(output::exportImage(gradient,turned,tiff)),
+                  "neutral geometry export changed the pixels");
+            const auto plainPath=QDir(folder).filePath("plain16.tif");
+            output::exportImageFile(gradient,native(plainPath),QRectF{0,0,1,1},tiff,resources);
+            const auto neutralPath=QDir(folder).filePath("neutral16.tif");
+            output::exportImageFile(gradient,native(neutralPath),QRectF{0,0,1,1},tiff,resources,neutral);
+            check(read(neutralPath)==read(plainPath),"neutral export file differs from the ungraded export");
+            cleanPartials(folder);
+
+            // 3. The vignette makes the grade depend on where a pixel sits on
+            //    the print, so this also pins the order: the output must equal
+            //    geometry applied to the already graded full original.
+            layer2::Adjustments printed;printed.exposure=.5;printed.vignette.amount=-45;
+            const auto printExpected=graded64(layer2::uniforms(printed,layer2::kMidGreySrgb));
+            const output::Geometry half{QRectF(.1,.2,.5,.5),1,false,false,0};
+            compare64(output::exportImage(gradient,half,tiff,printed),
+                      output::exportImage(printExpected,half,tiff));
+            // 4. The frame entry points carry the same trailing parameter; an
+            //    empty frame is still rejected, graded or not.
+            rejects([&]{output::displayFrame({},half,printed);},"graded empty display frame accepted");
+            rejects([&]{output::displayFrame({},half,neutral);},"neutral empty display frame accepted");
+            const auto framePath=QDir(folder).filePath("graded-frame16.tif");
+            rejects([&]{output::exportFrame({},native(framePath),half,tiff,resources,printed);},
+                    "graded empty export frame accepted");
+            rejects([&]{output::exportFrame({},native(framePath),half,tiff,resources,neutral);},
+                    "neutral empty export frame accepted");
+            check(!QFile::exists(framePath),"failed frame export left a destination");
+            cleanPartials(folder);
+        }
+
         output::ExportOptions bad;bad.jpegQuality=101;
         rejects([&]{output::exportImage(original,crop,bad);},"invalid quality accepted");
         bad={};bad.maxLongEdge=-1;rejects([&]{output::exportImage(original,crop,bad);},"invalid resize accepted");
@@ -339,7 +416,7 @@ int main(int argc,char** argv) {
         }
         cleanPartials(folder);
         check(QByteArray(reinterpret_cast<const char*>(original.constBits()),original.sizeInBytes())==originalBytes,"crop/export mutated source pixels");
-        std::printf("PASS crop/geometry-order/quarter-turns/flips/straighten/zoom-fill/16-bit-interpolation/display/PNG8/PNG16/TIFF16/ICC/JPEG/resize/no-overwrite/race/cleanup/extensions/source-immutability\n");
+        std::printf("PASS crop/geometry-order/quarter-turns/flips/straighten/zoom-fill/16-bit-interpolation/display/PNG8/PNG16/TIFF16/ICC/JPEG/resize/no-overwrite/race/cleanup/extensions/source-immutability/layer2-print-grade/layer2-neutral-byte-identity/layer2-grade-before-geometry\n");
         return 0;
     } catch(const std::exception& e) {std::fprintf(stderr,"FAIL %s\n",e.what());return 1;}
 }

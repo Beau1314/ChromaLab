@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Layer2.hpp"
 #include "desktop/preview_host.hpp"
 #include <QImage>
 #include <QRectF>
@@ -7,6 +8,8 @@
 
 // Geometry belongs after the engine. Every output surface uses these same
 // pixel edges; cropping never changes the emulsion or re-renders its grain.
+// The Layer 2 grade belongs before geometry: it is the print's, laid over the
+// full original exactly as the canvas shader grades the displayed frame.
 namespace spk::desktop::output {
 
 enum class Format { TIFF16, PNG8, PNG16, JPEG8 };
@@ -34,19 +37,25 @@ QRect cropPixels(QSize fullSize, QRectF normalizedCrop);
 void validateGeometry(QSize fullSize, const Geometry& geometry);
 QImage displayImage(const QImage& full8, QRectF normalizedCrop);
 QImage displayImage(const QImage& full8, const Geometry& geometry);
-// Use this for transformed rendered previews: geometry is applied to the
-// original RGBA16 before quantization, as it is for an 8-bit exported file.
-QImage displayFrame(const FramePtr& frame, const Geometry& geometry);
+// Use this for transformed rendered previews: the grade is applied to the
+// original RGBA16 and geometry is applied to the graded print before
+// quantization, as it is for an 8-bit exported file.
+QImage displayFrame(const FramePtr& frame, const Geometry& geometry,
+                    const layer2::Adjustments& adjustments = {});
 
 // The source is opaque, already encoded sRGB RGBA64. Processing order is
-// original-space crop -> bilinear straighten with zoom-to-fill (fixed crop
-// dimensions) -> clockwise quarter turns -> output-axis flips -> optional
-// downsize -> output depth. Identity and orthogonal geometry are lossless;
-// straightening interpolates 16-bit samples without a colour transform.
+// the Layer 2 grade on the full original (neutral adjustments skip the pass
+// entirely, leaving the pixels byte-identical) -> original-space crop ->
+// bilinear straighten with zoom-to-fill (fixed crop dimensions) -> clockwise
+// quarter turns -> output-axis flips -> optional downsize -> output depth.
+// Identity and orthogonal geometry are lossless; straightening interpolates
+// 16-bit samples without a colour transform.
 QImage exportImage(const QImage& fullRgba64, QRectF normalizedCrop,
-                   const ExportOptions& options);
+                   const ExportOptions& options,
+                   const layer2::Adjustments& adjustments = {});
 QImage exportImage(const QImage& fullRgba64, const Geometry& geometry,
-                   const ExportOptions& options);
+                   const ExportOptions& options,
+                   const layer2::Adjustments& adjustments = {});
 bool formatAvailable(Format format);
 
 // Uses the explicitly bundled resources/io/sRGB.icc. Writes a complete file
@@ -58,16 +67,20 @@ bool formatAvailable(Format format);
 void exportImageFile(const QImage& fullRgba64,
                      const std::filesystem::path& destination,
                      QRectF normalizedCrop, const ExportOptions& options,
-                     const std::filesystem::path& resources);
+                     const std::filesystem::path& resources,
+                     const layer2::Adjustments& adjustments = {});
 void exportImageFile(const QImage& fullRgba64,
                      const std::filesystem::path& destination,
                      const Geometry& geometry, const ExportOptions& options,
-                     const std::filesystem::path& resources);
+                     const std::filesystem::path& resources,
+                     const layer2::Adjustments& adjustments = {});
 void exportFrame(const FramePtr& frame, const std::filesystem::path& destination,
                  QRectF normalizedCrop, const ExportOptions& options,
-                 const std::filesystem::path& resources);
+                 const std::filesystem::path& resources,
+                 const layer2::Adjustments& adjustments = {});
 void exportFrame(const FramePtr& frame, const std::filesystem::path& destination,
                  const Geometry& geometry, const ExportOptions& options,
-                 const std::filesystem::path& resources);
+                 const std::filesystem::path& resources,
+                 const layer2::Adjustments& adjustments = {});
 
 } // namespace spk::desktop::output

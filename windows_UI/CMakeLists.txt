@@ -47,14 +47,18 @@ add_dependencies(spektralab_qt_resources spektralab_vulkan_resources)
 add_dependencies(SpektraLabQt spektralab_qt_resources)
 
 if(BUILD_TESTING)
-    qt_add_executable(spk_qt_frame_output_test tests/frame_output.cpp src/FrameOutput.cpp)
+    # The export path grades the print with Layer 2 before geometry, so every
+    # target compiling FrameOutput.cpp also compiles Layer2.cpp.
+    qt_add_executable(spk_qt_frame_output_test tests/frame_output.cpp
+        src/FrameOutput.cpp src/Layer2.cpp)
     target_include_directories(spk_qt_frame_output_test PRIVATE src)
     target_compile_features(spk_qt_frame_output_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_frame_output_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_frame_output COMMAND spk_qt_frame_output_test "$<TARGET_FILE_DIR:SpektraLabQt>/resources")
 
     qt_add_executable(spk_qt_library_workflow_test tests/library_workflow.cpp
-        src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp src/EditStore.cpp)
+        src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
+        src/Layer2.cpp src/EditStore.cpp)
     target_include_directories(spk_qt_library_workflow_test PRIVATE src)
     target_compile_features(spk_qt_library_workflow_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_library_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
@@ -83,7 +87,8 @@ if(BUILD_TESTING)
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
-        src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp src/EditStore.cpp)
+        src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
+        src/Layer2.cpp src/EditStore.cpp)
     target_include_directories(spk_qt_editing_workflow_test PRIVATE src)
     target_compile_features(spk_qt_editing_workflow_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_editing_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
