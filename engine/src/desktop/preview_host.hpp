@@ -112,6 +112,16 @@ public:
     // the result's actual cache flag determines whether reuse occurred.
     // A failure never mutates the previously returned Frame.
     FramePtr render(const RenderSettings& settings);
+    // RFC-023's scene latitude analysis of the open session, at the engine's
+    // suggestion defaults (`request_json` NULL): the measured medium, the
+    // scene statistic, the suggested pull-backs and the solved fit. Never
+    // renders -- the session's pixels are unchanged. Windows supports this
+    // analysis; only applying the fit's mapping is refused (see
+    // WINDOWS_FEATURE_COVERAGE.md). Throws std::runtime_error when no session
+    // is open (or a failed render discarded it) and on engine failure, with
+    // spk_last_error's text. The reply is the raw JSON object with "medium",
+    // "scene", "suggested" and "fit" keys.
+    std::string sceneLatitude() const;
     // Exports exactly the supplied frame, even after a newer one was opened.
     // Existing files are never overwritten. Returns only after the writer
     // has completed and closed the file; errors retain its cleanup details.

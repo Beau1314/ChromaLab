@@ -1,6 +1,7 @@
 #include "PreviewController.hpp"
 #include "Histogram.hpp"
 #include <QColorSpace>
+#include <QJsonDocument>
 #include <QMetaObject>
 #include <QDir>
 #include <QFileInfo>
@@ -144,6 +145,17 @@ void PreviewController::accept(Reply reply) {
         // The fast path's job only re-sequences the publication behind the
         // worker queue; the pixels come from the retained frame below.
         publishFromFrame(QStringLiteral("预览已更新"));
+    } else if(reply.operation=="latitude") {
+        // The analysis never renders, so nothing on screen moves: only the
+        // parsed reply is published. A malformed reply is a failure like any
+        // other (the engine guarantees "medium"/"scene"; the parse guards
+        // everything else).
+        const auto document=QJsonDocument::fromJson(reply.latitude_json.toUtf8());
+        if(!reply.latitude_json.isEmpty()&&document.isObject()) {
+            latitude_=document.object().toVariantMap();
+            emit latitudeChanged();
+            status_=QStringLiteral("宽容度分析完成");
+        } else {failed_=true;status_=QStringLiteral("宽容度分析返回了无效结果");}
     } else if(reply.frame) {
         // Allocate the presentation wrapper before publishing any new UI state.
         try {
@@ -159,6 +171,9 @@ void PreviewController::accept(Reply reply) {
             geometry_=geometry;
             refreshBeforeImage();
             computeHistogram();
+            // A new print is a new session state: the analysis described the
+            // previous one, so the card shows nothing until it is re-run.
+            if(!latitude_.isEmpty()){latitude_.clear();emit latitudeChanged();}
             if(reply.operation=="open")active_index_=reply.library_index;
         }
         catch(const std::exception& e){failed_=true;status_=text(e.what());if(frame_)restoreSettings();}
@@ -364,6 +379,19 @@ void PreviewController::scheduleLayer2() {
     submit([gen,revision](desktop::PreviewHost&){Reply r;r.generation=gen;
         r.settings_revision=revision;r.operation="layer2";return r;},
         QStringLiteral("正在更新预览…"),"layer2");
+}
+void PreviewController::requestLatitude() {
+    // The engine's analysis reads the open session and never renders, so it
+    // must not bump the generation: a render reply already in flight stays
+    // valid, and a render submitted after this call retires this reply
+    // through the ordinary generation guard. The worker holds the host, and
+    // the analysis needs its live session (an open frame with a render).
+    if(!frame_||busy_)return;
+    const auto gen=generation_;
+    submit([gen](desktop::PreviewHost& host){Reply r;r.generation=gen;r.operation="latitude";
+        try{r.latitude_json=text(host.sceneLatitude());}
+        catch(const std::exception& e){r.error=text(e.what());}return r;},
+        QStringLiteral("正在分析宽容度…"),"latitude");
 }
 void PreviewController::refreshBeforeImage() {
     // The before half is the current film/paper print WITHOUT Layer 2 —

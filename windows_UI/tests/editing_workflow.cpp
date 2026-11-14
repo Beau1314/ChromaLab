@@ -343,6 +343,32 @@ int main(int argc,char** argv) {
                       "Returning restores the stored grade and its pixels");
             }
 
+            // Scene latitude (Task 8): an on-demand, read-only analysis of
+            // the open session. The reply must carry the measured medium and
+            // the scene statistic, and the analysis must leave the displayed
+            // print byte-identical -- the engine never renders on analysis,
+            // and the controller publishes nothing but the parsed reply.
+            {
+                const auto retained=c.frame();const auto shown=c.previewImage().copy();
+                const auto histogramBefore=c.histogram();
+                check(c.latitude().isEmpty(),"Latitude analysis begins empty");
+                c.requestLatitude();idle(c,"Scene latitude analysis");
+                check(!c.failed()&&!c.latitudeBusy(),"Latitude analysis completes without failure");
+                const auto reply=c.latitude();
+                check(reply.contains("medium")&&reply.contains("scene"),"Latitude reply carries medium and scene");
+                const auto medium=reply["medium"].toMap();
+                check(!medium.isEmpty()&&medium["ramp_ev"].toList().size()>0&&
+                      medium["ramp_ev"].toList().size()==medium["ramp_y"].toList().size(),
+                      "Latitude medium carries matched ramp arrays");
+                const auto scene=reply["scene"].toMap();
+                check(!scene.isEmpty()&&scene["histogram"].toMap().contains("fractions"),
+                      "Latitude scene carries its stop histogram");
+                check(c.frame()==retained&&samePixels(c.previewImage(),shown),
+                      "Latitude analysis leaves the displayed frame unchanged");
+                check(sameHistogram(c.histogram(),histogramBefore),
+                      "Latitude analysis leaves the published histogram unchanged");
+            }
+
             c.selectImage(1);idle(c,"Select untouched second photograph");checkPhoto(c,1,second);
             check(!c.canUndo()&&!c.canRedo()&&near(c.exposureEv(),0)&&c.quarterTurns()==0,
                   "Second photograph has independent empty history and geometry");

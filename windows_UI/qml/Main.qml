@@ -626,6 +626,152 @@ ApplicationWindow {
                                 HistogramKey { label: "亮度"; swatch: "#bdbdbd" }
                             }
                         }
+                        // Scene latitude (RFC-023): an on-demand read-only
+                        // measurement of the open session -- the medium's
+                        // characteristic ramp, the scene's stop histogram
+                        // behind it, and the three zones the medium's ISO
+                        // boundaries cut the scene into. Windows supports the
+                        // analysis; applying the solved mapping is refused by
+                        // the engine, so this card only informs. Every reply
+                        // key beyond medium/scene is read defensively: the
+                        // canvas draws whichever layers arrived.
+                        Section {
+                            id: latitudeSection
+                            title: "宽容度"
+                            visible: preview.hasFrame
+                            readonly property var reply: preview.latitude && preview.latitude.medium !== undefined ? preview.latitude : null
+                            readonly property var medium: reply ? reply.medium : null
+                            readonly property var hist: reply && reply.scene !== undefined && reply.scene.histogram !== undefined ? reply.scene.histogram : null
+                            // The scene histogram's own axis (the engine's
+                            // stop bins, [-16, 16] by default); the ramp and
+                            // the zone boundaries share it.
+                            readonly property real evLo: hist && hist.lo_ev !== undefined ? Number(hist.lo_ev) : -16
+                            readonly property real evHi: hist && hist.hi_ev !== undefined ? Number(hist.hi_ev) : 16
+                            readonly property string summary: {
+                                var parts = []
+                                var m = latitudeSection.medium
+                                if (m && m.latitude_stops !== undefined)
+                                    parts.push("宽容度 " + Number(m.latitude_stops).toFixed(1) + " stops")
+                                var s = latitudeSection.reply && latitudeSection.reply.suggested !== undefined ? latitudeSection.reply.suggested : null
+                                if (s && s.valid !== undefined)
+                                    parts.push("建议收高光 " + Number(s.highlight_pull_back === undefined ? 0 : s.highlight_pull_back).toFixed(1) + " / 收阴影 " + Number(s.shadow_pull_back === undefined ? 0 : s.shadow_pull_back).toFixed(1) + " EV")
+                                var fit = latitudeSection.reply && latitudeSection.reply.fit !== undefined ? latitudeSection.reply.fit : null
+                                if (fit && fit.valid !== undefined && !fit.valid) parts.push("拟合未通过")
+                                return parts.join(" · ")
+                            }
+                            onReplyChanged: latitudePlot.requestPaint()
+                            onEvLoChanged: latitudePlot.requestPaint()
+                            onEvHiChanged: latitudePlot.requestPaint()
+                            Component.onCompleted: latitudePlot.requestPaint()
+                            RowLayout {
+                                Layout.fillWidth: true
+                                ActionButton {
+                                    id: latitudeButton
+                                    objectName: "latitudeButton"
+                                    text: preview.latitudeBusy ? "分析中…" : "分析"
+                                    enabled: preview.hasFrame && !preview.busy
+                                    onClicked: preview.requestLatitude()
+                                }
+                                Text { Layout.fillWidth: true; text: latitudeSection.summary; color: Theme.muted; font.pixelSize: 10; elide: Text.ElideRight }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 96
+                                radius: 4
+                                color: Theme.wellDark
+                                clip: true
+                                Canvas {
+                                    id: latitudePlot
+                                    objectName: "latitudePlot"
+                                    anchors.fill: parent
+                                    anchors.margins: 6
+                                    antialiasing: true
+                                    onWidthChanged: requestPaint()
+                                    onHeightChanged: requestPaint()
+                                    onPaint: {
+                                        var ctx = getContext("2d")
+                                        ctx.clearRect(0, 0, width, height)
+                                        var m = latitudeSection.medium
+                                        var h = latitudeSection.hist
+                                        var lo = latitudeSection.evLo, span = latitudeSection.evHi - lo
+                                        if (span <= 0) return
+                                        function evX(ev) { return (ev - lo) / span * width }
+                                        // The three zones the medium's ISO
+                                        // boundaries cut the scene axis into:
+                                        // below (crushed shadows), within, and
+                                        // above (blocked highlights).
+                                        if (m && m.shadow_ev !== undefined && m.highlight_ev !== undefined) {
+                                            var xs = Math.max(0, Math.min(width, evX(Number(m.shadow_ev))))
+                                            var xh = Math.max(0, Math.min(width, evX(Number(m.highlight_ev))))
+                                            ctx.fillStyle = "#2a5d7de8"
+                                            ctx.fillRect(0, 0, xs, height)
+                                            ctx.fillStyle = "#2ae8524e"
+                                            ctx.fillRect(xh, 0, width - xh, height)
+                                        }
+                                        // The scene's stop histogram as the
+                                        // backing silhouette, normalized to
+                                        // its own peak.
+                                        if (h && h.fractions !== undefined && h.fractions.length > 0) {
+                                            var fr = h.fractions, peak = 0
+                                            for (var i = 0; i < fr.length; ++i) peak = Math.max(peak, Number(fr[i]))
+                                            if (peak > 0) {
+                                                ctx.beginPath()
+                                                ctx.moveTo(0, height)
+                                                for (var i = 0; i < fr.length; ++i) {
+                                                    var ev = lo + (i + 0.5) / fr.length * span
+                                                    ctx.lineTo(evX(ev), height - Number(fr[i]) / peak * (height - 3))
+                                                }
+                                                ctx.lineTo(width, height)
+                                                ctx.closePath()
+                                                ctx.fillStyle = "#4abdbdbd"
+                                                ctx.fill()
+                                            }
+                                        }
+                                        // The medium's 128-point ramp: print
+                                        // luminance against the scene's stop
+                                        // axis, normalized to its own white.
+                                        if (m && m.ramp_ev !== undefined && m.ramp_y !== undefined &&
+                                            m.ramp_ev.length === m.ramp_y.length && m.ramp_ev.length > 1) {
+                                            var yMax = 0
+                                            for (var i = 0; i < m.ramp_y.length; ++i) yMax = Math.max(yMax, Number(m.ramp_y[i]))
+                                            if (yMax > 0) {
+                                                ctx.strokeStyle = "#e8e5df"
+                                                ctx.lineWidth = 1.5
+                                                ctx.beginPath()
+                                                for (var i = 0; i < m.ramp_ev.length; ++i) {
+                                                    var px = evX(Number(m.ramp_ev[i]))
+                                                    var py = height - 2 - Number(m.ramp_y[i]) / yMax * (height - 6)
+                                                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+                                                }
+                                                ctx.stroke()
+                                                // The measured boundaries the
+                                                // zone shading above splits on.
+                                                if (m.shadow_ev !== undefined && m.highlight_ev !== undefined) {
+                                                    ctx.lineWidth = 1
+                                                    ctx.strokeStyle = "#70e8e5df"
+                                                    for (var i = 0; i < 2; ++i) {
+                                                        var bx = evX(Number(i === 0 ? m.shadow_ev : m.highlight_ev))
+                                                        if (bx >= 0 && bx <= width) {
+                                                            ctx.beginPath()
+                                                            ctx.moveTo(bx, 0); ctx.lineTo(bx, height)
+                                                            ctx.stroke()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: !latitudeSection.reply && !preview.latitudeBusy
+                                    text: "点击「分析」测量当前胶片与场景"
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            Note { visible: latitudeSection.summary.length > 0; text: latitudeSection.summary; color: Theme.text }
+                            Note { text: "分析只读取当前显影结果，不改变画面；Windows 暂不支持应用求解的场景放置。" }
+                        }
                         Section {
                             title: "编辑 · 光线"
                             Layer2Adjustment { label: "曝光"; setting: "exposure"; from: -5; to: 5; step: 0.05; decimals: 2; suffix: " EV" }

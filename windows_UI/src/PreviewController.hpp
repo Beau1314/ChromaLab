@@ -37,6 +37,13 @@ class PreviewController final : public QObject {
     // counted in parallel over the published preview's pixels (geometry and
     // grade applied). All zeros while no frame is published.
     Q_PROPERTY(QVariantList histogram READ histogram NOTIFY histogramChanged)
+    // The engine's scene latitude analysis (RFC-023) of the open session, as
+    // the reply of the last requestLatitude(): the raw reply's "medium",
+    // "scene", "suggested" and "fit" objects (empty until one runs, and
+    // cleared whenever a new print is published -- the analysis describes the
+    // session, so an engine re-render invalidates it). Read-only: the fit's
+    // mapping is never applied here (Windows refuses `scene_latitude_active`).
+    Q_PROPERTY(QVariantMap latitude READ latitude NOTIFY latitudeChanged)
     Q_PROPERTY(QVariantMap metadata READ metadata NOTIFY frameChanged)
     Q_PROPERTY(QVariantList films READ films NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList papers READ papers NOTIFY catalogChanged)
@@ -117,6 +124,8 @@ public:
     bool batchExporting() const { return busy_ && active_operation_=="batch-export"; }
     int batchProgress() const { return batch_progress_; }
     int batchTotal() const { return batch_total_; }
+    QVariantMap latitude() const { return latitude_; }
+    bool latitudeBusy() const { return busy_ && active_operation_=="latitude"; }
     void setFilmIndex(int value);
     void setPaperIndex(int value);
     void setDecodeMode(int value);
@@ -163,6 +172,12 @@ public:
     Q_INVOKABLE void cancelExport();
     Q_INVOKABLE void resetSettings();
     Q_INVOKABLE void setDialogOpen(bool open);
+    // The engine's scene latitude analysis of the open session (a read-only
+    // measurement: the reply never renders, and the fit's mapping is refused
+    // on Windows). Like the layer2 job it captures the current generation
+    // without bumping it, so an in-flight render reply stays valid; the job
+    // runs on the worker and the reply publishes the `latitude` property.
+    Q_INVOKABLE void requestLatitude();
 signals:
     void stateChanged();
     void catalogChanged();
@@ -170,6 +185,7 @@ signals:
     void frameChanged();
     void compareEnabledChanged();
     void histogramChanged();
+    void latitudeChanged();
     void sourceOpened();
     void libraryChanged();
     void geometryChanged();
@@ -189,6 +205,9 @@ private:
         // Only the open reply carries one: it installs the opened photo's
         // stored grade before the graded publication below.
         spk::desktop::layer2::Adjustments layer2;
+        // Only the latitude reply carries one: the engine's raw JSON, parsed
+        // into the `latitude` property on accept.
+        QString latitude_json;
     };
     using Job = std::function<Reply(spk::desktop::PreviewHost&)>;
     void workerLoop(std::filesystem::path resources);
@@ -230,6 +249,7 @@ private:
     QImage before_image_;
     bool compare_enabled_=false;
     QVariantList histogram_;
+    QVariantMap latitude_;
     spk::desktop::output::Geometry geometry_;
     spk::desktop::RenderSettings extra_settings_;
     spk::desktop::layer2::Adjustments layer2_;

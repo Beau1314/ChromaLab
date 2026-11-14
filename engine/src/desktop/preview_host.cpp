@@ -318,6 +318,19 @@ FramePtr PreviewHost::render(const RenderSettings& settings) {
     return next;
 }
 
+std::string PreviewHost::sceneLatitude() const {
+    // A failed settings/render operation resets the session while the last
+    // frame stays on screen; the analysis needs the live session itself.
+    require(bool(impl_->session), "Open a RAW image before analysing scene latitude");
+    char* json = nullptr;
+    const auto status = spk_scene_latitude(impl_->session.get(), nullptr, &json);
+    require(status == SPK_OK && json,
+            "Scene latitude analysis: " + std::string(spk_last_error(impl_->engine.get())));
+    std::string reply(json);
+    spk_string_free(json);
+    return reply;
+}
+
 void PreviewHost::export_tiff(const Frame& frame, const fs::path& destination) const {
     const auto& pixels = frame.pixels();
     std::string error;
