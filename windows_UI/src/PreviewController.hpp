@@ -44,6 +44,10 @@ class PreviewController final : public QObject {
     // session, so an engine re-render invalidates it). Read-only: the fit's
     // mapping is never applied here (Windows refuses `scene_latitude_active`).
     Q_PROPERTY(QVariantMap latitude READ latitude NOTIFY latitudeChanged)
+    // True only while a latitude job is in flight (same shape as
+    // batchExporting): submit() sets busy_/active_operation_ and emits
+    // stateChanged; accept() clears both and emits stateChanged again.
+    Q_PROPERTY(bool latitudeBusy READ latitudeBusy NOTIFY stateChanged)
     Q_PROPERTY(QVariantMap metadata READ metadata NOTIFY frameChanged)
     Q_PROPERTY(QVariantList films READ films NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList papers READ papers NOTIFY catalogChanged)
