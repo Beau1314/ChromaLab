@@ -152,6 +152,7 @@ void PreviewController::accept(Reply reply) {
             layer2_=std::move(nextLayer2);
             frame_=std::move(reply.frame);full_image_=std::move(next);image_=std::move(visible);
             geometry_=geometry;
+            refreshBeforeImage();
             if(reply.operation=="open")active_index_=reply.library_index;
         }
         catch(const std::exception& e){failed_=true;status_=text(e.what());if(frame_)restoreSettings();}
@@ -358,12 +359,37 @@ void PreviewController::scheduleLayer2() {
         r.settings_revision=revision;r.operation="layer2";return r;},
         QStringLiteral("正在更新预览…"),"layer2");
 }
+void PreviewController::refreshBeforeImage() {
+    // The before half is the current film/paper print WITHOUT Layer 2 —
+    // "冲洗后、编辑前". It is only worth computing while the comparison is
+    // on and the grade actually differs from that print; otherwise the two
+    // halves would be identical and the canvas shows the graded image alone.
+    if(!frame_||!compare_enabled_||l2::isNeutral(layer2_)){before_image_={};return;}
+    try {
+        // The ungraded full skips the grade entirely (the raw wrapper) and the
+        // visible before image walks the same geometry path as the graded one,
+        // with the grade held at neutral — only the grade differs between the
+        // halves. A failure here (for example an allocation failure) leaves
+        // the before half empty, which the canvas displays as after-only.
+        const auto ungraded=image_factory_(frame_);
+        before_image_=visibleImage(frame_,ungraded,geometry_,l2::Adjustments{});
+    } catch(const std::exception&){before_image_={};}
+}
+void PreviewController::setCompareEnabled(bool enabled) {
+    if(compare_enabled_==enabled)return;
+    compare_enabled_=enabled;
+    // Toggling the comparison republishes the retained print: the before view
+    // only exists while the comparison is on and the grade is non-neutral.
+    if(frame_)publishFromFrame(QStringLiteral("预览已更新"));
+    emit compareEnabledChanged();
+}
 void PreviewController::publishFromFrame(const QString& status) {
     if(!frame_)return;
     try {
         auto next=gradedDisplayImage(frame_,layer2_);
         auto visible=visibleImage(frame_,next,geometry_,layer2_);
         full_image_=std::move(next);image_=std::move(visible);
+        refreshBeforeImage();
     } catch(const std::exception& e){failed_=true;status_=text(e.what());emit stateChanged();return;}
     updateThumbnail();
     computeHistogram();
@@ -572,7 +598,7 @@ void PreviewController::setGeometry(const output::Geometry& geometry,const QStri
     try {
         auto next=visibleImage(frame_,full_image_,geometry,layer2_);
         if(gesture_index_>=0&&gesture_key_!=editKey)endEditGesture();
-        image_=std::move(next);geometry_=geometry;saveActiveSettings(true);updateThumbnail();
+        image_=std::move(next);geometry_=geometry;refreshBeforeImage();saveActiveSettings(true);updateThumbnail();
         failed_=false;emit geometryChanged();emit frameChanged();emit stateChanged();
     } catch(const std::exception& e){failed_=true;status_=text(e.what());emit stateChanged();}
 }
@@ -647,6 +673,7 @@ void PreviewController::restoreHistory(bool redo) {
         to.push_back(currentState());if(to.size()>64)to.erase(to.begin());from.pop_back();
         geometry_=target.geometry;layer2_=target.layer2;
         full_image_=std::move(nextFull);image_=std::move(next);
+        if(gradeChangedNow||geometryChangedNow)refreshBeforeImage();
         loadSettings(target.settings,target.mode);saveActiveSettings();
         ++settings_revision_;auto_apply_.stop();schedulePreview();updateThumbnail();
         failed_=false;status_=redo?QStringLiteral("已重做当前照片调整"):QStringLiteral("已撤销当前照片调整");

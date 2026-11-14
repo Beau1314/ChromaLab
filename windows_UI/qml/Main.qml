@@ -112,6 +112,8 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+E"; enabled: preview.hasFrame && !preview.busy && !window.cropMode; onActivated: window.openExport() }
     Shortcut { sequence: "Ctrl+0"; enabled: preview.hasFrame; onActivated: canvas.resetView(true) }
     Shortcut { sequence: "Ctrl+1"; enabled: preview.hasFrame && !window.cropMode; onActivated: canvas.resetView(false) }
+    // Split compare toggles like a view, not an edit; text fields keep V.
+    Shortcut { sequence: "V"; enabled: preview.hasFrame && !window.cropMode && !window.editingText; onActivated: preview.compareEnabled = !preview.compareEnabled }
     Shortcut { sequence: "Ctrl+Z"; enabled: preview.settingsEditable && preview.canUndo && !window.cropMode && !window.editingText; onActivated: preview.undo() }
     Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; enabled: preview.settingsEditable && preview.canRedo && !window.cropMode && !window.editingText; onActivated: preview.redo() }
     Shortcut { sequence: "Escape"; enabled: window.cropMode; onActivated: window.cancelCrop() }
@@ -391,6 +393,7 @@ ApplicationWindow {
                         ActionButton { text: "导入 RAW"; enabled: window.canBrowse; onClicked: openDialog.open(); implicitHeight: 27 }
                         ActionButton { text: "导出"; enabled: preview.hasFrame && !preview.busy && !window.cropMode; onClicked: window.openExport(); implicitHeight: 27 }
                         ActionButton { text: "裁切"; accented: window.cropMode; enabled: window.canEditCrop; onClicked: window.cropMode ? window.finishCrop() : window.startCrop(); implicitHeight: 27 }
+                        ActionButton { objectName: "compareButton"; text: "对比"; accented: preview.compareEnabled; enabled: preview.hasFrame && !window.cropMode; onClicked: preview.compareEnabled = !preview.compareEnabled; implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: "左侧显示未评分的冲印结果，右侧显示当前编辑 · V" }
                         ActionButton { objectName: "undoButton"; text: "撤销"; enabled: preview.settingsEditable && preview.canUndo && !window.cropMode; onClicked: preview.undo(); implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: "撤销当前照片的上一步调整 · Ctrl+Z" }
                         ActionButton { objectName: "redoButton"; text: "重做"; enabled: preview.settingsEditable && preview.canRedo && !window.cropMode; onClicked: preview.redo(); implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: "重做当前照片的调整 · Ctrl+Shift+Z / Ctrl+Y" }
                         Item { Layout.fillWidth: true }
@@ -401,7 +404,13 @@ ApplicationWindow {
                 }
                 Item {
                     Layout.fillWidth: true; Layout.fillHeight: true
-                    FrameCanvas { id: canvas; objectName: "frameCanvas"; anchors.fill: parent; anchors.margins: 18; image: window.cropMode ? preview.uncroppedImage : preview.previewImage; enabled: !window.cropMode }
+                    FrameCanvas {
+                        id: canvas; objectName: "frameCanvas"; anchors.fill: parent; anchors.margins: 18
+                        image: window.cropMode ? preview.uncroppedImage : preview.previewImage
+                        beforeImage: preview.beforeImage
+                        compareEnabled: preview.compareEnabled && !window.cropMode
+                        enabled: !window.cropMode
+                    }
                     Item {
                         id: cropOverlay
                         objectName: "cropOverlay"
@@ -445,6 +454,36 @@ ApplicationWindow {
                                 else window.draftCrop = preview.cropRect
                             }
                             onCanceled: { drawing = false; window.draftCrop = preview.cropRect }
+                        }
+                    }
+                    // Split compare overlay: a line at comparePosition over the
+                    // image box, with a narrow grab strip that retargets the
+                    // split on press and drags it. The composite itself is the
+                    // canvas's; this only mirrors where the split sits.
+                    Item {
+                        id: compareOverlay
+                        objectName: "compareOverlay"
+                        anchors.fill: canvas
+                        visible: preview.compareEnabled && !window.cropMode && preview.hasFrame
+                        readonly property rect box: canvas.imageRect
+                        Rectangle {
+                            id: splitLine; objectName: "compareSplitLine"
+                            width: 2; radius: 1; color: "#e8e5df"
+                            x: Math.round(compareOverlay.box.x + canvas.comparePosition * compareOverlay.box.width - width / 2)
+                            y: compareOverlay.box.y; height: compareOverlay.box.height
+                        }
+                        MouseArea {
+                            objectName: "compareDrag"
+                            width: 16
+                            x: splitLine.x + splitLine.width / 2 - width / 2
+                            anchors.top: parent.top; anchors.bottom: parent.bottom
+                            cursorShape: Qt.SplitHCursor
+                            function retarget(mouseX) {
+                                var b = compareOverlay.box
+                                canvas.comparePosition = Math.max(0, Math.min(1, (mouseX - b.x) / b.width))
+                            }
+                            onPressed: function(mouse) { retarget(mouse.x) }
+                            onPositionChanged: function(mouse) { if (pressed) retarget(mouse.x) }
                         }
                     }
                     Column {

@@ -2,6 +2,7 @@
 // edit store. This exercises user-visible edit history and reopened documents.
 #include "PreviewController.hpp"
 #include "EditStore.hpp"
+#include "FrameCanvas.hpp"
 #include "FrameOutput.hpp"
 #include <QDir>
 #include <QElapsedTimer>
@@ -219,6 +220,51 @@ int main(int argc,char** argv) {
                 check(c.frame()==retained,"Neutral export retains the editor frame");
                 c.redo();
                 check(!c.busy()&&samePixels(c.previewImage(),graded),"Redo restores the graded canvas");
+                // Split compare (Task 6): the before half is the current print
+                // without Layer 2 through the same geometry path, and the
+                // canvas composite copies whole rows at the split column.
+                // These checks run while the exposure grade is on.
+                {
+                    const auto after=c.previewImage().copy();
+                    check(!c.compareEnabled()&&c.beforeImage().isNull(),"Compare defaults to off with no before print");
+                    c.setCompareEnabled(true);
+                    check(c.compareEnabled()&&!c.beforeImage().isNull(),"Enabling compare publishes the ungraded print");
+                    check(c.beforeImage().size()==after.size(),"Before and after prints share the display geometry");
+                    check(!samePixels(c.beforeImage(),after),"The published before print differs wherever the grade acts");
+                    const auto before=c.beforeImage().copy();
+                    // comparePosition=0.25 → the composite's left quarter is
+                    // the before print, its right three quarters the graded one.
+                    const auto split=FrameCanvas::composited(after,before,true,.25);
+                    const int splitPx=int(std::lround(.25*after.width()));
+                    bool leftIsBefore=true,rightIsAfter=true;
+                    for(int y=0;y<split.height()&&(leftIsBefore||rightIsAfter);++y) {
+                        if(std::memcmp(split.constScanLine(y),before.constScanLine(y),std::size_t(splitPx)*4)!=0)leftIsBefore=false;
+                        if(std::memcmp(split.constScanLine(y)+std::size_t(splitPx)*4,
+                                      after.constScanLine(y)+std::size_t(splitPx)*4,
+                                      std::size_t(split.width()-splitPx)*4)!=0)rightIsAfter=false;
+                    }
+                    check(leftIsBefore&&rightIsAfter,"Composite splits whole rows: before left of the line, after right of it");
+                    check(split!=after,"A differing grade makes the composite differ from the after-only canvas");
+                    // A neutral grade clears the before print, so enabling the
+                    // comparison can never change displayed pixels.
+                    c.undo();
+                    check(!c.busy()&&c.beforeImage().isNull(),"A neutral grade publishes no before print");
+                    check(samePixels(FrameCanvas::composited(c.previewImage(),c.beforeImage(),c.compareEnabled(),.25),neutral),
+                          "Compare with a neutral grade leaves the canvas pixels untouched");
+                    c.redo();
+                    check(!c.busy()&&!c.beforeImage().isNull()&&samePixels(c.beforeImage(),before),
+                          "A layer 2 change republishes the before print");
+                    // Closing the comparison must leave exactly the canvas a
+                    // never-compared canvas would show, and a size mismatch
+                    // degrades to the after print on its own.
+                    c.setCompareEnabled(false);
+                    check(c.beforeImage().isNull(),"Closing compare clears the before print");
+                    check(samePixels(FrameCanvas::composited(after,before,false,.25),after),
+                          "Closed compare leaves the after-only canvas");
+                    const QImage mismatched(after.width(),after.height()+1,after.format());
+                    check(FrameCanvas::composited(after,mismatched,true,.25)==after,
+                          "Size-mismatched before print falls back to the after-only canvas");
+                }
                 const QString gradedPng=destination+"/layer2-graded.png";
                 c.exportImage(QUrl::fromLocalFile(gradedPng),1,95,0);idle(c,"Export the graded print");
                 check(!samePixels(readImage(neutralPng),readImage(gradedPng)),"The grade changes exported pixels");

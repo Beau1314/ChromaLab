@@ -28,6 +28,11 @@ class PreviewController final : public QObject {
     Q_PROPERTY(QString fileName READ fileName NOTIFY frameChanged)
     Q_PROPERTY(QUrl sourceFolder READ sourceFolder NOTIFY frameChanged)
     Q_PROPERTY(QImage previewImage READ previewImage NOTIFY frameChanged)
+    // Split compare: the ungraded print ("冲洗后、编辑前" — the current
+    // film/paper print WITHOUT Layer 2) that pairs with previewImage. It is
+    // only computed while compareEnabled is on and the grade is non-neutral.
+    Q_PROPERTY(QImage beforeImage READ beforeImage NOTIFY frameChanged)
+    Q_PROPERTY(bool compareEnabled READ compareEnabled WRITE setCompareEnabled NOTIFY compareEnabledChanged)
     Q_PROPERTY(QVariantMap metadata READ metadata NOTIFY frameChanged)
     Q_PROPERTY(QVariantList films READ films NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList papers READ papers NOTIFY catalogChanged)
@@ -75,6 +80,9 @@ public:
     QString fileName() const;
     QUrl sourceFolder() const;
     QImage previewImage() const { return image_; }
+    QImage beforeImage() const { return before_image_; }
+    bool compareEnabled() const { return compare_enabled_; }
+    void setCompareEnabled(bool enabled);
     QVariantMap metadata() const;
     QVariantList films() const { return films_; }
     QVariantList papers() const { return papers_; }
@@ -155,6 +163,7 @@ signals:
     void catalogChanged();
     void settingsChanged();
     void frameChanged();
+    void compareEnabledChanged();
     void sourceOpened();
     void libraryChanged();
     void geometryChanged();
@@ -198,6 +207,10 @@ private:
     void changedLayer2(const QString& editKey={});
     void scheduleLayer2();
     void publishFromFrame(const QString& status);
+    // The before visible image: the ungraded print through the same geometry
+    // path as image_. Recomputed on every publication while the comparison
+    // is on and the grade differs from the ungraded print.
+    void refreshBeforeImage();
     void computeHistogram();
     bool ready_=false, busy_=true, failed_=false;
     QString status_=QStringLiteral("正在启动渲染引擎…");
@@ -208,6 +221,8 @@ private:
     spk::desktop::FramePtr frame_;
     QImage image_;
     QImage full_image_;
+    QImage before_image_;
+    bool compare_enabled_=false;
     spk::desktop::output::Geometry geometry_;
     spk::desktop::RenderSettings extra_settings_;
     spk::desktop::layer2::Adjustments layer2_;

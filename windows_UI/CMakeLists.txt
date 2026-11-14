@@ -94,10 +94,12 @@ if(BUILD_TESTING)
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
         src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
-        src/Layer2.cpp src/EditStore.cpp)
+        src/Layer2.cpp src/EditStore.cpp src/FrameCanvas.hpp src/FrameCanvas.cpp)
     target_include_directories(spk_qt_editing_workflow_test PRIVATE src)
     target_compile_features(spk_qt_editing_workflow_test PRIVATE cxx_std_20)
-    target_link_libraries(spk_qt_editing_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
+    # The split-compare gate calls FrameCanvas's composite directly, which
+    # pulls in QQuickItem.
+    target_link_libraries(spk_qt_editing_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui Qt6::Quick)
     # Full-RAW fixtures and a fresh output directory are explicit test arguments;
     # no absent-fixture skip can masquerade as a green CTest run.
 endif()
