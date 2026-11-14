@@ -55,7 +55,7 @@ bool Pipeline::prepare_contrast_mask(const Image&, std::string& error, std::vect
     release_contrast_mask();
     if (delta) delta->clear();
     if (!contrast_mask_wanted()) return true;
-    error = windows_unported_error(false, true, false, false);
+    error = windows_unported_error(true, false, false, false);
     return false;
 }
 
@@ -66,7 +66,7 @@ bool Pipeline::contrast_mask_field(const Image& cmy, std::vector<float>& delta, 
 }
 
 bool Pipeline::node_contrast_mask_epilogue(const Image&, Image&, std::string& error) {
-    error = windows_unported_error(false, true, false, false);
+    error = windows_unported_error(true, false, false, false);
     return false;
 }
 
