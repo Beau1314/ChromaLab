@@ -5,11 +5,10 @@
 // Field names, defaults and the JSON wire shape match that file exactly, so an
 // edit saved here still opens on the Mac and desktop builds.
 //
-// This task carries the data contract: the structures, the neutrality test and
-// JSON encode/decode. The math below is declared here and ported expression by
-// expression in the Layer 2 math task, in adjustments.ts's fixed order:
-// white balance → exposure/contrast/brightness → highlights/shadows
-// → black/white point → saturation → colour balance → curves → vignette.
+// The arithmetic is ported expression by expression from adjustments.ts, in its
+// fixed order: white balance → exposure/contrast/brightness → highlights/
+// shadows → black/white point → saturation → colour balance → curves →
+// vignette.
 
 #include <QImage>
 #include <QJsonObject>
@@ -81,26 +80,67 @@ struct Adjustments {
 [[nodiscard]] QJsonObject encode(const Adjustments& adjustments);
 [[nodiscard]] Adjustments decode(const QJsonObject& raw);
 
-// --- the layer arithmetic; declared here, implemented in the math task ------
+// --- the layer arithmetic, ported from adjustments.ts -------------------------
 
 // sRGB-encoded mid grey (adjustments.ts SRGB_MID_GREY; the ProPhoto one is
 // 0.3857). The grade runs on pixels encoded in midGrey's curve.
 inline constexpr double kMidGreySrgb = 0.4614;
 
+// Monotone cubic (Fritsch–Carlson), as CurveMath.swift `evaluate`.
 double evaluateCurve(const Curve& curve, double x);
 // 256 × 5 floats: rgb, luma, red, green, blue — the shader's table layout.
 std::vector<float> curveTables(const CurveSet& curves);
+// Inserts (x, y) clamped to [0, 1] before the first point further right and
+// returns its index.
 int insertPoint(Curve& curve, double x, double y);
+// Endpoint x is locked to 0/1; an interior point clamps inside its neighbours
+// ±0.01; an out-of-range index does nothing.
 void movePoint(Curve& curve, int index, double x, double y);
+// Endpoints — and anything on a curve of two or fewer points — refuse removal.
 void removePoint(Curve& curve, int index);
 
 // The per-frame uniform block; its fields mirror adjustments.ts
-// Layer2Uniforms and are defined with the math task.
-struct Uniforms;
-Uniforms uniforms(const Adjustments& adjustments, double midGrey);
+// Layer2Uniforms one for one.
+struct Uniforms {
+    std::array<double, 3> wbGain;
+    double exposureGain;
+    double contrast;
+    double brightness;
+    double saturation;
+    double highlights;
+    double shadows;
+    double blackPoint;
+    double whitePoint;
+    std::array<double, 3> cbMaster;
+    std::array<double, 3> cbShadows;
+    std::array<double, 3> cbMidtones;
+    std::array<double, 3> cbHighlights;
+    std::array<double, 4> cbLum;
+    double vignetteAmount;
+    double vignetteMidpoint;
+    double midGrey;
+    bool curvesActive;
+    bool enabled;
+};
+
+// midGrey follows the encoding of the pixels the grade runs on: the canvas
+// shows sRGB-encoded frames, an export grades the recipe's space.
+[[nodiscard]] Uniforms uniforms(const Adjustments& adjustments, double midGrey);
+
+// One pixel through the whole layer (steps 1–9). x/y is its place on the
+// *print* (the vignette is the print's, before geometry — as the canvas shader
+// and the Mac's layer2 kernel do). tables is curveTables()'s 256×5 output, or
+// null when no curve is active.
 std::array<double, 3> pixel(const std::array<double, 3>& rgb, const Uniforms& uniforms,
                             const float* tables, double x, double y);
+
+// The whole layer, in place — a print, before geometry. A non-ARGB32 image is
+// converted to Format_ARGB32 first; each pixel's alpha passes through and rows
+// are graded in parallel blocks (QThread::idealThreadCount clamped to [1, 16],
+// fewer than 16 rows single-threaded).
 void applyImage(QImage& image, const Adjustments& adjustments, double midGrey = kMidGreySrgb);
+// The same on an RGBA-order uint16 buffer, value/65535 in → lround × 65535 out;
+// alpha passes through. The buffer must hold width × height × 4 samples.
 void applyRgba16(std::vector<std::uint16_t>& rgba, int width, int height,
                  const Adjustments& adjustments, double midGrey = kMidGreySrgb);
 
