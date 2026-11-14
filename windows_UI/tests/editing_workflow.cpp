@@ -231,6 +231,10 @@ int main(int argc,char** argv) {
                     check(c.compareEnabled()&&!c.beforeImage().isNull(),"Enabling compare publishes the ungraded print");
                     check(c.beforeImage().size()==after.size(),"Before and after prints share the display geometry");
                     check(!samePixels(c.beforeImage(),after),"The published before print differs wherever the grade acts");
+                    // The before print must walk the same geometry path as the
+                    // after print — only the grade differs — so it has to match
+                    // the neutral visible canvas pixel for pixel.
+                    check(samePixels(c.beforeImage(),neutral),"compare before matches the neutral visible canvas");
                     const auto before=c.beforeImage().copy();
                     // comparePosition=0.25 → the composite's left quarter is
                     // the before print, its right three quarters the graded one.
