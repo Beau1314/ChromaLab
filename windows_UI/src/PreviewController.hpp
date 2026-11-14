@@ -33,6 +33,10 @@ class PreviewController final : public QObject {
     // only computed while compareEnabled is on and the grade is non-neutral.
     Q_PROPERTY(QImage beforeImage READ beforeImage NOTIFY frameChanged)
     Q_PROPERTY(bool compareEnabled READ compareEnabled WRITE setCompareEnabled NOTIFY compareEnabledChanged)
+    // The output histogram: 4 nested lists of 256 ints ([0..3] = R/G/B/luma),
+    // counted in parallel over the published preview's pixels (geometry and
+    // grade applied). All zeros while no frame is published.
+    Q_PROPERTY(QVariantList histogram READ histogram NOTIFY histogramChanged)
     Q_PROPERTY(QVariantMap metadata READ metadata NOTIFY frameChanged)
     Q_PROPERTY(QVariantList films READ films NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList papers READ papers NOTIFY catalogChanged)
@@ -83,6 +87,7 @@ public:
     QImage beforeImage() const { return before_image_; }
     bool compareEnabled() const { return compare_enabled_; }
     void setCompareEnabled(bool enabled);
+    QVariantList histogram() const { return histogram_; }
     QVariantMap metadata() const;
     QVariantList films() const { return films_; }
     QVariantList papers() const { return papers_; }
@@ -164,6 +169,7 @@ signals:
     void settingsChanged();
     void frameChanged();
     void compareEnabledChanged();
+    void histogramChanged();
     void sourceOpened();
     void libraryChanged();
     void geometryChanged();
@@ -223,6 +229,7 @@ private:
     QImage full_image_;
     QImage before_image_;
     bool compare_enabled_=false;
+    QVariantList histogram_;
     spk::desktop::output::Geometry geometry_;
     spk::desktop::RenderSettings extra_settings_;
     spk::desktop::layer2::Adjustments layer2_;

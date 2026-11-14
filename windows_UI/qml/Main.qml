@@ -553,6 +553,75 @@ ApplicationWindow {
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                     ColumnLayout {
                         width: parent.width; spacing: 0
+                        // Output histogram: 4×256 bins over the published
+                        // preview pixels (geometry + grade applied), the same
+                        // surface the canvas draws. Four normalized polylines —
+                        // luma behind, R/G/B over it — against the max bin.
+                        Section {
+                            id: histogramSection
+                            title: "直方图"
+                            visible: preview.hasFrame
+                            readonly property var bins: preview.histogram
+                            readonly property var channelColors: ["#bdbdbd", "#e8524e", "#62c462", "#5d7de8"]
+                            readonly property int peak: {
+                                var top = 1
+                                for (var c = 0; c < bins.length; ++c)
+                                    for (var i = 0; i < bins[c].length; ++i)
+                                        if (bins[c][i] > top) top = bins[c][i]
+                                return top
+                            }
+                            onBinsChanged: plot.requestPaint()
+                            onPeakChanged: plot.requestPaint()
+                            Component.onCompleted: plot.requestPaint()
+                            component HistogramKey: Row {
+                                property string label
+                                property color swatch
+                                spacing: 3
+                                Rectangle { width: 8; height: 8; radius: 2; color: parent.swatch; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: parent.label; color: Theme.muted; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 104
+                                radius: 4
+                                color: Theme.wellDark
+                                clip: true
+                                Canvas {
+                                    id: plot
+                                    objectName: "histogramCanvas"
+                                    anchors.fill: parent
+                                    anchors.margins: 6
+                                    antialiasing: true
+                                    onWidthChanged: requestPaint()
+                                    onHeightChanged: requestPaint()
+                                    onPaint: {
+                                        var ctx = getContext("2d")
+                                        ctx.clearRect(0, 0, width, height)
+                                        ctx.lineWidth = 1
+                                        // Desktop order: the luma channel behind, R/G/B over it.
+                                        for (var pass = 0; pass < 4; ++pass) {
+                                            var channel = pass === 0 ? 3 : pass - 1
+                                            var row = histogramSection.bins[channel]
+                                            if (row === undefined || row.length !== 256) continue
+                                            ctx.strokeStyle = histogramSection.channelColors[channel]
+                                            ctx.beginPath()
+                                            for (var i = 0; i < 256; ++i) {
+                                                var y = height - row[i] / histogramSection.peak * height
+                                                if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i / 255 * width, y)
+                                            }
+                                            ctx.stroke()
+                                        }
+                                    }
+                                }
+                            }
+                            Row {
+                                spacing: 8
+                                HistogramKey { label: "红"; swatch: "#e8524e" }
+                                HistogramKey { label: "绿"; swatch: "#62c462" }
+                                HistogramKey { label: "蓝"; swatch: "#5d7de8" }
+                                HistogramKey { label: "亮度"; swatch: "#bdbdbd" }
+                            }
+                        }
                         Section {
                             title: "编辑 · 光线"
                             Layer2Adjustment { label: "曝光"; setting: "exposure"; from: -5; to: 5; step: 0.05; decimals: 2; suffix: " EV" }

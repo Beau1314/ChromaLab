@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QTimer>
 #include <QTransform>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -93,6 +94,49 @@ int engineOperations() {
         if(entry.toObject()["operation"].toString()!=QStringLiteral("layer2"))++count;
     return count;
 }
+// Task 7: the output histogram. The property is 4 nested lists of 256 ints
+// ([0..3] = R/G/B/luma) over the published preview's pixels — geometry and
+// grade applied — and its bins must equal a manual count of exactly the image
+// the canvas shows. The luma weights and rounding are the desktop's
+// histogram-core.ts (Math.round == lround for non-negative sums).
+using Bins=std::array<std::array<int,256>,4>;
+Bins manualBins(const QImage& image) {
+    Bins bins{};
+    for(int y=0;y<image.height();++y) {
+        const auto* line=reinterpret_cast<const QRgb*>(image.constScanLine(y));
+        for(int x=0;x<image.width();++x) {
+            const QRgb p=line[x];
+            const int r=qRed(p),g=qGreen(p),b=qBlue(p);
+            ++bins[0][r];++bins[1][g];++bins[2][b];
+            ++bins[3][int(std::lround(0.2126*r+0.7152*g+0.0722*b))];
+        }
+    }
+    return bins;
+}
+QVariantList channelOf(const QVariantList& histogram,int index) {
+    return index>=0&&index<histogram.size()?histogram[index].toList():QVariantList{};
+}
+bool binsMatch(const QVariantList& histogram,const Bins& expected) {
+    if(histogram.size()!=4)return false;
+    for(int channel=0;channel<4;++channel) {
+        const auto row=channelOf(histogram,channel);
+        if(row.size()!=256)return false;
+        for(int bin=0;bin<256;++bin)
+            if(row[bin].toInt()!=expected[channel][bin])return false;
+    }
+    return true;
+}
+bool sameHistogram(const QVariantList& left,const QVariantList& right) {
+    if(left.size()!=right.size())return false;
+    for(int channel=0;channel<left.size();++channel)
+        if(channelOf(left,channel)!=channelOf(right,channel))return false;
+    return true;
+}
+qint64 histogramTotal(const QVariantList& histogram) {
+    qint64 sum=0;
+    for(const auto& bin:channelOf(histogram,0))sum+=bin.toLongLong();
+    return sum;
+}
 QByteArray bytes(const QString& path) {
     QFile file(path);check(file.open(QIODevice::ReadOnly),"Read file: "+QFileInfo(path).fileName());return file.readAll();
 }
@@ -134,6 +178,7 @@ int main(int argc,char** argv) {
         Desired savedFirst;const QRectF secondCrop(.2,.1,.1,.12);
         {
             PreviewController c(resources,nullptr,{},editDirectory);ready(c);
+            check(binsMatch(c.histogram(),Bins{}),"No frame publishes four all-zero channels");
             c.openFiles({firstUrl,secondUrl});idle(c,"Initial multiple RAW import");checkPhoto(c,0,first);
             check(!c.canUndo()&&!c.canRedo(),"Imported photographs begin with empty history");
 
@@ -167,7 +212,13 @@ int main(int argc,char** argv) {
             {
                 const auto retained=c.frame();const int operationsBefore=operations.size();
                 c.setCropRect(QRectF(.13,.17,.11,.15));c.setFlipHorizontal(true);
-                const auto mirrored=c.previewImage().copy();c.rotateClockwise();
+                const auto mirrored=c.previewImage().copy();
+                // Geometry republishes pixels without the engine; the histogram
+                // follows the published crop, so each channel sums to exactly
+                // the new crop's pixel count (and cannot equal the old total).
+                check(histogramTotal(c.histogram())==qint64(mirrored.width())*mirrored.height(),
+                      "Crop republishes a histogram whose bins sum to the new pixel count");
+                c.rotateClockwise();
                 check(samePixels(c.previewImage(),mirrored.transformed(QTransform().rotate(90),Qt::FastTransformation))&&
                       !c.flipHorizontal()&&c.flipVertical(),"Clockwise rotation stays visually clockwise after a mirror");
                 c.rotateCounterClockwise();
@@ -204,15 +255,25 @@ int main(int argc,char** argv) {
             {
                 const auto retained=c.frame();const int engineOps=engineOperations();
                 const auto neutral=c.previewImage().copy();
+                // The histogram describes the published pixels, so its bins
+                // must match a manual count of exactly this image.
+                check(binsMatch(c.histogram(),manualBins(neutral)),
+                      "Published histogram bins match a manual count of the preview");
+                const auto neutralHistogram=c.histogram();
                 c.beginEditGesture("exposure");c.setLayer2("exposure",1.0);c.endEditGesture();
                 idle(c,"Layer 2 fast path publication");
                 check(c.frame()==retained&&engineOperations()==engineOps&&!c.dirty(),
                       "Layer 2 edit republished the print without an engine render");
                 check(!samePixels(c.previewImage(),neutral),"Layer 2 exposure visibly grades the canvas");
                 const auto graded=c.previewImage().copy();
+                check(!sameHistogram(c.histogram(),neutralHistogram),
+                      "A layer 2 exposure changes the histogram");
+                const auto gradedHistogram=c.histogram();
                 c.undo();
                 check(!c.busy()&&c.frame()==retained&&samePixels(c.previewImage(),neutral),
                       "Undo of a layer 2 grade restores the neutral canvas without the engine");
+                check(sameHistogram(c.histogram(),neutralHistogram),
+                      "Undo restores the pre-edit histogram");
                 // The export captures the grade at submit time: the neutral
                 // file must be written while the grade is still undone.
                 const QString neutralPng=destination+"/layer2-neutral.png";
@@ -220,6 +281,8 @@ int main(int argc,char** argv) {
                 check(c.frame()==retained,"Neutral export retains the editor frame");
                 c.redo();
                 check(!c.busy()&&samePixels(c.previewImage(),graded),"Redo restores the graded canvas");
+                check(sameHistogram(c.histogram(),gradedHistogram),
+                      "Redo restores the graded histogram");
                 // Split compare (Task 6): the before half is the current print
                 // without Layer 2 through the same geometry path, and the
                 // canvas composite copies whole rows at the split column.

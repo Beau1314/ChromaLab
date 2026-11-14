@@ -1,4 +1,5 @@
 #include "PreviewController.hpp"
+#include "Histogram.hpp"
 #include <QColorSpace>
 #include <QMetaObject>
 #include <QDir>
@@ -13,6 +14,7 @@ namespace desktop=spk::desktop;
 namespace output=desktop::output;
 namespace editing=desktop::editing;
 namespace l2=desktop::layer2;
+namespace histogram=desktop::histogram;
 QString text(const std::string& s) { return QString::fromUtf8(s.data(),qsizetype(s.size())); }
 std::filesystem::path path(const QUrl& u) { return std::filesystem::path(u.toLocalFile().toStdWString()); }
 QVariantList list(const std::vector<desktop::Stock>& stocks) {
@@ -83,6 +85,9 @@ PreviewController::PreviewController(std::filesystem::path resources,QObject* pa
      image_factory_(factory?std::move(factory):ImageFactory(imageFromFrame)) {
     auto_apply_.setSingleShot(true);auto_apply_.setInterval(180);
     connect(&auto_apply_,&QTimer::timeout,this,[this]{if(dirty())apply();});
+    // The property's no-frame state: four all-zero channels before any
+    // publication (count() of a null image is exactly that).
+    computeHistogram();
     save_timer_.setSingleShot(true);save_timer_.setInterval(350);
     connect(&save_timer_,&QTimer::timeout,this,&PreviewController::flushEdits);
     worker_=std::thread([this,resources=std::move(resources)]{workerLoop(resources);});
@@ -153,6 +158,7 @@ void PreviewController::accept(Reply reply) {
             frame_=std::move(reply.frame);full_image_=std::move(next);image_=std::move(visible);
             geometry_=geometry;
             refreshBeforeImage();
+            computeHistogram();
             if(reply.operation=="open")active_index_=reply.library_index;
         }
         catch(const std::exception& e){failed_=true;status_=text(e.what());if(frame_)restoreSettings();}
@@ -390,15 +396,30 @@ void PreviewController::publishFromFrame(const QString& status) {
         auto visible=visibleImage(frame_,next,geometry_,layer2_);
         full_image_=std::move(next);image_=std::move(visible);
         refreshBeforeImage();
+        computeHistogram();
     } catch(const std::exception& e){failed_=true;status_=text(e.what());emit stateChanged();return;}
     updateThumbnail();
-    computeHistogram();
     failed_=false;status_=status;
     emit frameChanged();emit stateChanged();
 }
 void PreviewController::computeHistogram() {
-    // Task 7 feeds the histogram from the published graded pixels here; the
-    // publication order (grade → geometry → thumbnail) is already final.
+    // The bins describe exactly the pixels the canvas shows: the published
+    // preview is the geometry+grade output, and this runs after image_ is
+    // final at every publication site (accept's render/open branch,
+    // publishFromFrame, setGeometry, restoreHistory). A null image counts to
+    // the all-zero channels the no-frame contract promises. The 4×256 int
+    // QVariantList conversion is 1024 values, cheap next to the counting.
+    const auto bins=histogram::count(image_);
+    QVariantList channels;
+    channels.reserve(4);
+    for(const auto& channel:bins) {
+        QVariantList row;
+        row.reserve(histogram::kBins);
+        for(const int bin:channel)row.push_back(bin);
+        channels.push_back(row);
+    }
+    histogram_=std::move(channels);
+    emit histogramChanged();
 }
 QVariantMap PreviewController::layer2() const {
     QVariantMap curves;
@@ -598,7 +619,8 @@ void PreviewController::setGeometry(const output::Geometry& geometry,const QStri
     try {
         auto next=visibleImage(frame_,full_image_,geometry,layer2_);
         if(gesture_index_>=0&&gesture_key_!=editKey)endEditGesture();
-        image_=std::move(next);geometry_=geometry;refreshBeforeImage();saveActiveSettings(true);updateThumbnail();
+        image_=std::move(next);geometry_=geometry;refreshBeforeImage();computeHistogram();
+        saveActiveSettings(true);updateThumbnail();
         failed_=false;emit geometryChanged();emit frameChanged();emit stateChanged();
     } catch(const std::exception& e){failed_=true;status_=text(e.what());emit stateChanged();}
 }
@@ -674,6 +696,9 @@ void PreviewController::restoreHistory(bool redo) {
         geometry_=target.geometry;layer2_=target.layer2;
         full_image_=std::move(nextFull);image_=std::move(next);
         if(gradeChangedNow||geometryChangedNow)refreshBeforeImage();
+        // The pixels moved on this fast path, so the histogram moves with
+        // them even before the debounced engine render republishes.
+        if(gradeChangedNow||geometryChangedNow)computeHistogram();
         loadSettings(target.settings,target.mode);saveActiveSettings();
         ++settings_revision_;auto_apply_.stop();schedulePreview();updateThumbnail();
         failed_=false;status_=redo?QStringLiteral("已重做当前照片调整"):QStringLiteral("已撤销当前照片调整");

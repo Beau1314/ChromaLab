@@ -29,6 +29,7 @@ qt_add_executable(SpektraLabQt WIN32
     src/FrameOutput.hpp src/FrameOutput.cpp
     src/EditStore.hpp src/EditStore.cpp
     src/Layer2.hpp src/Layer2.cpp
+    src/Histogram.hpp
     src/FrameCanvas.hpp src/FrameCanvas.cpp)
 target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
 target_link_libraries(SpektraLabQt PRIVATE
@@ -80,6 +81,13 @@ if(BUILD_TESTING)
     target_compile_features(spk_qt_layer2_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_layer2_test PRIVATE Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_layer2 COMMAND spk_qt_layer2_test)
+    # The output histogram's counting core is header-only and needs neither the
+    # engine nor the GPU; its bins must match the desktop's histogram-core.ts.
+    qt_add_executable(spk_qt_histogram_test tests/histogram.cpp)
+    target_include_directories(spk_qt_histogram_test PRIVATE src)
+    target_compile_features(spk_qt_histogram_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_histogram_test PRIVATE Qt6::Core Qt6::Gui)
+    add_test(NAME spk_qt_histogram COMMAND spk_qt_histogram_test)
     if(WIN32)
         # Specify each test's DLL search path: CTest on this Windows host can
         # restore the pre-launch PATH between tests. Ambient PATH alone makes
@@ -89,7 +97,7 @@ if(BUILD_TESTING)
             get_filename_component(qt_test_compiler_directory "${CMAKE_CXX_COMPILER}" DIRECTORY)
             list(APPEND qt_test_runtime_path "PATH=path_list_prepend:${qt_test_compiler_directory}")
         endif()
-        set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 PROPERTIES
+        set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
