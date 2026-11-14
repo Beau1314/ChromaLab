@@ -3,7 +3,11 @@ cmake_minimum_required(VERSION 3.22)
 # Also usable as add_subdirectory(windows_UI) after the engine defines
 # spk_desktop_host. The standalone mode never modifies the engine checkout.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    project(SpektraLabWindowsUI LANGUAGES CXX)
+    # C is required by the engine's spk_volk (third_party/volk/volk.c), which
+    # this standalone mode builds via add_subdirectory below. Without it the
+    # generate step dies on CMAKE_C_CREATE_STATIC_LIBRARY; the engine's own
+    # parent project enables C, so mirror it here.
+    project(SpektraLabWindowsUI LANGUAGES C CXX)
     include(CTest)
     set(SPEKTRALAB_SOURCE_ROOT "" CACHE PATH "Source tree supplying engine/")
     if(NOT EXISTS "${SPEKTRALAB_SOURCE_ROOT}/engine/CMakeLists.txt")
