@@ -1,0 +1,72 @@
+#version 450
+
+// The Decode curve (API-SPEC §17), the host-drawn tone curve on the scene
+// (scene_latitude.metal `spk_scene_curve`). Like Scene Latitude it is a gain
+// on the linear signal: each value's stops about mid-grey,
+// E = log2(v / n_ref), are read through a table over [-S, +S] and the value
+// is scaled by 2^(f(E) - E). Past the table's ends the end's own gain holds,
+// so the curve never folds a value back. A value that is not positive and
+// finite passes as it came.
+//
+// Luma first, as a gain on Y (the hue kept); then the rgb row on each
+// channel; then each channel's own row -- the Layer 2 pass's order.
+//
+// RFC-035 §5.3: the table's axis is the scene as exposed onto the film. This
+// node runs before `node_exposure`'s 2^c (c = Film Exposure), so it reads the
+// table at E + c and applies 2^(f(E + c) - (E + c)).
+//
+// p is the 7-float row (scene_latitude.cpp `node_scene_curve`): [0] n
+// (samples a row), [1] S (stops either side), [2] n_ref, [3..5] the Y row of
+// the working space's RGB -> XYZ, [6] Film Exposure in stops. `t` is five
+// rows of n, in the order the host's Edit curve keeps them: rgb, luma, r, g, b.
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Input { float value[]; } input_data;
+layout(set = 0, binding = 1, std430) readonly buffer Parameters { float value[]; } parameters;
+layout(set = 0, binding = 2, std430) readonly buffer Table { float value[]; } table_data;
+layout(set = 0, binding = 3, std430) readonly buffer Count { uint value[]; } count_data;
+layout(set = 0, binding = 4, std430) writeonly buffer Output { float value[]; } output_data;
+
+// vulkan_gpu.cpp folds a dispatch past maxComputeWorkGroupCount[0] (65535 on
+// lavapipe and Intel) into rows of workgroups; this is the 1D index it means.
+uint spk_global_index() {
+    return gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+}
+
+float scene_curve_gain(float v, uint row, uint n, float S, float n_ref, float c) {
+    // Metal's isfinite(v) is !isnan && !isinf (GLSL has no isfinite here).
+    if (!(v > 0.0) || isnan(v) || isinf(v)) return 1.0;
+    float E = log2(v / n_ref) + c;
+    float u = clamp((E + S) / (2.0 * S), 0.0, 1.0);
+    float x = u * float(n - 1u);
+    uint i = min(uint(x), n - 2u);
+    float f = x - float(i);
+    float a = table_data.value[row * n + i];
+    float b = table_data.value[row * n + i + 1u];
+    float y = a * (1.0 - f) + b * f;
+    // At the clamp, u is the end's: the gain there is held beyond it.
+    float d = 2.0 * S * (y - u);
+    return clamp(exp2(d), exp2(-30.0), exp2(30.0));
+}
+
+void main() {
+    uint i = spk_global_index();
+    if (i >= count_data.value[0]) return;
+    uint n = uint(parameters.value[0]);
+    float S = parameters.value[1], n_ref = parameters.value[2], ec = parameters.value[6];
+    float r = input_data.value[3u * i];
+    float g = input_data.value[3u * i + 1u];
+    float b = input_data.value[3u * i + 2u];
+    float y = parameters.value[3] * max(r, 0.0) + parameters.value[4] * max(g, 0.0)
+            + parameters.value[5] * max(b, 0.0);
+    float luma_gain = scene_curve_gain(y, 1u, n, S, n_ref, ec);
+    r *= luma_gain; g *= luma_gain; b *= luma_gain;
+    r *= scene_curve_gain(r, 0u, n, S, n_ref, ec);
+    g *= scene_curve_gain(g, 0u, n, S, n_ref, ec);
+    b *= scene_curve_gain(b, 0u, n, S, n_ref, ec);
+    r *= scene_curve_gain(r, 2u, n, S, n_ref, ec);
+    g *= scene_curve_gain(g, 3u, n, S, n_ref, ec);
+    b *= scene_curve_gain(b, 4u, n, S, n_ref, ec);
+    output_data.value[3u * i] = r;
+    output_data.value[3u * i + 1u] = g;
+    output_data.value[3u * i + 2u] = b;
+}

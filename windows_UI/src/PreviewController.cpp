@@ -423,6 +423,42 @@ void PreviewController::setDi(const QString& name,const bool value) {
     extra_settings_=next;changed(QStringLiteral("di:")+name);
 }
 
+// --- Scene Latitude Mapping: the analysis card's engine side -----------------
+
+void PreviewController::setSceneLatitude(const bool value) {
+    if(!settingsEditable()||value==extra_settings_.scene_latitude_active)return;
+    extra_settings_.scene_latitude_active=value;changed(QStringLiteral("sceneLatitude"));
+}
+void PreviewController::commitLatitudeFit() {
+    // The fit's params_delta is the resolved curve as engine parameters; the
+    // host's changed-params channel sends exactly the keys that differ, so
+    // writing them into the settings and re-rendering IS the ordinary
+    // spk_set_params path. No valid fit, no commit (the reply carries
+    // params_delta only when the fit passed).
+    if(!settingsEditable())return;
+    const auto fit=latitude_.value(QLatin1String("fit")).toMap();
+    if(!fit.value(QLatin1String("valid")).toBool())return;
+    const auto delta=fit.value(QLatin1String("params_delta")).toMap();
+    if(delta.isEmpty())return;
+    auto next=extra_settings_;
+    const auto number=[&](const QString& key,double fallback){
+        const auto v=delta.value(key);
+        return v.canConvert<double>()?v.toDouble():fallback;
+    };
+    next.scene_latitude_active=delta.value(QLatin1String("scene_latitude_active")).toBool();
+    const auto norm=delta.value(QLatin1String("scene_latitude_norm")).toString();
+    if(norm==QLatin1String("power")||norm==QLatin1String("y")||norm==QLatin1String("max"))
+        next.scene_latitude_norm=norm.toStdString();
+    next.scene_latitude_highlight_knee=number(QLatin1String("scene_latitude_highlight_knee"),next.scene_latitude_highlight_knee);
+    next.scene_latitude_highlight_room=number(QLatin1String("scene_latitude_highlight_room"),next.scene_latitude_highlight_room);
+    next.scene_latitude_shadow_knee=number(QLatin1String("scene_latitude_shadow_knee"),next.scene_latitude_shadow_knee);
+    next.scene_latitude_shadow_room=number(QLatin1String("scene_latitude_shadow_room"),next.scene_latitude_shadow_room);
+    next.scene_latitude_rolloff=number(QLatin1String("scene_latitude_rolloff"),next.scene_latitude_rolloff);
+    next.scene_latitude_max_lift=number(QLatin1String("scene_latitude_max_lift"),next.scene_latitude_max_lift);
+    if(next==extra_settings_)return;
+    extra_settings_=next;changed(QStringLiteral("latitudeFit"));
+}
+
 // --- Layer 2: the scan-side grade on the controller's fast path ---------------
 
 QImage PreviewController::gradedDisplayImage(const desktop::FramePtr& frame,const l2::Adjustments& adjustments) const {

@@ -151,6 +151,16 @@ Json opening_params(const RenderSettings& settings, bool scan_film) {
     // DI-on session must restore as one when the photograph is reopened.
     params.set("digital_intermediate", Json(settings.di_active));
     params.set("digital_intermediate_blue_compensation", Json(settings.di_blue_compensation));
+    // Scene Latitude Mapping's resolved curve as well: the fit is render
+    // state, and a committed mapping must survive reopening the photograph.
+    params.set("scene_latitude_active", Json(settings.scene_latitude_active));
+    params.set("scene_latitude_norm", Json(settings.scene_latitude_norm));
+    params.set("scene_latitude_highlight_knee", Json(settings.scene_latitude_highlight_knee));
+    params.set("scene_latitude_highlight_room", Json(settings.scene_latitude_highlight_room));
+    params.set("scene_latitude_shadow_knee", Json(settings.scene_latitude_shadow_knee));
+    params.set("scene_latitude_shadow_room", Json(settings.scene_latitude_shadow_room));
+    params.set("scene_latitude_rolloff", Json(settings.scene_latitude_rolloff));
+    params.set("scene_latitude_max_lift", Json(settings.scene_latitude_max_lift));
     return params;
 }
 
@@ -188,6 +198,25 @@ Json changed_params(const RenderSettings& before, const RenderSettings& after, b
     if (before.di_active != after.di_active) delta.set("digital_intermediate", Json(after.di_active));
     if (before.di_blue_compensation != after.di_blue_compensation)
         delta.set("digital_intermediate_blue_compensation", Json(after.di_blue_compensation));
+    // The mapping's curve: the toggle alone, or the fit commit's full set of
+    // solved knees and rooms (the latitude card's 提交拟合 writes exactly the
+    // keys the analysis reply's params_delta carries).
+    if (before.scene_latitude_active != after.scene_latitude_active)
+        delta.set("scene_latitude_active", Json(after.scene_latitude_active));
+    if (before.scene_latitude_norm != after.scene_latitude_norm)
+        delta.set("scene_latitude_norm", Json(after.scene_latitude_norm));
+    if (before.scene_latitude_highlight_knee != after.scene_latitude_highlight_knee)
+        delta.set("scene_latitude_highlight_knee", Json(after.scene_latitude_highlight_knee));
+    if (before.scene_latitude_highlight_room != after.scene_latitude_highlight_room)
+        delta.set("scene_latitude_highlight_room", Json(after.scene_latitude_highlight_room));
+    if (before.scene_latitude_shadow_knee != after.scene_latitude_shadow_knee)
+        delta.set("scene_latitude_shadow_knee", Json(after.scene_latitude_shadow_knee));
+    if (before.scene_latitude_shadow_room != after.scene_latitude_shadow_room)
+        delta.set("scene_latitude_shadow_room", Json(after.scene_latitude_shadow_room));
+    if (before.scene_latitude_rolloff != after.scene_latitude_rolloff)
+        delta.set("scene_latitude_rolloff", Json(after.scene_latitude_rolloff));
+    if (before.scene_latitude_max_lift != after.scene_latitude_max_lift)
+        delta.set("scene_latitude_max_lift", Json(after.scene_latitude_max_lift));
     return delta;
 }
 

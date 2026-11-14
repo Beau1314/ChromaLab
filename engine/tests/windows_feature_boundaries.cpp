@@ -43,23 +43,38 @@ int main(int argc, char** argv) {
         const char* capabilities = spk_capabilities(engine.get());
         require(capabilities && std::string(capabilities).find("unsupported_features") != std::string::npos,
                 "Windows capabilities must disclose unported effects");
-        // The Cineon Digital Intermediate was ported (phase 2); it must not
-        // stay on the disclosed refusal list.
+        // The Cineon Digital Intermediate and RFC-023's Scene Latitude Mapping
+        // were ported (phase 2); neither may stay on the disclosed refusal list.
         require(std::string(capabilities).find("\"digital_intermediate\"") == std::string::npos,
                 "ported digital intermediate still listed as unsupported");
+        require(std::string(capabilities).find("scene_latitude_mapping") == std::string::npos,
+                "ported scene latitude mapping still listed as unsupported");
 
         std::vector<float> pixels(32 * 16 * 3);
         for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = 0.025f + float(i % 31) * 0.025f;
+        // A ring of speculars and deep shadows pushes the scene past the
+        // medium's measured boundaries, so the latitude fit below has real
+        // pull-backs to solve: grey 2.0 sits about +3.4 stops about the
+        // metered mid-grey (over the ~+2.4 EV highlight boundary) and grey
+        // 0.0035 about -5.7 (under the ~-4.6 EV shadow boundary), while the
+        // bulk stays inside. The meter is off so the scene's stop axis is the
+        // pixels' own, with no placement gain shifting the extremes.
+        constexpr size_t kExtremes = 12;
+        for (size_t i = 0; i < kExtremes; ++i) {
+            pixels[3 * i] = pixels[3 * i + 1] = pixels[3 * i + 2] = 2.0f;
+            pixels[3 * (pixels.size() / 3 - 1 - i)] =
+                pixels[3 * (pixels.size() / 3 - 1 - i) + 1] =
+                pixels[3 * (pixels.size() / 3 - 1 - i) + 2] = 0.0035f;
+        }
         const spk_image input{pixels.data(), 32, 16, 3};
         std::unique_ptr<spk_session, decltype(&spk_session_release)> session(
-            spk_open(engine.get(), &input, nullptr, nullptr), spk_session_release);
+            spk_open(engine.get(), &input, "{\"auto_exposure\":false}", nullptr), spk_session_release);
         require(bool(session), std::string("default open failed: ") + spk_last_error(engine.get()));
         render(engine.get(), session.get());
         const std::string before = params(session.get());
 
         struct Feature { const char* key; const char* label; };
-        const std::array<Feature, 4> features{{
-            {"scene_latitude_active", "scene latitude mapping"},
+        const std::array<Feature, 3> features{{
             {"contrast_mask_active", "contrast mask"},
             {"overscan_active", "overscan"},
             {"date_imprint_active", "date imprint"},
@@ -96,6 +111,74 @@ int main(int argc, char** argv) {
                                nullptr) == SPK_OK,
                 "digital_intermediate could not be reverted");
         require(params(session.get()) == before, "DI parameter round trip changed other params");
+        render(engine.get(), session.get());
+
+        // RFC-023's Scene Latitude Mapping was ported in the same phase: its
+        // mapping is an ordinary engine parameter now. The toggle applies in
+        // one request with a supported change; the half-frame pair's
+        // second-frame flag (the reader gap that existed while the mapping was
+        // refused) applies by itself through the same ordinary path; and the
+        // analysis's solved fit commits verbatim through `spk_set_params`.
+        // The margin turns the fixture's overshoot into real pull-backs
+        // without walking either knee past the other (a full stop each side
+        // keeps the highlight knee at about +1.4 EV and the shadow's inverted
+        // lift solve inside the lift bound), so the committed curve is
+        // non-trivial. Reverted through the engine's own defaults so the later
+        // `before` comparisons hold.
+        require(spk_set_params(session.get(),
+                               "{\"scene_latitude_active\":true,\"print_exposure\":1.25}",
+                               nullptr) == SPK_OK,
+                "ported scene latitude mapping delta was refused");
+        require(params(session.get()) != before, "latitude mapping delta did not change params");
+        render(engine.get(), session.get());
+        require(spk_set_params(session.get(), "{\"scene_latitude_b_active\":true}", nullptr) == SPK_OK,
+                "the pair's second-frame flag applies through the ordinary path");
+        require(params(session.get()) != before, "second-frame flag delta did not change params");
+        render(engine.get(), session.get());
+
+        {
+            const char* request = "{\"margin\":1.0}";
+            char* fit_json = nullptr;
+            const spk_status fit_status = spk_scene_latitude(session.get(), request, &fit_json);
+            const std::string fit_error = spk_last_error(engine.get());
+            require(fit_status == SPK_OK && fit_json, "latitude analysis with margin failed: " + fit_error);
+            const std::string reply(fit_json);
+            spk_string_free(fit_json);
+            // Search inside the fit object only: the suggested block before it
+            // carries its own "valid". The engine's dump is compact, and the
+            // params_delta is a flat object of numbers and booleans, so the
+            // first '}' closes it.
+            const size_t fit_at = reply.find("\"fit\":{");
+            require(fit_at != std::string::npos, "the analysis reply carries no fit: " + reply);
+            require(reply.find("\"valid\":true", fit_at) != std::string::npos,
+                    "the wide-margin fit is not valid: " + reply);
+            const size_t delta_at = reply.find("\"params_delta\":{", fit_at);
+            require(delta_at != std::string::npos, "a valid fit must carry its params_delta");
+            constexpr size_t kDeltaPrefix = 15;   // strlen("\"params_delta\":")
+            const size_t open = delta_at + kDeltaPrefix;
+            const size_t close = reply.find('}', open);
+            require(close != std::string::npos, "the params_delta object is malformed");
+            const std::string delta = reply.substr(open, close - open + 1);
+            require(spk_set_params(session.get(), delta.c_str(), nullptr) == SPK_OK,
+                    "committing the solved fit through the ordinary channel failed");
+            require(params(session.get()) != before, "the committed fit did not change params");
+            require(params(session.get()).find("\"scene_latitude_active\":true") != std::string::npos,
+                    "the committed fit did not enable the mapping");
+            render(engine.get(), session.get());
+        }
+        require(spk_set_params(session.get(),
+                               "{\"scene_latitude_active\":false,\"scene_latitude_b_active\":false,"
+                               "\"scene_latitude_norm\":\"power\","
+                               "\"scene_latitude_highlight_knee\":2.0,"
+                               "\"scene_latitude_highlight_room\":0.0,"
+                               "\"scene_latitude_shadow_knee\":-2.0,"
+                               "\"scene_latitude_shadow_room\":0.0,"
+                               "\"scene_latitude_rolloff\":2.0,"
+                               "\"scene_latitude_max_lift\":4.0,"
+                               "\"print_exposure\":1.0}",
+                               nullptr) == SPK_OK,
+                "latitude mapping could not be reverted");
+        require(params(session.get()) == before, "latitude parameter round trip changed other params");
         render(engine.get(), session.get());
 
         // The DI export renders the session's own negative as Cineon log; the
@@ -150,7 +233,8 @@ int main(int argc, char** argv) {
         require(latitude_status == SPK_OK && latitude_valid, "latitude analysis failed: " + latitude_error);
         require(params(session.get()) == before, "latitude analysis mutated the session");
         render(engine.get(), session.get());
-        std::cout << "Windows feature boundaries passed (4 flags, DI rendered + slide refused, mask off, latitude analysis)\n";
+        std::cout << "Windows feature boundaries passed (3 flags, DI + scene latitude mapped and reverted, "
+                     "slide refused, mask off, latitude analysis)\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

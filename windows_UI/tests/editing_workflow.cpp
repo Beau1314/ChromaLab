@@ -64,11 +64,13 @@ struct Desired {
     double wbTemperature=0,wbTint=0;
     bool autoExposure=true;
     bool diActive=false,diBlueCompensation=false;
+    bool sceneLatitudeActive=false;
 };
 Desired desired(const PreviewController& c) {
     return {c.filmIndex(),c.paperIndex(),c.decodeMode(),c.exposureEv(),c.adjustments(),geometry(c),
         c.wbTemperature(),c.wbTint(),c.autoExposure(),
-        c.di()["active"].toBool(),c.di()["blueCompensation"].toBool()};
+        c.di()["active"].toBool(),c.di()["blueCompensation"].toBool(),
+        c.sceneLatitudeActive()};
 }
 bool matches(const PreviewController& c,const Desired& expected) {
     return c.filmIndex()==expected.film&&c.paperIndex()==expected.paper&&c.decodeMode()==expected.decode&&
@@ -76,7 +78,8 @@ bool matches(const PreviewController& c,const Desired& expected) {
         near(c.wbTemperature(),expected.wbTemperature)&&near(c.wbTint(),expected.wbTint)&&
         c.autoExposure()==expected.autoExposure&&
         c.di()["active"].toBool()==expected.diActive&&
-        c.di()["blueCompensation"].toBool()==expected.diBlueCompensation;
+        c.di()["blueCompensation"].toBool()==expected.diBlueCompensation&&
+        c.sceneLatitudeActive()==expected.sceneLatitudeActive;
 }
 bool samePixels(const QImage& left,const QImage& right) {
     if(left.isNull()||right.isNull()||left.size()!=right.size())return false;
@@ -458,6 +461,50 @@ int main(int argc,char** argv) {
                 check(closePixels(c.previewImage(),printShown,2),
                       "Without the DI the print returns to the paper pixels");
             }
+
+            // 宽容度映射 (RFC-023, phase 2 port): the analysis card's
+            // engine side. The toggle is an engine parameter through changed()
+            // (re-renders, never re-decodes); with nothing committed the
+            // resolved curve has rooms of zero and the kernel is a structural
+            // bypass, so the print is byte-identical. 提交拟合 writes the
+            // analysis reply's fit.params_delta through the same ordinary
+            // channel, and undo walks back across both. The committed scalars
+            // stay in the settings afterwards so the persistence checkpoint
+            // below carries a real fit through the edit store.
+            {
+                const auto paper=c.frame();const auto paperShown=c.previewImage().copy();
+                check(!c.sceneLatitudeActive()&&!c.frame()->settings.scene_latitude_active,
+                      "Scene latitude mapping begins off");
+                c.requestLatitude();idle(c,"Latitude analysis");
+                check(!c.latitude().isEmpty()&&c.latitude().contains("medium"),
+                      "The analysis publishes its reply without rendering");
+                c.setSceneLatitude(true);idle(c,"Mapping toggle render");
+                check(c.frame()!=paper&&c.frame()->settings.scene_latitude_active&&
+                      c.frame()->timings.decode_ms==0,
+                      "Toggling the mapping re-renders without re-decoding");
+                check(samePixels(c.previewImage(),paperShown),
+                      "The default curve (no rooms) leaves the print untouched");
+                c.commitLatitudeFit();idle(c,"Fit commit render");
+                check(c.frame()!=paper&&c.frame()->settings.scene_latitude_active&&
+                      c.frame()->settings.scene_latitude_highlight_room>0.0&&
+                      c.frame()->settings.scene_latitude_shadow_room>0.0,
+                      "The committed fit carries the solved pull-backs");
+                check(!samePixels(c.previewImage(),paperShown),
+                      "The solved mapping places the scene on the medium");
+                c.undo();idle(c,"Fit commit undo re-render");
+                check(c.frame()->settings.scene_latitude_active&&
+                      c.frame()->settings.scene_latitude_highlight_room==0.0,
+                      "Undo removes the committed curve but keeps the mapping");
+                check(samePixels(c.previewImage(),paperShown),
+                      "Without the committed curve the print returns to the paper pixels");
+                c.redo();idle(c,"Fit commit redo re-render");
+                check(c.frame()->settings.scene_latitude_highlight_room>0.0,
+                      "Redo restores the committed curve");
+                c.setSceneLatitude(false);idle(c,"Mapping off render");
+                check(!c.frame()->settings.scene_latitude_active&&
+                      c.frame()->settings.scene_latitude_highlight_room>0.0,
+                      "Turning the mapping off keeps the committed curve for the next toggle");
+            }
         }
 
         c.selectImage(1);idle(c,"Select untouched second photograph");checkPhoto(c,1,second);
@@ -488,6 +535,10 @@ int main(int argc,char** argv) {
             c.setAdjustment("grainAmount",.45);c.setAdjustment("halationActive",false);c.setAdjustment("halationAmount",1.65);
             c.setAdjustment("glareAmount",.35);c.setAdjustment("yFilterShift",.05);c.setAdjustment("mFilterShift",-.07);
             c.setDi("active",true);
+            // The latitude card's committed curve rides the same saved
+            // settings: reopening must restore the mapping with its solved
+            // pull-backs (the gate block above left them committed).
+            c.setSceneLatitude(true);
             c.rotateCounterClockwise();savedFirst=desired(c);
             check(c.dirty()&&!c.busy(),"Persistence checkpoint contains pending unrendered edits");
             check(c.persistenceWarning().isEmpty(),"No persistence warnings before destruction");

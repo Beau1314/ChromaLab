@@ -626,15 +626,16 @@ ApplicationWindow {
                                 HistogramKey { label: "亮度"; swatch: "#bdbdbd" }
                             }
                         }
-                        // Scene latitude (RFC-023): an on-demand read-only
-                        // measurement of the open session -- the medium's
-                        // characteristic ramp, the scene's stop histogram
-                        // behind it, and the three zones the medium's ISO
-                        // boundaries cut the scene into. Windows supports the
-                        // analysis; applying the solved mapping is refused by
-                        // the engine, so this card only informs. Every reply
-                        // key beyond medium/scene is read defensively: the
-                        // canvas draws whichever layers arrived.
+                        // Scene latitude (RFC-023): an on-demand measurement
+                        // of the open session -- the medium's characteristic
+                        // ramp, the scene's stop histogram behind it, and the
+                        // three zones the medium's ISO boundaries cut the
+                        // scene into. Since the phase-2 port the card also
+                        // applies: the mapping is an engine parameter, so the
+                        // switch places the scene with the committed curve and
+                        // 提交拟合 writes the solved fit. Every reply key
+                        // beyond medium/scene is read defensively: the canvas
+                        // draws whichever layers arrived.
                         Section {
                             id: latitudeSection
                             title: "宽容度"
@@ -769,8 +770,40 @@ ApplicationWindow {
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
+                            // 应用映射 / 提交拟合 (phase 2): the mapping is an
+                            // engine parameter on Windows now. The switch
+                            // places the scene with the committed curve; the
+                            // button writes the analysis's solved fit through
+                            // the ordinary engine path. The reply is cleared
+                            // whenever a new print publishes, so the button
+                            // only offers a fit for the session it measured.
+                            readonly property var fit: reply && reply.fit !== undefined ? reply.fit : null
+                            readonly property bool fitValid: fit !== null && fit.valid !== undefined && fit.valid
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    objectName: "sceneLatitudeSwitch"
+                                    text: "应用映射"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: preview.sceneLatitudeActive
+                                    enabled: preview.settingsEditable
+                                    onToggled: preview.setSceneLatitude(checked)
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: !preview.sceneLatitudeActive ? "关闭" : "已应用"
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            ActionButton {
+                                objectName: "commitFitButton"
+                                Layout.fillWidth: true
+                                text: "提交拟合"
+                                enabled: latitudeSection.fitValid && preview.settingsEditable && preview.hasFrame
+                                onClicked: preview.commitLatitudeFit()
+                            }
                             Note { visible: latitudeSection.summary.length > 0; text: latitudeSection.summary; color: Theme.text }
-                            Note { text: "分析只读取当前显影结果，不改变画面；Windows 暂不支持应用求解的场景放置。" }
+                            Note { text: "分析只读取当前显影结果，不改变画面；「应用映射」按已提交的曲线放置场景，「提交拟合」写入求解的高光/阴影收放。" }
                         }
                         Section {
                             title: "编辑 · 光线"

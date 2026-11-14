@@ -1,0 +1,95 @@
+#version 450
+
+// RFC-023's Scene Latitude Mapping, the pipeline's pointwise gain before the
+// spectral upsample (scene_latitude.metal `spk_scene_latitude`). A positive
+// scalar per pixel, computed on the stop axis and applied to the linear
+// triple; the signal never becomes log. The signal path itself is a
+// transcription of the Metal kernel and of core/latitude_fit.cpp's
+// `departure` (the double-precision reference the float64 gate
+// tests/gpu_vulkan_scene_latitude.cpp checks against).
+//
+// §11's rule: this node never changes what the pipeline does with a
+// pathological pixel -- a norm that is zero, negative, NaN or infinite takes
+// k = 1 and passes through as it came. Negative components are not clamped
+// in the signal; only the scalar sees max(RGB, 0).
+//
+// p is the documented 19-float row (scene_latitude.cpp `node_scene_latitude`):
+//   [0] K_h   [1] H_h (0 = off)   [2] K_s   [3] H_s (0 = off)
+//   [4] m     [5] L_max           [6] norm (0 power, 1 Y, 2 max)
+//   [7..9] the Y row of the working space's RGB -> XYZ   [10] n_ref
+//   [11] width  [12] height  [13] split (0 = none)  [14..17] the second
+//   frame's K_h H_h K_s H_s   [18] the image's first row in the frame
+//   (RFC-035 §9: a band; RFC-020: a strip; 0 for a whole render)
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Input { float value[]; } input_data;
+layout(set = 0, binding = 1, std430) readonly buffer Parameters { float value[]; } parameters;
+layout(set = 0, binding = 2, std430) readonly buffer Count { uint value[]; } count_data;
+layout(set = 0, binding = 3, std430) writeonly buffer Output { float value[]; } output_data;
+
+// vulkan_gpu.cpp folds a dispatch past maxComputeWorkGroupCount[0] (65535 on
+// lavapipe and Intel) into rows of workgroups; this is the 1D index it means.
+uint spk_global_index() {
+    return gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+}
+
+// g_m(D) - D, the branch's departure, in the forms that do not cancel near
+// the knee: exactly 0 at D = 0 through the multiply, negative beyond it.
+float slm_departure(float D, float H, float m) {
+    if (!(D > 0.0)) return 0.0;
+    if (m == 2.0) {
+        float r = sqrt(H * H + D * D);
+        return -(D * D * D) / (r * (H + r));
+    }
+    if (m == 1.0) return -(D * D) / (H + D);
+    return D * (H / pow(pow(H, m) + pow(D, m), 1.0 / m) - 1.0);
+}
+
+void main() {
+    uint i = spk_global_index();
+    if (i >= count_data.value[0]) return;
+    float r = input_data.value[3u * i];
+    float g = input_data.value[3u * i + 1u];
+    float b = input_data.value[3u * i + 2u];
+    float cr = max(r, 0.0), cg = max(g, 0.0), cb = max(b, 0.0);
+
+    float v;
+    uint norm = uint(parameters.value[6]);
+    if (norm == 1u) {
+        v = parameters.value[7] * cr + parameters.value[8] * cg + parameters.value[9] * cb;
+    } else if (norm == 2u) {
+        v = max(cr, max(cg, cb));
+    } else {
+        float s2 = cr * cr + cg * cg + cb * cb;
+        v = s2 > 0.0 ? (cr * cr * cr + cg * cg * cg + cb * cb * cb) / s2 : 0.0;
+    }
+
+    float k = 1.0;
+    // GLSL has no isfinite for this target; Metal's isfinite(v) is exactly
+    // !isnan && !isinf (the same guard tc_b and di_normalise carry).
+    if (v > 0.0 && !isnan(v) && !isinf(v)) {
+        float n_ref = parameters.value[10];
+        float E = clamp(log2(max(v, n_ref * exp2(-24.0)) / n_ref), -24.0, 24.0);
+        float d = 0.0;
+        // A half-frame pair: from `split` along the long edge, the second
+        // frame's own knees and rooms (p[14..17]).
+        float Kh = parameters.value[0], Hh = parameters.value[1];
+        float Ks = parameters.value[2], Hs = parameters.value[3];
+        if (parameters.value[13] > 0.0) {
+            uint w = uint(parameters.value[11]), h = uint(parameters.value[12]);
+            float along = w >= h
+                ? (float(i % w) + 0.5) / float(w)
+                : (float(i / w) + parameters.value[18] + 0.5) / float(h);
+            if (along >= parameters.value[13]) {
+                Kh = parameters.value[14]; Hh = parameters.value[15];
+                Ks = parameters.value[16]; Hs = parameters.value[17];
+            }
+        }
+        if (Hh > 0.0 && E > Kh) d = slm_departure(E - Kh, Hh, parameters.value[4]);
+        else if (Hs > 0.0 && E < Ks) d = -slm_departure(Ks - E, Hs, parameters.value[4]);
+        if (d > 0.0) { float L = parameters.value[5]; d = d * L / sqrt(L * L + d * d); }
+        k = clamp(exp2(d), exp2(-30.0), exp2(30.0));
+    }
+    output_data.value[3u * i] = r * k;
+    output_data.value[3u * i + 1u] = g * k;
+    output_data.value[3u * i + 2u] = b * k;
+}

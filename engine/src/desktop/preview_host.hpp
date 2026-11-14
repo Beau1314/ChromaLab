@@ -52,6 +52,22 @@ struct RenderSettings {
     // reverse), so the UI gates the rows on the film's catalog metadata.
     bool di_active = false;
     bool di_blue_compensation = false;
+    // RFC-023's Scene Latitude Mapping (ported in phase 2, `spk_scene_latitude`
+    // on Vulkan): the resolved curve the render places on the scene before the
+    // film. Like the DI these are engine parameters -- a change re-renders
+    // without re-decoding. The full fit travels here (not just the toggle) so
+    // the latitude card's 提交拟合 can write the analysis's solved pull-backs
+    // through the ordinary changed-params channel, and an on session restores
+    // as one on reopen. The half-frame pair's own fields (split/b_*) stay
+    // engine-only until the pair UI arrives.
+    bool scene_latitude_active = false;
+    std::string scene_latitude_norm = "power";
+    double scene_latitude_highlight_knee = 2.0;
+    double scene_latitude_highlight_room = 0.0;
+    double scene_latitude_shadow_knee = -2.0;
+    double scene_latitude_shadow_room = 0.0;
+    double scene_latitude_rolloff = 2.0;
+    double scene_latitude_max_lift = 4.0;
 
     bool operator==(const RenderSettings&) const = default;
 };

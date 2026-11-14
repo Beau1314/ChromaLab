@@ -41,13 +41,18 @@ class PreviewController final : public QObject {
     // the reply of the last requestLatitude(): the raw reply's "medium",
     // "scene", "suggested" and "fit" objects (empty until one runs, and
     // cleared whenever a new print is published -- the analysis describes the
-    // session, so an engine re-render invalidates it). Read-only: the fit's
-    // mapping is never applied here (Windows refuses `scene_latitude_active`).
+    // session, so an engine re-render invalidates it). The mapping itself is
+    // applied on demand: setSceneLatitude toggles it and commitLatitudeFit
+    // writes the reply's solved params_delta through the ordinary
+    // engine-parameter path (both re-render, as the DI does).
     Q_PROPERTY(QVariantMap latitude READ latitude NOTIFY latitudeChanged)
     // True only while a latitude job is in flight (same shape as
     // batchExporting): submit() sets busy_/active_operation_ and emits
     // stateChanged; accept() clears both and emits stateChanged again.
     Q_PROPERTY(bool latitudeBusy READ latitudeBusy NOTIFY stateChanged)
+    // The mapping's engine-side toggle, mirroring extra_settings_. The
+    // solved curve itself rides the latitude reply's fit block.
+    Q_PROPERTY(bool sceneLatitudeActive READ sceneLatitudeActive NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap metadata READ metadata NOTIFY frameChanged)
     Q_PROPERTY(QVariantList films READ films NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList papers READ papers NOTIFY catalogChanged)
@@ -158,6 +163,7 @@ public:
     int batchTotal() const { return batch_total_; }
     QVariantMap latitude() const { return latitude_; }
     bool latitudeBusy() const { return busy_ && active_operation_=="latitude"; }
+    bool sceneLatitudeActive() const { return extra_settings_.scene_latitude_active; }
     void setFilmIndex(int value);
     void setPaperIndex(int value);
     void setDecodeMode(int value);
@@ -222,6 +228,15 @@ public:
     // without bumping it, so an in-flight render reply stays valid; the job
     // runs on the worker and the reply publishes the `latitude` property.
     Q_INVOKABLE void requestLatitude();
+    // The 宽容度 card's mapping: setSceneLatitude toggles the engine-side
+    // mapping (an engine parameter, through changed() like the DI);
+    // commitLatitudeFit writes the last reply's fit.params_delta -- the
+    // solved knees and rooms -- into the settings and re-renders the same
+    // way. The commit refuses without a valid fit (the reply carries
+    // params_delta only then), so a refused fit can never be committed by
+    // accident.
+    Q_INVOKABLE void setSceneLatitude(bool value);
+    Q_INVOKABLE void commitLatitudeFit();
 signals:
     void stateChanged();
     void catalogChanged();

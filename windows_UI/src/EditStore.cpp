@@ -119,7 +119,15 @@ QJsonObject stateJson(const State& state) {
         {"wb_temperature_k", s.wb_temperature_k}, {"wb_tint", s.wb_tint},
         {"auto_exposure", s.auto_exposure},
         {"di_active", s.di_active},
-        {"di_blue_compensation", s.di_blue_compensation}}},
+        {"di_blue_compensation", s.di_blue_compensation},
+        {"scene_latitude_active", s.scene_latitude_active},
+        {"scene_latitude_norm", QString::fromStdString(s.scene_latitude_norm)},
+        {"scene_latitude_highlight_knee", s.scene_latitude_highlight_knee},
+        {"scene_latitude_highlight_room", s.scene_latitude_highlight_room},
+        {"scene_latitude_shadow_knee", s.scene_latitude_shadow_knee},
+        {"scene_latitude_shadow_room", s.scene_latitude_shadow_room},
+        {"scene_latitude_rolloff", s.scene_latitude_rolloff},
+        {"scene_latitude_max_lift", s.scene_latitude_max_lift}}},
         {"decodeMode", mode}, {"geometry", QJsonObject{
             {"crop", QJsonObject{{"x", g.crop.x()}, {"y", g.crop.y()},
                                   {"width", g.crop.width()}, {"height", g.crop.height()}}},
@@ -151,6 +159,16 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
     const bool hasDigitalIntermediate = s.contains(QLatin1String("di_active"));
     if (hasDigitalIntermediate)
         setting_keys.insert(setting_keys.end(), {"di_active", "di_blue_compensation"});
+    // RFC-023's resolved curve arrived with the phase-2 port (like the DI
+    // pair, its keys are optional so an old history still loads); records
+    // that carry one latitude key must carry all eight.
+    const bool hasSceneLatitude = s.contains(QLatin1String("scene_latitude_active"));
+    if (hasSceneLatitude)
+        setting_keys.insert(setting_keys.end(),
+                            {"scene_latitude_active", "scene_latitude_norm",
+                             "scene_latitude_highlight_knee", "scene_latitude_highlight_room",
+                             "scene_latitude_shadow_knee", "scene_latitude_shadow_room",
+                             "scene_latitude_rolloff", "scene_latitude_max_lift"});
     keys(s, setting_keys, QStringLiteral("settings"));
     auto& out = state.settings;
     out.film_stock = stockId(s, "film_stock", catalog ? &catalog->films : nullptr).toStdString();
@@ -180,6 +198,20 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
     if (hasDigitalIntermediate) {
         out.di_active = boolean(s, "di_active");
         out.di_blue_compensation = boolean(s, "di_blue_compensation");
+    }
+    if (hasSceneLatitude) {
+        out.scene_latitude_active = boolean(s, "scene_latitude_active");
+        const QString norm = string(s, "scene_latitude_norm");
+        require(norm == QLatin1String("power") || norm == QLatin1String("y") ||
+                    norm == QLatin1String("max"),
+                QStringLiteral("Saved scene latitude norm is unknown"));
+        out.scene_latitude_norm = norm.toStdString();
+        out.scene_latitude_highlight_knee = number(s, "scene_latitude_highlight_knee", -24.0, 24.0);
+        out.scene_latitude_highlight_room = number(s, "scene_latitude_highlight_room", 0.0, 24.0);
+        out.scene_latitude_shadow_knee = number(s, "scene_latitude_shadow_knee", -24.0, 24.0);
+        out.scene_latitude_shadow_room = number(s, "scene_latitude_shadow_room", 0.0, 24.0);
+        out.scene_latitude_rolloff = number(s, "scene_latitude_rolloff", 1.0, 4.0);
+        out.scene_latitude_max_lift = number(s, "scene_latitude_max_lift", 0.25, 12.0);
     }
     const auto mode = string(value, "decodeMode");
     require(mode == "compatible16" || mode == "headroom",
