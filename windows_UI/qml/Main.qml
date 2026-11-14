@@ -57,6 +57,16 @@ ApplicationWindow {
                 rows.push({ "name": preview.films[i].name, "catalogIndex": i })
         return rows
     }
+    function setLayer2Zero(names) {
+        // Unchanged fields no-op inside setLayer2, so a reset only records
+        // undo steps for the fields that actually moved.
+        for (var i = 0; i < names.length; ++i) preview.setLayer2(names[i], 0)
+    }
+    function resetColorBalance() {
+        for (var zone = 0; zone < 4; ++zone)
+            for (var axis = 0; axis < 3; ++axis)
+                preview.setZone(zone, axis, 0)
+    }
     function openExport() { if (preview.hasFrame && !preview.busy && !cropMode) exportPopup.open() }
     function showExportOptions() { openExport() }
     function formatFilter() {
@@ -143,6 +153,51 @@ ApplicationWindow {
                 else preview.endEditGesture()
             }
             onMoved: preview.setAdjustment(adjustment.setting, value)
+        }
+    }
+    component Layer2Adjustment: ColumnLayout {
+        id: layer2Adjustment
+        property string label
+        property string setting
+        // Dotted read path into preview.layer2. The scalars are flat, but the
+        // vignette is published nested ({vignette: {amount, midpoint}}) while
+        // setLayer2 keeps the flat "vignetteAmount"/"vignetteMidpoint" names.
+        property string readKey: setting
+        property real from: 0
+        property real to: 2
+        property real step: 0.05
+        property int decimals: 2
+        property string suffix: ""
+        property real fallback: 0
+        property bool available: preview.hasFrame
+        readonly property real current: {
+            var node = preview.layer2
+            var parts = layer2Adjustment.readKey.split(".")
+            for (var i = 0; i < parts.length; ++i) {
+                if (node === undefined || node === null) return layer2Adjustment.fallback
+                node = node[parts[i]]
+            }
+            return node === undefined ? layer2Adjustment.fallback : Number(node)
+        }
+        Layout.fillWidth: true; spacing: 2
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: layer2Adjustment.label; color: layer2Adjustment.available ? Theme.text : Theme.muted; font.pixelSize: 11 }
+            Item { Layout.fillWidth: true }
+            Text { text: layer2Adjustment.current.toFixed(layer2Adjustment.decimals) + layer2Adjustment.suffix; color: Theme.muted; font.pixelSize: 10 }
+        }
+        Slider {
+            Layout.fillWidth: true; implicitHeight: 24
+            from: layer2Adjustment.from; to: layer2Adjustment.to; stepSize: layer2Adjustment.step
+            value: layer2Adjustment.current
+            enabled: preview.settingsEditable && layer2Adjustment.available
+            onPressedChanged: {
+                // The gesture key is the setLayer2 name, matching the edit key
+                // changedLayer2 uses, so a whole drag is one undo step.
+                if (pressed) preview.beginEditGesture(layer2Adjustment.setting)
+                else preview.endEditGesture()
+            }
+            onMoved: preview.setLayer2(layer2Adjustment.setting, value)
         }
     }
     component Effect: ColumnLayout {
@@ -459,6 +514,41 @@ ApplicationWindow {
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                     ColumnLayout {
                         width: parent.width; spacing: 0
+                        Section {
+                            title: "编辑 · 光线"
+                            Layer2Adjustment { label: "曝光"; setting: "exposure"; from: -5; to: 5; step: 0.05; decimals: 2; suffix: " EV" }
+                            Layer2Adjustment { label: "亮度"; setting: "brightness"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: "对比度"; setting: "contrast"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: "高光"; setting: "highlights"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: "阴影"; setting: "shadows"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: "黑色阶"; setting: "blackPoint"; from: 0; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: "白色阶"; setting: "whitePoint"; from: 0; to: 100; step: 1; decimals: 0 }
+                            ActionButton { Layout.fillWidth: true; text: "重置光线"; enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.setLayer2Zero(["exposure", "brightness", "contrast", "highlights", "shadows", "blackPoint", "whitePoint"]) }
+                            Note { text: "分级调整作用于显影后的画面：实时生效，不触发重新渲染，与导出像素一致。" }
+                        }
+                        Section {
+                            title: "编辑 · 颜色"
+                            Layer2Adjustment { label: "色温"; setting: "temperature"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: "色调"; setting: "tint"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: "饱和度"; setting: "saturation"; from: -100; to: 100; step: 1; decimals: 0 }
+                            ActionButton { Layout.fillWidth: true; text: "重置颜色"; enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.setLayer2Zero(["temperature", "tint", "saturation"]) }
+                        }
+                        Section {
+                            title: "曲线"
+                            CurveEditor {}
+                        }
+                        Section {
+                            title: "编辑 · 色彩平衡"
+                            ColorBalance {}
+                            ActionButton { Layout.fillWidth: true; text: "重置色彩平衡"; enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.resetColorBalance() }
+                        }
+                        Section {
+                            title: "编辑 · 暗角"
+                            Layer2Adjustment { label: "数量"; setting: "vignetteAmount"; readKey: "vignette.amount"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: "中点"; setting: "vignetteMidpoint"; readKey: "vignette.midpoint"; fallback: 50; from: 0; to: 100; step: 1; decimals: 0 }
+                            ActionButton { Layout.fillWidth: true; text: "重置暗角"; enabled: preview.settingsEditable && preview.hasFrame; onClicked: { preview.setLayer2("vignetteAmount", 0); preview.setLayer2("vignetteMidpoint", 50) } }
+                            Note { text: "负值压暗画面边缘，正值加亮；中点决定暗角从画面何处开始。" }
+                        }
                         Section {
                             title: "输入 / 相机"
                             Adjustment { label: "胶片曝光"; setting: "filmExposureEv"; from: -4; to: 4; step: 0.1; decimals: 1; suffix: " EV" }
