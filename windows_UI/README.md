@@ -47,6 +47,32 @@ Velvia 100, Ektachrome 100 and Kodachrome 64. Paper and paper-brightness control
 are disabled for slides; their previous settings return with negative film.
 The colour model, profile data and shader maths are unchanged.
 
+Layer 2 editing grades the developed print: exposure, contrast, brightness,
+highlights, shadows, black/white points, saturation, scan white balance
+(temperature/tint), five-channel curves (RGB, luma, R, G, B), four-zone colour
+balance and vignette. One CPU implementation serves preview and export; it is
+ported expression by expression from the desktop port's
+`desktop/src/shared/adjustments.ts` — the verified port of the macOS
+`Adjustments.swift`/`Shaders.metal` layer 2 — and field names, defaults and the
+JSON record match that file, so a record saved here still opens on the Mac and
+desktop builds. Grade edits apply to the already-rendered print and do not
+re-render the engine; export grades the print with the same code before
+geometry, so preview and exported pixels agree. Grade values ride the same
+persistence, gesture and per-photo undo integration as the other settings; one
+slider drag is one undo step. The 对比 toggle (V) splits the canvas between the
+print without the grade on the left and the current edit on the right.
+
+An output histogram plots 256 bins per channel (R/G/B/luma) over the published
+print — geometry and grade included. A 宽容度 (scene latitude) card analyses the
+current development on request: medium/scene latitude, the scene histogram
+against the medium ramp and the fit verdict. The analysis is read-only —
+applying the solved scene placement to the settings is still refused on
+Windows. White balance rows set decode-side temperature (2000–50000 K) and tint
+(±150), backfill the decoder-reported As Shot values, or choose one of six
+named illuminant presets; changing them re-decodes the current photo, and a WB
+override is refused while the headroom decode is selected. The 测光 switch turns
+automatic exposure off so film exposure alone determines scene placement.
+
 All engine work runs on one serial worker. Edits during a render are coalesced
 into the newest settings; superseded results never replace the displayed frame
 or newer controls. File dialogs pause pending updates until they close; opening
@@ -152,15 +178,24 @@ uses the same four arguments as the library gate and verifies history during
 in-flight renders, geometry/PNG agreement, mirrored rotation direction,
 destructor flushing of pending changes, recreation/reopening, per-photo history,
 batch locks and visible persistence warnings. It owns copies of all inputs.
+`spk_qt_layer2` pins the grade's JSON contract and its arithmetic anchor by
+anchor against `adjustments.ts`; `spk_qt_histogram` pins the bin counting;
+`spk_qt_wb_math` pins the Robertson temperature/tint round trip and the as-shot
+solve within measured bounds. The library and editing workflow gates carry
+grade, compare, histogram, latitude and white-balance blocks that are
+compile-verified but not yet executed — they run when RAW fixtures are
+supplied.
 
 The captures are **offscreen scene captures**, not a live monitor screenshot.
 Software scene display does not make the engine a CPU renderer. This gate does
 not automate the native file dialogs or verify monitor profiles. At this phase
 the host renders encoded sRGB and the GUI shows an 8-bit SDR texture. A QImage
 sRGB tag is not a proof that the default Windows Qt swapchain applies a monitor
-ICC transform. Wide-gamut, EDR/HDR, ColourSync-equivalent display validation,
-original/split comparison, histogram, post-development grading and perspective
-geometry are future work. TIFF and PNG16 retain 16-bit
+ICC transform; display colour management is not wired and the monitor ICC path
+remains unverified. Wide-gamut, EDR/HDR, ColourSync-equivalent display
+validation and perspective geometry are future work. Vibrance and EDR grading
+are not included, and the interface is Chinese-only; four-language i18n is not
+included. TIFF and PNG16 retain 16-bit
 pixels; PNG8/JPEG8 use 8-bit samples, and resizing is explicitly requested.
 
 Nikon HE/HE* RAW remains explicitly unsupported by this LibRaw build. A failed
