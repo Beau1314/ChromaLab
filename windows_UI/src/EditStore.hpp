@@ -14,6 +14,10 @@ struct State {
     RenderSettings settings;
     DecodeMode mode = DecodeMode::compatible16;
     output::Geometry geometry;
+    // The scan-side grade above the engine's print (Layer 2). Persisted under
+    // the wire shape of layer2::encode; a record without the key restores the
+    // neutral grade so older histories keep loading.
+    layer2::Adjustments layer2;
     bool operator==(const State&) const = default;
 };
 

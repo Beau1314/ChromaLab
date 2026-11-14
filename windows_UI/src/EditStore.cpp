@@ -110,10 +110,17 @@ QJsonObject stateJson(const State& state) {
             {"crop", QJsonObject{{"x", g.crop.x()}, {"y", g.crop.y()},
                                   {"width", g.crop.width()}, {"height", g.crop.height()}}},
             {"quarterTurns", g.quarterTurns}, {"flipHorizontal", g.flipHorizontal},
-            {"flipVertical", g.flipVertical}, {"straightenDegrees", g.straightenDegrees}}}};
+            {"flipVertical", g.flipVertical}, {"straightenDegrees", g.straightenDegrees}}},
+        {"layer2", layer2::encode(state.layer2)}};
 }
 State parseState(const QJsonObject& value, const Catalog* catalog) {
-    keys(value, {"settings", "decodeMode", "geometry"}, QStringLiteral("state"));
+    // Layer 2 arrived after the first records; its key is optional so an old
+    // history still loads with the neutral grade (the document version did
+    // not change). Anything else unknown is still rejected below.
+    if (value.contains(QLatin1String("layer2")))
+        keys(value, {"settings", "decodeMode", "geometry", "layer2"}, QStringLiteral("state"));
+    else
+        keys(value, {"settings", "decodeMode", "geometry"}, QStringLiteral("state"));
     State state;
     const auto s = object(value, "settings");
     keys(s, {"film_stock", "print_stock", "print_exposure", "film_exposure_ev", "film_format_mm",
@@ -153,6 +160,8 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
     state.geometry.flipHorizontal = boolean(g, "flipHorizontal");
     state.geometry.flipVertical = boolean(g, "flipVertical");
     state.geometry.straightenDegrees = number(g, "straightenDegrees", -45.0, 45.0);
+    if (value.contains(QLatin1String("layer2")))
+        state.layer2 = layer2::decode(object(value, "layer2"));
     return state;
 }
 

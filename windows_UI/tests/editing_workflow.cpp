@@ -74,6 +74,24 @@ bool samePixels(const QImage& left,const QImage& right) {
         if(std::memcmp(a.constScanLine(y),b.constScanLine(y),std::size_t(a.width())*4)!=0)return false;
     return true;
 }
+bool closePixels(const QImage& left,const QImage& right,int tolerance) {
+    if(left.isNull()||right.isNull()||left.size()!=right.size())return false;
+    const auto a=left.convertToFormat(QImage::Format_RGBA8888),b=right.convertToFormat(QImage::Format_RGBA8888);
+    for(int y=0;y<a.height();++y) {
+        const auto* pa=a.constScanLine(y);const auto* pb=b.constScanLine(y);
+        for(int x=0;x<a.width()*4;++x)
+            if(std::abs(int(pa[x])-int(pb[x]))>tolerance)return false;
+    }
+    return true;
+}
+// Layer 2 publications also report operationFinished; only engine operations
+// prove that the render pipeline ran.
+int engineOperations() {
+    int count=0;
+    for(const auto& entry:operations)
+        if(entry.toObject()["operation"].toString()!=QStringLiteral("layer2"))++count;
+    return count;
+}
 QByteArray bytes(const QString& path) {
     QFile file(path);check(file.open(QIODevice::ReadOnly),"Read file: "+QFileInfo(path).fileName());return file.readAll();
 }
@@ -177,6 +195,39 @@ int main(int argc,char** argv) {
                 check(near(c.straightenDegrees(),7.5)&&near(c.frame()->settings.print_exposure,std::exp2(-.55)),
                       "Released straighten and pending exposure both survive rendering");
                 c.setStraightenDegrees(6.5);c.setExposureEv(.4);idle(c,"Restore geometry checkpoint parameters");
+            }
+
+            // Layer 2 rides the fast path: grades republish the retained print
+            // without the engine, share the undo history, and export like any
+            // other edit family.
+            {
+                const auto retained=c.frame();const int engineOps=engineOperations();
+                const auto neutral=c.previewImage().copy();
+                c.beginEditGesture("exposure");c.setLayer2("exposure",1.0);c.endEditGesture();
+                idle(c,"Layer 2 fast path publication");
+                check(c.frame()==retained&&engineOperations()==engineOps&&!c.dirty(),
+                      "Layer 2 edit republished the print without an engine render");
+                check(!samePixels(c.previewImage(),neutral),"Layer 2 exposure visibly grades the canvas");
+                const auto graded=c.previewImage().copy();
+                c.undo();
+                check(!c.busy()&&c.frame()==retained&&samePixels(c.previewImage(),neutral),
+                      "Undo of a layer 2 grade restores the neutral canvas without the engine");
+                // The export captures the grade at submit time: the neutral
+                // file must be written while the grade is still undone.
+                const QString neutralPng=destination+"/layer2-neutral.png";
+                c.exportImage(QUrl::fromLocalFile(neutralPng),1,95,0);idle(c,"Export the neutral grade");
+                check(c.frame()==retained,"Neutral export retains the editor frame");
+                c.redo();
+                check(!c.busy()&&samePixels(c.previewImage(),graded),"Redo restores the graded canvas");
+                const QString gradedPng=destination+"/layer2-graded.png";
+                c.exportImage(QUrl::fromLocalFile(gradedPng),1,95,0);idle(c,"Export the graded print");
+                check(!samePixels(readImage(neutralPng),readImage(gradedPng)),"The grade changes exported pixels");
+                check(closePixels(readImage(gradedPng),graded,2),"Graded export matches the visible canvas within 2 LSB");
+                c.selectImage(1);idle(c,"Switch away from the graded photograph");
+                check(near(c.layer2()["exposure"].toDouble(),0.0),"The untouched photograph keeps the neutral grade");
+                c.selectImage(0);idle(c,"Return to the graded photograph");
+                check(near(c.layer2()["exposure"].toDouble(),1.0)&&samePixels(c.previewImage(),graded),
+                      "Returning restores the stored grade and its pixels");
             }
 
             c.selectImage(1);idle(c,"Select untouched second photograph");checkPhoto(c,1,second);

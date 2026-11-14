@@ -5,12 +5,14 @@
 #include <QFileInfo>
 #include <QSet>
 #include <QStandardPaths>
+#include <algorithm>
 #include <cmath>
 
 namespace {
 namespace desktop=spk::desktop;
 namespace output=desktop::output;
 namespace editing=desktop::editing;
+namespace l2=desktop::layer2;
 QString text(const std::string& s) { return QString::fromUtf8(s.data(),qsizetype(s.size())); }
 std::filesystem::path path(const QUrl& u) { return std::filesystem::path(u.toLocalFile().toStdWString()); }
 QVariantList list(const std::vector<desktop::Stock>& stocks) {
@@ -24,12 +26,37 @@ bool sameSettings(desktop::RenderSettings a, desktop::RenderSettings b) {
     return exposure&&a==b;
 }
 bool sameState(const editing::State& a,const editing::State& b) {
-    return sameSettings(a.settings,b.settings)&&a.mode==b.mode&&a.geometry==b.geometry;
+    return sameSettings(a.settings,b.settings)&&a.mode==b.mode&&a.geometry==b.geometry&&a.layer2==b.layer2;
 }
-QImage visibleImage(const desktop::FramePtr& frame,const QImage& full,const output::Geometry& geometry) {
+QVariantList pointList(const std::vector<QPointF>& points) {
+    QVariantList result;
+    for(const auto& point:points)result.push_back(QVariant::fromValue(point));
+    return result;
+}
+QVariantMap zoneMap(const l2::ColorZone& zone) {
+    return {{"hue",zone.hue},{"saturation",zone.saturation},{"luminance",zone.luminance}};
+}
+// The five curve channels, in the desktop's CURVE_CHANNELS order.
+const l2::Curve* curveOf(const l2::Adjustments& adjustments,const QString& channel) {
+    const auto& curves=adjustments.curves;
+    if(channel==QLatin1String("rgb"))return &curves.rgb;
+    if(channel==QLatin1String("luma"))return &curves.luma;
+    if(channel==QLatin1String("red"))return &curves.red;
+    if(channel==QLatin1String("green"))return &curves.green;
+    if(channel==QLatin1String("blue"))return &curves.blue;
+    return nullptr;
+}
+l2::Curve* curveOf(l2::Adjustments& adjustments,const QString& channel) {
+    return const_cast<l2::Curve*>(curveOf(static_cast<const l2::Adjustments&>(adjustments),channel));
+}
+QImage visibleImage(const desktop::FramePtr& frame,const QImage& full,const output::Geometry& geometry,
+                    const l2::Adjustments& layer2) {
+    // `full` already carries the grade (gradedDisplayImage). Only the
+    // straightening path re-derives pixels from the frame, and it re-grades
+    // from the frame's 16-bit print through Task 3's three-argument form.
     if(geometry.quarterTurns==0&&!geometry.flipHorizontal&&!geometry.flipVertical&&geometry.straightenDegrees==0)
         return output::displayImage(full,geometry.crop);
-    return output::displayFrame(frame,geometry);
+    return output::displayFrame(frame,geometry,layer2);
 }
 output::ExportOptions exportOptions(int format,int quality,int maxEdge) {
     if(format<0||format>3||quality<1||quality>100||maxEdge<0||maxEdge>100000)
@@ -94,7 +121,8 @@ void PreviewController::submit(Job job,QString status,QString operation) {
 }
 void PreviewController::accept(Reply reply) {
     if(reply.generation!=generation_)return; // a retired generation never replaces the canvas
-    const bool superseded=reply.operation=="render"&&reply.settings_revision!=settings_revision_;
+    const bool superseded=(reply.operation=="render"&&reply.settings_revision!=settings_revision_)
+        ||(reply.operation=="layer2"&&reply.settings_revision!=layer2_revision_);
     busy_=false;active_operation_.clear();failed_=!superseded&&!reply.error.isEmpty();
     if(superseded) {
         // The worker may finish an earlier choice after the next click. Keep
@@ -107,13 +135,21 @@ void PreviewController::accept(Reply reply) {
     } else if(reply.operation=="init") {
         ready_=true;catalog_=std::move(reply.catalog);films_=list(catalog_.films);papers_=list(catalog_.papers);
         restoreSettings();emit catalogChanged();status_=QStringLiteral("就绪 · 打开 RAW 开始");
+    } else if(reply.operation=="layer2") {
+        // The fast path's job only re-sequences the publication behind the
+        // worker queue; the pixels come from the retained frame below.
+        publishFromFrame(QStringLiteral("预览已更新"));
     } else if(reply.frame) {
         // Allocate the presentation wrapper before publishing any new UI state.
         try {
-            auto next=image_factory_(reply.frame);
+            // The opened photo's grade only commits with its successful
+            // publication; a failure leaves the previous photo intact.
+            auto nextLayer2=reply.operation=="open"?std::move(reply.layer2):layer2_;
+            auto next=gradedDisplayImage(reply.frame,nextLayer2);
             if(next.isNull())throw std::runtime_error("Cannot create the display image");
             const auto geometry=reply.operation=="open"?reply.geometry:geometry_;
-            auto visible=visibleImage(reply.frame,next,geometry);
+            auto visible=visibleImage(reply.frame,next,geometry,nextLayer2);
+            layer2_=std::move(nextLayer2);
             frame_=std::move(reply.frame);full_image_=std::move(next);image_=std::move(visible);
             geometry_=geometry;
             if(reply.operation=="open")active_index_=reply.library_index;
@@ -142,8 +178,13 @@ void PreviewController::accept(Reply reply) {
     if(reply.operation=="init")emit initialized(!failed_);
     else emit operationFinished(reply.operation,!failed_);
     // Export holds an immutable displayed frame. An edit made just before it
-    // began still needs applying, including after an overwrite refusal.
-    if((superseded||reply.operation=="export"||reply.operation=="batch-export")&&!busy_)schedulePreview();
+    // began still needs applying, including after an overwrite refusal. The
+    // layer 2 publication runs the same courtesy: its job cancelled any
+    // pending parameter debounce inside submit().
+    if((superseded||reply.operation=="export"||reply.operation=="batch-export"
+        ||reply.operation=="layer2")&&!busy_)schedulePreview();
+    // A layer 2 edit during a busy job only recorded its intent; publish it now.
+    if(layer2_pending_&&!busy_){layer2_pending_=false;scheduleLayer2();}
 }
 desktop::RenderSettings PreviewController::settings() const {
     desktop::RenderSettings s=extra_settings_;
@@ -216,7 +257,7 @@ void PreviewController::openItem(int index) {
     endEditGesture();
     const auto item=library_.at(index);const auto p=path(item.url);
     const auto gen=++generation_;
-    submit([p,item,gen,index](auto& host){Reply r;r.generation=gen;r.operation="open";r.library_index=index;r.geometry=item.geometry;
+    submit([p,item,gen,index](auto& host){Reply r;r.generation=gen;r.operation="open";r.library_index=index;r.geometry=item.geometry;r.layer2=item.layer2;
         try{r.frame=host.open_raw(p,item.mode,item.settings);}catch(const std::exception& e){r.error=text(e.what());}return r;},QStringLiteral("正在解码并渲染 RAW…"),"open");
 }
 void PreviewController::apply() {
@@ -239,8 +280,9 @@ void PreviewController::exportTiff(const QUrl& url) {
 void PreviewController::exportImage(const QUrl& url,int format,int quality,int maxLongEdge) {
     if(!frame_||busy_||!url.isLocalFile())return;
     const auto p=path(url);const auto held=frame_;const auto gen=++generation_;const auto geometry=geometry_;const auto resources=resources_;
-    submit([p,held,gen,geometry,resources,format,quality,maxLongEdge](auto&){Reply r;r.generation=gen;r.operation="export";
-        try{output::exportFrame(held,p,geometry,exportOptions(format,quality,maxLongEdge),resources);}catch(const std::exception& e){r.error=text(e.what());}return r;},QStringLiteral("正在导出当前画面…"),"export");
+    const auto layer2=layer2_; // the grade as the user saw it at submit time
+    submit([p,held,gen,geometry,resources,layer2,format,quality,maxLongEdge](auto&){Reply r;r.generation=gen;r.operation="export";
+        try{output::exportFrame(held,p,geometry,exportOptions(format,quality,maxLongEdge),resources,layer2);}catch(const std::exception& e){r.error=text(e.what());}return r;},QStringLiteral("正在导出当前画面…"),"export");
 }
 
 QVariantMap PreviewController::adjustments() const {
@@ -273,6 +315,159 @@ void PreviewController::setAdjustment(const QString& name,const QVariant& value)
     if(next==extra_settings_)return;
     extra_settings_=next;changed(name);
 }
+
+// --- Layer 2: the scan-side grade on the controller's fast path ---------------
+
+QImage PreviewController::gradedDisplayImage(const desktop::FramePtr& frame,const l2::Adjustments& adjustments) const {
+    // A neutral grade stays byte-identical: applyImage would still run its
+    // per-pixel chain, so it is skipped outright. A visible grade writes into
+    // its own copy — QImage::bits detaches the factory's wrapper before the
+    // first write, leaving the retained frame's display bytes untouched.
+    auto image=image_factory_(frame);
+    if(!image.isNull()&&!l2::isNeutral(adjustments))l2::applyImage(image,adjustments);
+    return image;
+}
+void PreviewController::changedLayer2(const QString& editKey) {
+    // The engine's parameters did not change: settings_revision_ and the
+    // generation stay put (in-flight engine replies remain valid). Undo and
+    // gestures ride the same mechanics as every other edit family.
+    if(gesture_index_>=0&&gesture_key_!=editKey)endEditGesture();
+    saveActiveSettings(true);
+    ++layer2_revision_;
+    scheduleLayer2();
+    if(frame_)status_=QStringLiteral("正在更新预览…");
+    failed_=false;emit settingsChanged();emit stateChanged();
+}
+void PreviewController::scheduleLayer2() {
+    // Nothing is on screen yet: there is no retained print to republish, and
+    // a reply would leave a stale "updating" status behind.
+    if(!frame_)return;
+    if(busy_){layer2_pending_=true;return;} // accept() re-schedules after the reply
+    const auto gen=generation_;const auto revision=layer2_revision_;
+    submit([gen,revision](desktop::PreviewHost&){Reply r;r.generation=gen;
+        r.settings_revision=revision;r.operation="layer2";return r;},
+        QStringLiteral("正在更新预览…"),"layer2");
+}
+void PreviewController::publishFromFrame(const QString& status) {
+    if(!frame_)return;
+    try {
+        auto next=gradedDisplayImage(frame_,layer2_);
+        auto visible=visibleImage(frame_,next,geometry_,layer2_);
+        full_image_=std::move(next);image_=std::move(visible);
+    } catch(const std::exception& e){failed_=true;status_=text(e.what());emit stateChanged();return;}
+    updateThumbnail();
+    computeHistogram();
+    failed_=false;status_=status;
+    emit frameChanged();emit stateChanged();
+}
+void PreviewController::computeHistogram() {
+    // Task 7 feeds the histogram from the published graded pixels here; the
+    // publication order (grade → geometry → thumbnail) is already final.
+}
+QVariantMap PreviewController::layer2() const {
+    QVariantMap curves;
+    curves.insert("rgb",pointList(layer2_.curves.rgb.points));
+    curves.insert("luma",pointList(layer2_.curves.luma.points));
+    curves.insert("red",pointList(layer2_.curves.red.points));
+    curves.insert("green",pointList(layer2_.curves.green.points));
+    curves.insert("blue",pointList(layer2_.curves.blue.points));
+    QVariantMap colorBalance;
+    colorBalance.insert("master",zoneMap(layer2_.colorBalance.master));
+    colorBalance.insert("shadows",zoneMap(layer2_.colorBalance.shadows));
+    colorBalance.insert("midtones",zoneMap(layer2_.colorBalance.midtones));
+    colorBalance.insert("highlights",zoneMap(layer2_.colorBalance.highlights));
+    return {{"enabled",layer2_.enabled},{"temperature",layer2_.temperature},{"tint",layer2_.tint},
+        {"exposure",layer2_.exposure},{"contrast",layer2_.contrast},{"brightness",layer2_.brightness},
+        {"saturation",layer2_.saturation},{"highlights",layer2_.highlights},{"shadows",layer2_.shadows},
+        {"blackPoint",layer2_.blackPoint},{"whitePoint",layer2_.whitePoint},
+        {"curves",curves},{"colorBalance",colorBalance},
+        {"vignette",QVariantMap{{"amount",layer2_.vignette.amount},{"midpoint",layer2_.vignette.midpoint}}}};
+}
+void PreviewController::setLayer2(const QString& name,double value) {
+    if(!settingsEditable()||!std::isfinite(value))return;
+    auto next=layer2_;
+    if(name=="enabled") {
+        if((value!=0)==next.enabled)return;
+        next.enabled=value!=0;
+    } else {
+        double* field=nullptr;double low=0,high=0;
+        if(name=="temperature"){field=&next.temperature;low=-100;high=100;}
+        else if(name=="tint"){field=&next.tint;low=-100;high=100;}
+        else if(name=="exposure"){field=&next.exposure;low=-5;high=5;}
+        else if(name=="contrast"){field=&next.contrast;low=-100;high=100;}
+        else if(name=="brightness"){field=&next.brightness;low=-100;high=100;}
+        else if(name=="saturation"){field=&next.saturation;low=-100;high=100;}
+        else if(name=="highlights"){field=&next.highlights;low=-100;high=100;}
+        else if(name=="shadows"){field=&next.shadows;low=-100;high=100;}
+        else if(name=="blackPoint"){field=&next.blackPoint;low=0;high=100;}
+        else if(name=="whitePoint"){field=&next.whitePoint;low=0;high=100;}
+        else if(name=="vignetteAmount"){field=&next.vignette.amount;low=-100;high=100;}
+        else if(name=="vignetteMidpoint"){field=&next.vignette.midpoint;low=0;high=100;}
+        else return;
+        if(value<low||value>high)return;
+        *field=value;
+    }
+    if(next==layer2_)return;
+    layer2_=next;changedLayer2(name);
+}
+void PreviewController::curveInsertPoint(const QString& channel,double x,double y) {
+    if(!settingsEditable())return;
+    auto* curve=curveOf(layer2_,channel);
+    if(!curve||!std::isfinite(x)||!std::isfinite(y))return;
+    l2::insertPoint(*curve,x,y);
+    changedLayer2(QStringLiteral("curve:")+channel);
+}
+void PreviewController::curveMovePoint(const QString& channel,int index,double x,double y) {
+    if(!settingsEditable())return;
+    auto* curve=curveOf(layer2_,channel);
+    if(!curve||index<0||index>=int(curve->points.size())||!std::isfinite(x)||!std::isfinite(y))return;
+    const l2::Curve before=*curve;
+    l2::movePoint(*curve,index,x,y);
+    if(*curve==before)return; // an endpoint or out-of-range move is a no-op
+    changedLayer2(QStringLiteral("curve:")+channel);
+}
+void PreviewController::curveRemovePoint(const QString& channel,int index) {
+    if(!settingsEditable())return;
+    auto* curve=curveOf(layer2_,channel);
+    if(!curve||index<0||index>=int(curve->points.size()))return;
+    const l2::Curve before=*curve;
+    l2::removePoint(*curve,index);
+    if(*curve==before)return; // endpoints and short curves refuse removal
+    changedLayer2(QStringLiteral("curve:")+channel);
+}
+void PreviewController::curveReset(const QString& channel) {
+    if(!settingsEditable())return;
+    auto* curve=curveOf(layer2_,channel);
+    if(!curve)return;
+    if(*curve==l2::identityCurve())return;
+    *curve=l2::identityCurve();
+    changedLayer2(QStringLiteral("curve:")+channel);
+}
+QVariantList PreviewController::curvePoints(const QString& channel) const {
+    const auto* curve=curveOf(layer2_,channel);
+    return curve?pointList(curve->points):QVariantList{};
+}
+double PreviewController::curveEval(const QString& channel,double x) const {
+    if(!std::isfinite(x))return 0;
+    x=std::clamp(x,0.0,1.0);
+    const auto* curve=curveOf(layer2_,channel);
+    return curve?l2::evaluateCurve(*curve,x):x;
+}
+void PreviewController::setZone(int zone,int axis,double value) {
+    if(!settingsEditable()||!std::isfinite(value)||zone<0||zone>3||axis<0||axis>2)return;
+    static const char* zoneNames[4]={"master","shadows","midtones","highlights"};
+    auto next=layer2_;
+    auto& target=zone==0?next.colorBalance.master:zone==1?next.colorBalance.shadows
+        :zone==2?next.colorBalance.midtones:next.colorBalance.highlights;
+    // The desktop's own ranges: hue in degrees, saturation and luminance as
+    // fractions of the zone's strength.
+    if(axis==0){if(value<0||value>360)return;target.hue=value;}
+    else if(axis==1){if(value<0||value>1)return;target.saturation=value;}
+    else {if(value<-1||value>1)return;target.luminance=value;}
+    if(next==layer2_)return;
+    layer2_=next;
+    changedLayer2(QStringLiteral("colorBalance:")+zoneNames[zone]);
+}
 QVariantList PreviewController::libraryItems() const {
     QVariantList result;
     for(int i=0;i<int(library_.size());++i) {
@@ -292,13 +487,15 @@ void PreviewController::saveActiveSettings(bool recordHistory) {
     const auto mode=decode_mode_?desktop::DecodeMode::headroom:desktop::DecodeMode::compatible16;
     // A saved pending edit has no rendered thumbnail yet. Do not let the
     // strip present an older look as if it represented the new settings.
-    const bool changed=!sameSettings(item.settings,desired)||item.mode!=mode||item.geometry!=geometry_;
+    const bool changed=!sameSettings(item.settings,desired)||item.mode!=mode
+        ||item.geometry!=geometry_||item.layer2!=layer2_;
     if(changed){
         if(recordHistory)recordEdit(item,itemState(item));
         item.thumbnail={};item.pending_save=true;
     }
     item.settings=desired;item.mode=mode;
     item.geometry=geometry_;
+    item.layer2=layer2_;
     if(changed){scheduleSave();emit libraryChanged();emit historyChanged();}
 }
 void PreviewController::updateThumbnail() {
@@ -316,9 +513,11 @@ int PreviewController::addFile(const QUrl& url) {
         if(library_[i].url.toLocalFile().compare(local.toLocalFile(),Qt::CaseInsensitive)==0)return i;
     LibraryItem item;item.url=local;item.settings=settings();
     item.mode=decode_mode_?desktop::DecodeMode::headroom:desktop::DecodeMode::compatible16;
+    item.layer2=layer2_;
     const auto stored=edit_store_.load(local,catalog_);
     item.save_blocked=stored.blocked;item.save_warning=stored.warning;
-    if(stored.state){item.settings=stored.state->settings;item.mode=stored.state->mode;item.geometry=stored.state->geometry;item.has_stored=true;}
+    if(stored.state){item.settings=stored.state->settings;item.mode=stored.state->mode;item.geometry=stored.state->geometry;
+        item.layer2=stored.state->layer2;item.has_stored=true;}
     library_.push_back(std::move(item));emit libraryChanged();return int(library_.size())-1;
 }
 void PreviewController::openFiles(const QVariantList& urls) {
@@ -348,7 +547,7 @@ void PreviewController::syncSelectedSettings(bool includeCrop) {
         if(sameState(itemState(item),next))continue;
         // Each recipient owns its own undo history, just like its settings.
         item.undo.push_back(itemState(item));if(item.undo.size()>64)item.undo.erase(item.undo.begin());item.redo.clear();
-        item.settings=next.settings;item.mode=next.mode;item.geometry=next.geometry;item.pending_save=true;
+        item.settings=next.settings;item.mode=next.mode;item.geometry=next.geometry;item.layer2=next.layer2;item.pending_save=true;
         item.thumbnail={};item.error.clear();++count;
     }
     status_=QStringLiteral("已将当前参数同步至 %1 张照片%2").arg(count)
@@ -361,7 +560,7 @@ void PreviewController::setCropRect(const QRectF& crop) {
 void PreviewController::setGeometry(const output::Geometry& geometry,const QString& editKey) {
     if(!frame_||busy_||dialog_open_||geometry==geometry_)return;
     try {
-        auto next=visibleImage(frame_,full_image_,geometry);
+        auto next=visibleImage(frame_,full_image_,geometry,layer2_);
         if(gesture_index_>=0&&gesture_key_!=editKey)endEditGesture();
         image_=std::move(next);geometry_=geometry;saveActiveSettings(true);updateThumbnail();
         failed_=false;emit geometryChanged();emit frameChanged();emit stateChanged();
@@ -381,10 +580,10 @@ void PreviewController::setCropAspect(double ratio) {
 void PreviewController::cancelExport(){if(cancel_batch_)cancel_batch_->store(true);}
 
 editing::State PreviewController::itemState(const LibraryItem& item) {
-    return {item.settings,item.mode,item.geometry};
+    return {item.settings,item.mode,item.geometry,item.layer2};
 }
 editing::State PreviewController::currentState() const {
-    return {settings(),decode_mode_?desktop::DecodeMode::headroom:desktop::DecodeMode::compatible16,geometry_};
+    return {settings(),decode_mode_?desktop::DecodeMode::headroom:desktop::DecodeMode::compatible16,geometry_,layer2_};
 }
 bool PreviewController::canUndo() const {
     return settingsEditable()&&active_index_>=0&&!library_[active_index_].undo.empty();
@@ -425,16 +624,24 @@ void PreviewController::restoreHistory(bool redo) {
     if(from.empty())return;
     const auto target=from.back();
     try {
-        // Prepare geometry before moving the history cursor. Allocation or
-        // validation failure leaves the frame and both stacks intact.
+        // Prepare pixels before moving the history cursor. Allocation or
+        // validation failure leaves the frame and both stacks intact. A grade
+        // change re-grades the retained print on this fast path — the engine
+        // frame never moves.
+        const bool gradeChangedNow=target.layer2!=layer2_;
         const bool geometryChangedNow=target.geometry!=geometry_;
-        auto next=geometryChangedNow?visibleImage(frame_,full_image_,target.geometry):image_;
+        auto nextFull=gradeChangedNow?gradedDisplayImage(frame_,target.layer2):full_image_;
+        auto next=(gradeChangedNow||geometryChangedNow)
+            ?visibleImage(frame_,nextFull,target.geometry,target.layer2):image_;
+        if(gradeChangedNow)++layer2_revision_;
         to.push_back(currentState());if(to.size()>64)to.erase(to.begin());from.pop_back();
-        geometry_=target.geometry;image_=std::move(next);
+        geometry_=target.geometry;layer2_=target.layer2;
+        full_image_=std::move(nextFull);image_=std::move(next);
         loadSettings(target.settings,target.mode);saveActiveSettings();
         ++settings_revision_;auto_apply_.stop();schedulePreview();updateThumbnail();
         failed_=false;status_=redo?QStringLiteral("已重做当前照片调整"):QStringLiteral("已撤销当前照片调整");
-        if(geometryChangedNow){emit geometryChanged();emit frameChanged();}
+        if(geometryChangedNow)emit geometryChanged();
+        if(geometryChangedNow||gradeChangedNow)emit frameChanged();
         emit settingsChanged();emit stateChanged();emit historyChanged();
     }catch(const std::exception& e){failed_=true;status_=text(e.what());emit stateChanged();}
 }
@@ -502,7 +709,9 @@ void PreviewController::exportBatch(const QUrl& folder,int format,int quality,in
                     else {
                         const bool useShown=held&&held->source==source&&held->decode_mode==item.mode&&sameSettings(held->settings,item.settings);
                         const auto developed=useShown?held:host.open_raw(source,item.mode,item.settings);
-                        output::exportFrame(developed,target,item.geometry,options,resources);++done;
+                        // Each photo exports its own stored grade, not the
+                        // active one: the snapshot was taken at submit time.
+                        output::exportFrame(developed,target,item.geometry,options,resources,item.layer2);++done;
                     }
                 }catch(const std::exception& e){++errors;details.append(name+": "+text(e.what()));}
                 ++processed;

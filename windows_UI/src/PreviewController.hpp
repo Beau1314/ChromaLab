@@ -36,6 +36,7 @@ class PreviewController final : public QObject {
     Q_PROPERTY(int decodeMode READ decodeMode WRITE setDecodeMode NOTIFY settingsChanged)
     Q_PROPERTY(double exposureEv READ exposureEv WRITE setExposureEv NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap adjustments READ adjustments NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantMap layer2 READ layer2 NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList libraryItems READ libraryItems NOTIFY libraryChanged)
     Q_PROPERTY(int activeIndex READ activeIndex NOTIFY libraryChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY libraryChanged)
@@ -62,7 +63,7 @@ public:
     bool hasFrame() const { return bool(frame_); }
     bool failed() const { return failed_; }
     bool dirty() const;
-    bool settingsEditable() const { return ready_&&!dialog_open_&&(!busy_||active_operation_=="render"); }
+    bool settingsEditable() const { return ready_&&!dialog_open_&&(!busy_||active_operation_=="render"||active_operation_=="layer2"); }
     bool filmIsPositive() const;
     QString status() const { return status_; }
     QString fileName() const;
@@ -76,6 +77,11 @@ public:
     int decodeMode() const { return decode_mode_; }
     double exposureEv() const { return exposure_ev_; }
     QVariantMap adjustments() const;
+    // Layer 2 — the scan-side grade. Keys: enabled + the ten scalar sliders +
+    // curves{channel: point list} + colorBalance{zone:{hue,saturation,luminance}}
+    // + vignette{amount,midpoint}. setLayer2 also accepts the flat vignette
+    // names "vignetteAmount"/"vignetteMidpoint".
+    QVariantMap layer2() const;
     QVariantList libraryItems() const;
     int activeIndex() const { return active_index_; }
     int selectedCount() const;
@@ -104,6 +110,19 @@ public:
     Q_INVOKABLE void selectAllPhotos(bool selected);
     Q_INVOKABLE void syncSelectedSettings(bool includeCrop=false);
     Q_INVOKABLE void setAdjustment(const QString& name, const QVariant& value);
+    // Layer 2 edits run on the fast path: they republish the retained print
+    // through the grade and never re-render the engine, so a job in flight
+    // stays valid. Range contracts match the desktop's adjustment sliders.
+    Q_INVOKABLE void setLayer2(const QString& name, double value);
+    Q_INVOKABLE void curveInsertPoint(const QString& channel, double x, double y);
+    Q_INVOKABLE void curveMovePoint(const QString& channel, int index, double x, double y);
+    Q_INVOKABLE void curveRemovePoint(const QString& channel, int index);
+    Q_INVOKABLE void curveReset(const QString& channel);
+    Q_INVOKABLE QVariantList curvePoints(const QString& channel) const;
+    Q_INVOKABLE double curveEval(const QString& channel, double x) const;
+    // zone: 0=master 1=shadows 2=midtones 3=highlights; axis: 0=hue 1=sat 2=lum.
+    // Hue spans [0,360]; saturation [0,1]; luminance [-1,1] (the desktop's ranges).
+    Q_INVOKABLE void setZone(int zone, int axis, double value);
     Q_INVOKABLE void setCropRect(const QRectF& crop);
     Q_INVOKABLE void resetCrop();
     Q_INVOKABLE void setCropAspect(double ratio);
@@ -146,6 +165,9 @@ private:
         spk::desktop::output::Geometry geometry;
         spk::desktop::FramePtr frame;
         spk::desktop::Catalog catalog;
+        // Only the open reply carries one: it installs the opened photo's
+        // stored grade before the graded publication below.
+        spk::desktop::layer2::Adjustments layer2;
     };
     using Job = std::function<Reply(spk::desktop::PreviewHost&)>;
     void workerLoop(std::filesystem::path resources);
@@ -165,6 +187,12 @@ private:
     void openItem(int index);
     void changed(const QString& editKey={});
     void schedulePreview();
+    // Layer 2 fast path: grade the retained print without the engine.
+    QImage gradedDisplayImage(const spk::desktop::FramePtr&, const spk::desktop::layer2::Adjustments&) const;
+    void changedLayer2(const QString& editKey={});
+    void scheduleLayer2();
+    void publishFromFrame(const QString& status);
+    void computeHistogram();
     bool ready_=false, busy_=true, failed_=false;
     QString status_=QStringLiteral("正在启动渲染引擎…");
     QVariantList films_, papers_;
@@ -176,11 +204,15 @@ private:
     QImage full_image_;
     spk::desktop::output::Geometry geometry_;
     spk::desktop::RenderSettings extra_settings_;
+    spk::desktop::layer2::Adjustments layer2_;
+    quint64 layer2_revision_=0;
+    bool layer2_pending_=false;
     struct LibraryItem {
         QUrl url;
         spk::desktop::RenderSettings settings;
         spk::desktop::DecodeMode mode=spk::desktop::DecodeMode::compatible16;
         spk::desktop::output::Geometry geometry;
+        spk::desktop::layer2::Adjustments layer2;
         QImage thumbnail;
         QString error;
         bool selected=true;

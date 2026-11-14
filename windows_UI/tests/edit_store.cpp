@@ -94,6 +94,26 @@ int main(int argc, char** argv) {
         state.geometry.flipHorizontal = true;
         state.geometry.flipVertical = true;
         state.geometry.straightenDegrees = -12.75;
+        // Every Layer 2 family, with dyadic values so the JSON roundtrip must
+        // be exact rather than merely close.
+        namespace layer2 = spk::desktop::layer2;
+        state.layer2.enabled = false;
+        state.layer2.temperature = -47.5;
+        state.layer2.tint = 31.25;
+        state.layer2.exposure = 1.5;
+        state.layer2.contrast = -18.0;
+        state.layer2.brightness = 12.0;
+        state.layer2.saturation = -42.0;
+        state.layer2.highlights = 66.0;
+        state.layer2.shadows = -9.5;
+        state.layer2.blackPoint = 4.5;
+        state.layer2.whitePoint = 3.25;
+        state.layer2.curves.rgb.points = {QPointF(0, 0), QPointF(0.5, 0.75), QPointF(1, 1)};
+        state.layer2.curves.luma.points = {QPointF(0, 0.25), QPointF(1, 0.875)};
+        state.layer2.colorBalance.shadows = {15.0, 0.25, -0.5};
+        state.layer2.colorBalance.highlights = {300.0, 0.125, 0.5};
+        state.layer2.vignette = {-62.5, 62.5};
+        check(!layer2::isNeutral(state.layer2), "layer 2 fixture must carry a visible grade");
         store.save(url, state);
         const auto path = store.filePath(url);
         const auto result = store.load(url, catalog);
@@ -171,6 +191,7 @@ int main(int argc, char** argv) {
         corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
             mutateObject(s, "geometry", [](auto& g) {
                 mutateObject(g, "crop", [](auto& c) { c["width"] = 1; }); }); }); });
+        corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) { s["layer2"] = 7; }); });
 
         auto noStocks = catalog;
         noStocks.films.clear();
@@ -188,6 +209,21 @@ int main(int argc, char** argv) {
         }
         write(path, validBytes);
         check(store.load(url, catalog).state == std::optional(state), "reopen did not clear a resolved load warning");
+
+        // A record written before Layer 2 existed (the JSON version never
+        // changed) must still load, restoring the neutral grade; the next
+        // save rewrites the record in the current shape.
+        auto legacy = validJson;
+        mutateObject(legacy, "state", [](auto& s) { s.remove("layer2"); });
+        const auto legacyBytes = QJsonDocument(legacy).toJson();
+        write(path, legacyBytes);
+        const auto restored = store.load(url, catalog);
+        check(restored.state && restored.state->layer2 == layer2::Adjustments{} && !restored.blocked,
+              "legacy record without a layer 2 grade did not load with defaults");
+        store.save(url, state);
+        check(read(path) != legacyBytes && store.load(url, catalog).state == std::optional(state),
+              "saving after a legacy record did not restore the layer 2 fields");
+        write(path, validBytes);
 
         auto invalidState = [&](const std::function<void(editing::State&)>& change) {
             auto candidate = state;
