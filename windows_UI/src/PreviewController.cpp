@@ -320,11 +320,21 @@ void PreviewController::setAdjustment(const QString& name,const QVariant& value)
 
 QImage PreviewController::gradedDisplayImage(const desktop::FramePtr& frame,const l2::Adjustments& adjustments) const {
     // A neutral grade stays byte-identical: applyImage would still run its
-    // per-pixel chain, so it is skipped outright. A visible grade writes into
-    // its own copy — QImage::bits detaches the factory's wrapper before the
-    // first write, leaving the retained frame's display bytes untouched.
+    // per-pixel chain, so it is skipped outright and the factory's
+    // external-buffer wrapper is returned zero-copy.
     auto image=image_factory_(frame);
-    if(!image.isNull()&&!l2::isNeutral(adjustments))l2::applyImage(image,adjustments);
+    if(!image.isNull()&&!l2::isNeutral(adjustments)) {
+        // The copy is required before the first write: the factory wraps the
+        // frame's display bytes in a non-const external-buffer QImage whose
+        // refcount is 1 and which carries no ro_data, so Qt's detach() would
+        // NOT deep-copy on bits() and applyImage would grade the retained
+        // frame's bgra8 in place. The engine owns those bytes — every
+        // re-grade must start from pristine pixels (repeated fast-path
+        // edits, undo back to a neutral grade, export/canvas parity) — so a
+        // visible grade always writes into an explicit deep copy.
+        image=image.copy();
+        l2::applyImage(image,adjustments);
+    }
     return image;
 }
 void PreviewController::changedLayer2(const QString& editKey) {

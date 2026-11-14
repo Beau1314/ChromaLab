@@ -63,6 +63,12 @@ public:
     bool hasFrame() const { return bool(frame_); }
     bool failed() const { return failed_; }
     bool dirty() const;
+    // The "layer2" widening is a bounded transient, required so live slider
+    // dragging is not blocked while a layer2 flight is in the air. An
+    // engine-parameter edit accepted during that flight is coalesced
+    // (layer2_pending_) and rendered after the layer2 reply publishes
+    // (~180 ms debounce + render); during that window the displayed pixels
+    // may briefly show the layer2 reply with pre-edit engine settings.
     bool settingsEditable() const { return ready_&&!dialog_open_&&(!busy_||active_operation_=="render"||active_operation_=="layer2"); }
     bool filmIsPositive() const;
     QString status() const { return status_; }
