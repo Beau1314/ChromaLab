@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <vector>
 
 namespace spk::desktop::editing {
 namespace {
@@ -46,6 +47,15 @@ QString observationKey(const QUrl& source) {
     return pathIdentity(QDir::cleanPath(QFileInfo(source.toLocalFile()).absoluteFilePath()));
 }
 void keys(const QJsonObject& object, std::initializer_list<const char*> expected,
+          const QString& label) {
+    require(object.size() == qsizetype(expected.size()),
+            QStringLiteral("Saved edits contain missing or unsupported fields in ") + label);
+    for (const char* key : expected)
+        require(object.contains(QLatin1String(key)),
+                QStringLiteral("Saved edits are missing ") + label + "." + QLatin1String(key));
+}
+// Same contract for a dynamically chosen key list (optional key groups).
+void keys(const QJsonObject& object, const std::vector<const char*>& expected,
           const QString& label) {
     require(object.size() == qsizetype(expected.size()),
             QStringLiteral("Saved edits contain missing or unsupported fields in ") + label);
@@ -107,7 +117,9 @@ QJsonObject stateJson(const State& state) {
         {"glare_amount", s.glare_amount}, {"y_filter_shift", s.y_filter_shift},
         {"m_filter_shift", s.m_filter_shift},
         {"wb_temperature_k", s.wb_temperature_k}, {"wb_tint", s.wb_tint},
-        {"auto_exposure", s.auto_exposure}}},
+        {"auto_exposure", s.auto_exposure},
+        {"di_active", s.di_active},
+        {"di_blue_compensation", s.di_blue_compensation}}},
         {"decodeMode", mode}, {"geometry", QJsonObject{
             {"crop", QJsonObject{{"x", g.crop.x()}, {"y", g.crop.y()},
                                   {"width", g.crop.width()}, {"height", g.crop.height()}}},
@@ -127,17 +139,19 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
     const auto s = object(value, "settings");
     // The white-balance row arrived after the first records (like layer2, its
     // keys are optional so an old history still loads); records that carry it
-    // must carry all three of its keys.
+    // must carry all three of its keys. The digital-intermediate pair follows
+    // the same rule: records that carry one key must carry both.
     const bool hasWhiteBalance = s.contains(QLatin1String("wb_temperature_k"));
+    std::vector<const char*> setting_keys{
+        "film_stock", "print_stock", "print_exposure", "film_exposure_ev", "film_format_mm",
+        "grain_active", "grain_amount", "halation_active", "halation_amount", "glare_active",
+        "glare_amount", "y_filter_shift", "m_filter_shift"};
     if (hasWhiteBalance)
-        keys(s, {"film_stock", "print_stock", "print_exposure", "film_exposure_ev", "film_format_mm",
-                 "grain_active", "grain_amount", "halation_active", "halation_amount", "glare_active",
-                 "glare_amount", "y_filter_shift", "m_filter_shift",
-                 "wb_temperature_k", "wb_tint", "auto_exposure"}, QStringLiteral("settings"));
-    else
-        keys(s, {"film_stock", "print_stock", "print_exposure", "film_exposure_ev", "film_format_mm",
-                 "grain_active", "grain_amount", "halation_active", "halation_amount", "glare_active",
-                 "glare_amount", "y_filter_shift", "m_filter_shift"}, QStringLiteral("settings"));
+        setting_keys.insert(setting_keys.end(), {"wb_temperature_k", "wb_tint", "auto_exposure"});
+    const bool hasDigitalIntermediate = s.contains(QLatin1String("di_active"));
+    if (hasDigitalIntermediate)
+        setting_keys.insert(setting_keys.end(), {"di_active", "di_blue_compensation"});
+    keys(s, setting_keys, QStringLiteral("settings"));
     auto& out = state.settings;
     out.film_stock = stockId(s, "film_stock", catalog ? &catalog->films : nullptr).toStdString();
     out.print_stock = stockId(s, "print_stock", catalog ? &catalog->papers : nullptr).toStdString();
@@ -162,6 +176,10 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
         require(out.wb_temperature_k > 0.0 || out.wb_tint == 0.0,
                 QStringLiteral("Saved white balance pair is inconsistent"));
         out.auto_exposure = boolean(s, "auto_exposure");
+    }
+    if (hasDigitalIntermediate) {
+        out.di_active = boolean(s, "di_active");
+        out.di_blue_compensation = boolean(s, "di_blue_compensation");
     }
     const auto mode = string(value, "decodeMode");
     require(mode == "compatible16" || mode == "headroom",

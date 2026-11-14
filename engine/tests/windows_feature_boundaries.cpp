@@ -43,6 +43,10 @@ int main(int argc, char** argv) {
         const char* capabilities = spk_capabilities(engine.get());
         require(capabilities && std::string(capabilities).find("unsupported_features") != std::string::npos,
                 "Windows capabilities must disclose unported effects");
+        // The Cineon Digital Intermediate was ported (phase 2); it must not
+        // stay on the disclosed refusal list.
+        require(std::string(capabilities).find("\"digital_intermediate\"") == std::string::npos,
+                "ported digital intermediate still listed as unsupported");
 
         std::vector<float> pixels(32 * 16 * 3);
         for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = 0.025f + float(i % 31) * 0.025f;
@@ -54,8 +58,7 @@ int main(int argc, char** argv) {
         const std::string before = params(session.get());
 
         struct Feature { const char* key; const char* label; };
-        const std::array<Feature, 5> features{{
-            {"digital_intermediate", "digital intermediate"},
+        const std::array<Feature, 4> features{{
             {"scene_latitude_active", "scene latitude mapping"},
             {"contrast_mask_active", "contrast mask"},
             {"overscan_active", "overscan"},
@@ -81,18 +84,54 @@ int main(int argc, char** argv) {
                     std::string("open accepted an unported effect: ") + feature.key);
         }
 
+        // The ported flag is an ordinary parameter: a delta that also carries
+        // a supported change applies in one request, and the session still
+        // renders. Revert it so the later `before` comparisons hold.
+        require(spk_set_params(session.get(),
+                               "{\"digital_intermediate\":true,\"print_exposure\":1.25}",
+                               nullptr) == SPK_OK,
+                "ported digital_intermediate delta was refused");
+        require(spk_set_params(session.get(),
+                               "{\"digital_intermediate\":false,\"print_exposure\":1.0}",
+                               nullptr) == SPK_OK,
+                "digital_intermediate could not be reverted");
+        require(params(session.get()) == before, "DI parameter round trip changed other params");
+        render(engine.get(), session.get());
+
+        // The DI export renders the session's own negative as Cineon log; the
+        // reply names the encoding and the request leaves the session
+        // untouched. A slide film has no DI and must still be refused.
         spk_result di{};
         char* di_json = nullptr;
         const spk_status di_status = spk_render_digital_intermediate(session.get(), &di, &di_json);
         const std::string di_error = spk_last_error(engine.get());
-        const bool empty = !di.texture && !di.rgba16 && !di_json;
+        const bool rendered = di_status == SPK_OK && di.texture && di.rgba16 &&
+                              di.width == 32 && di.height == 16 && di_json &&
+                              std::string(di_json).find("cineon") != std::string::npos;
         spk_result_free(&di);
         spk_string_free(di_json);
-        require(di_status == SPK_ERR_USER && empty &&
-                di_error.find("digital intermediate") != std::string::npos,
-                "DI API did not return a clear refusal and empty result");
-        require(params(session.get()) == before, "DI refusal mutated the session");
+        require(rendered, "DI render failed: " + di_error);
+        require(params(session.get()) == before, "DI render mutated the session");
         render(engine.get(), session.get());
+
+        {
+            const char* slide_delta = "{\"film_stock\":\"fujifilm_provia_100f\"}";
+            spk_session* slide = spk_open(engine.get(), &input, slide_delta, nullptr);
+            require(bool(slide), std::string("slide session for the DI refusal failed: ") +
+                                     spk_last_error(engine.get()));
+            spk_result slide_di{};
+            char* slide_json = nullptr;
+            const spk_status slide_status =
+                spk_render_digital_intermediate(slide, &slide_di, &slide_json);
+            const std::string slide_error = spk_last_error(engine.get());
+            const bool slide_empty = !slide_di.texture && !slide_di.rgba16 && !slide_json;
+            spk_result_free(&slide_di);
+            spk_string_free(slide_json);
+            spk_session_release(slide);
+            require(slide_status == SPK_ERR_USER && slide_empty &&
+                    slide_error.find("Digital Intermediate") != std::string::npos,
+                    "a slide film still must be refused the DI: " + slide_error);
+        }
 
         const float* mask = nullptr;
         uint32_t width = 0, height = 0;
@@ -111,7 +150,7 @@ int main(int argc, char** argv) {
         require(latitude_status == SPK_OK && latitude_valid, "latitude analysis failed: " + latitude_error);
         require(params(session.get()) == before, "latitude analysis mutated the session");
         render(engine.get(), session.get());
-        std::cout << "Windows feature boundaries passed (5 flags, DI refusal, mask off, latitude analysis)\n";
+        std::cout << "Windows feature boundaries passed (4 flags, DI rendered + slide refused, mask off, latitude analysis)\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

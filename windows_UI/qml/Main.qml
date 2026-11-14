@@ -908,6 +908,44 @@ ApplicationWindow {
                             Effect { label: "光晕"; activeKey: "halationActive"; amountKey: "halationAmount"; maximum: 4 }
                             Effect { label: "眩光"; activeKey: "glareActive"; amountKey: "glareAmount"; maximum: 30 }
                         }
+                        // 数字中间片 (RFC-028): replaces the paper with a Cineon
+                        // log rendering of the film's own negative. Engine-side
+                        // settings like the meter — setDi goes through changed()
+                        // and re-renders the session; negative film only.
+                        Section {
+                            id: diSection
+                            title: "数字中间片"
+                            readonly property bool diActive: preview.di.active === undefined ? false : preview.di.active
+                            readonly property bool diAvailable: preview.settingsEditable && !preview.filmIsPositive
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    objectName: "diActiveSwitch"
+                                    text: "数字中间片"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: diSection.diActive
+                                    enabled: diSection.diAvailable
+                                    onToggled: preview.setDi("active", checked)
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text { text: diSection.diActive ? "Cineon 对数" : "相纸冲印"; color: Theme.muted; font.pixelSize: 10 }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    objectName: "diBlueCompensationSwitch"
+                                    text: "蓝补偿"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: preview.di.blueCompensation === undefined ? false : preview.di.blueCompensation
+                                    enabled: diSection.diAvailable && diSection.diActive
+                                    onToggled: preview.setDi("blueCompensation", checked)
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text { text: "校正蓝区的偏色"; color: Theme.muted; font.pixelSize: 10 }
+                            }
+                            Note { visible: preview.filmIsPositive; text: "反转片直接扫描，没有负片，不适用数字中间片。"; color: Theme.accent }
+                            Note { text: "数字中间片以 Cineon 对数编码输出负片的正像，替代相纸冲印；蓝补偿按胶片拟合的蓝区窗口旋转色相。" }
+                        }
                         Section {
                             title: "RAW 解码"
                             ComboBox { id: decode; Layout.fillWidth: true; model: ["兼容模式（默认）", "高光扩展（实验）"]; currentIndex: preview.decodeMode; enabled: preview.settingsEditable; onActivated: preview.decodeMode = currentIndex }

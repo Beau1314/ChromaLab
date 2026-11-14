@@ -63,16 +63,20 @@ struct Desired {
     output::Geometry geometry;
     double wbTemperature=0,wbTint=0;
     bool autoExposure=true;
+    bool diActive=false,diBlueCompensation=false;
 };
 Desired desired(const PreviewController& c) {
     return {c.filmIndex(),c.paperIndex(),c.decodeMode(),c.exposureEv(),c.adjustments(),geometry(c),
-        c.wbTemperature(),c.wbTint(),c.autoExposure()};
+        c.wbTemperature(),c.wbTint(),c.autoExposure(),
+        c.di()["active"].toBool(),c.di()["blueCompensation"].toBool()};
 }
 bool matches(const PreviewController& c,const Desired& expected) {
     return c.filmIndex()==expected.film&&c.paperIndex()==expected.paper&&c.decodeMode()==expected.decode&&
         near(c.exposureEv(),expected.exposure)&&c.adjustments()==expected.adjustments&&geometry(c)==expected.geometry&&
         near(c.wbTemperature(),expected.wbTemperature)&&near(c.wbTint(),expected.wbTint)&&
-        c.autoExposure()==expected.autoExposure;
+        c.autoExposure()==expected.autoExposure&&
+        c.di()["active"].toBool()==expected.diActive&&
+        c.di()["blueCompensation"].toBool()==expected.diBlueCompensation;
 }
 bool samePixels(const QImage& left,const QImage& right) {
     if(left.isNull()||right.isNull()||left.size()!=right.size())return false;
@@ -420,6 +424,40 @@ int main(int argc,char** argv) {
                 c.setAutoExposure(true);idle(c,"Metering restored");
                 check(c.frame()->settings.auto_exposure==true,"The meter returns on");
             }
+
+            // 数字中间片 (Cineon DI, RFC-028): also an engine parameter — the
+            // toggle re-renders the session (spk_di_encode, ported in phase 2)
+            // without decode work, the blue compensation is a second toggle on
+            // top, and undo walks back across the re-renders. The whole-image
+            // Cineon reference is a Mac-side fixture (pending), so this gate
+            // pins the control path and that the encoded output differs from
+            // the paper print.
+            {
+                const auto printed=c.frame();const auto printShown=c.previewImage().copy();
+                check(!c.di()["active"].toBool()&&!c.di()["blueCompensation"].toBool(),
+                      "The digital intermediate begins off");
+                c.setDi("active",true);idle(c,"DI render");
+                check(c.frame()!=printed&&c.frame()->settings.di_active&&
+                      c.frame()->timings.decode_ms==0,
+                      "Enabling the DI re-renders without re-decoding");
+                check(!samePixels(c.previewImage(),printShown),
+                      "The DI encodes the print as Cineon log instead of the paper");
+                c.setDi("blueCompensation",true);idle(c,"DI blue compensation render");
+                check(c.frame()->settings.di_active&&c.frame()->settings.di_blue_compensation&&
+                      c.frame()->timings.decode_ms==0,
+                      "Blue compensation re-renders as an engine parameter");
+                c.undo();idle(c,"DI undo re-render");
+                check(!c.frame()->settings.di_blue_compensation&&c.frame()->settings.di_active,
+                      "Undo removes the blue compensation but keeps the DI");
+                c.redo();idle(c,"DI redo re-render");
+                check(c.frame()->settings.di_blue_compensation,"Redo restores the blue compensation");
+                c.setDi("blueCompensation",false);idle(c,"Blue compensation off render");
+                c.setDi("active",false);idle(c,"DI off re-render");
+                check(!c.frame()->settings.di_active&&!c.frame()->settings.di_blue_compensation,
+                      "The DI returns off");
+                check(closePixels(c.previewImage(),printShown,2),
+                      "Without the DI the print returns to the paper pixels");
+            }
         }
 
         c.selectImage(1);idle(c,"Select untouched second photograph");checkPhoto(c,1,second);
@@ -449,6 +487,7 @@ int main(int argc,char** argv) {
             c.setAdjustment("filmExposureEv",.65);c.setAdjustment("filmFormatMm",56.);
             c.setAdjustment("grainAmount",.45);c.setAdjustment("halationActive",false);c.setAdjustment("halationAmount",1.65);
             c.setAdjustment("glareAmount",.35);c.setAdjustment("yFilterShift",.05);c.setAdjustment("mFilterShift",-.07);
+            c.setDi("active",true);
             c.rotateCounterClockwise();savedFirst=desired(c);
             check(c.dirty()&&!c.busy(),"Persistence checkpoint contains pending unrendered edits");
             check(c.persistenceWarning().isEmpty(),"No persistence warnings before destruction");

@@ -407,6 +407,22 @@ void PreviewController::setAutoExposure(const bool value) {
     extra_settings_.auto_exposure=value;changed(QStringLiteral("autoExposure"));
 }
 
+// --- Digital Intermediate: the Cineon engine parameter -----------------------
+
+QVariantMap PreviewController::di() const {
+    const auto& s=extra_settings_;
+    return {{"active",s.di_active},{"blueCompensation",s.di_blue_compensation}};
+}
+void PreviewController::setDi(const QString& name,const bool value) {
+    if(!settingsEditable()||filmIsPositive())return;
+    auto next=extra_settings_;
+    if(name==QLatin1String("active"))next.di_active=value;
+    else if(name==QLatin1String("blueCompensation"))next.di_blue_compensation=value;
+    else return;
+    if(next==extra_settings_)return;
+    extra_settings_=next;changed(QStringLiteral("di:")+name);
+}
+
 // --- Layer 2: the scan-side grade on the controller's fast path ---------------
 
 QImage PreviewController::gradedDisplayImage(const desktop::FramePtr& frame,const l2::Adjustments& adjustments) const {

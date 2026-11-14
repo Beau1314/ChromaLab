@@ -1,0 +1,82 @@
+#version 450
+
+// RFC-028's Digital Intermediate, the last of its three passes (nodes.metal
+// spk_di_encode). In: the positive as log10 per film channel. p is the
+// documented 42-float row: [0..8] film RGB -> working RGB (x @ M), [9..11]
+// the live log10 offsets, [12..20] working RGB -> Oklab LMS and [21..29]
+// back (M @ v), [30] compensation on, [31] hue rotation (deg), [32] chroma
+// scale, [33..36] hue centre, half width, chroma lo/hi, [37..39] Cineon
+// white, codes per decade, max code, [40] the positive of clear base
+// (subtracted: the base is black), [41] Cineon's black offset.
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Input { float value[]; } input_data;
+layout(set = 0, binding = 1, std430) readonly buffer Parameters { float value[]; } parameters;
+layout(set = 0, binding = 2, std430) readonly buffer Count { uint value[]; } count_data;
+layout(set = 0, binding = 3, std430) writeonly buffer Output { float value[]; } output_data;
+
+// vulkan_gpu.cpp folds a dispatch past maxComputeWorkGroupCount[0] (65535 on
+// lavapipe and Intel) into rows of workgroups; this is the 1D index it means.
+uint spk_global_index() {
+    return gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+}
+
+// Metal's fmod keeps the dividend's sign (C semantics); GLSL mod is
+// floor-based, so the hue wrap needs the explicit form.
+float fmod_metal(float x, float y) { return x - y * trunc(x / y); }
+
+// GLSL has no log10; log2 scaled by log10(2) stands in (well under the
+// gate's 1e-6 relative bound).
+vec3 log10_metal(vec3 x) { return log2(x) * 0.3010299956639812; }
+
+void main() {
+    uint i = spk_global_index();
+    if (i >= count_data.value[0]) return;
+    vec3 pos = vec3(pow(10.0, input_data.value[3u * i] + parameters.value[9]),
+                    pow(10.0, input_data.value[3u * i + 1u] + parameters.value[10]),
+                    pow(10.0, input_data.value[3u * i + 2u] + parameters.value[11]));
+    // The base is black: the same floor on every channel, scaled with the
+    // live gain so brightness and the filters never lift it.
+    pos -= vec3(parameters.value[40]) * vec3(pow(10.0, parameters.value[9]),
+                                             pow(10.0, parameters.value[10]),
+                                             pow(10.0, parameters.value[11]));
+    vec3 lin = vec3(pos.x * parameters.value[0] + pos.y * parameters.value[3] + pos.z * parameters.value[6],
+                    pos.x * parameters.value[1] + pos.y * parameters.value[4] + pos.z * parameters.value[7],
+                    pos.x * parameters.value[2] + pos.y * parameters.value[5] + pos.z * parameters.value[8]);
+    if (parameters.value[30] != 0.0) {
+        // Oklab (Ottosson 2020); the window sits on the output hue and fades
+        // out below a chroma floor, so greys and every other hue are exact.
+        vec3 lms = vec3(parameters.value[12] * lin.x + parameters.value[13] * lin.y + parameters.value[14] * lin.z,
+                        parameters.value[15] * lin.x + parameters.value[16] * lin.y + parameters.value[17] * lin.z,
+                        parameters.value[18] * lin.x + parameters.value[19] * lin.y + parameters.value[20] * lin.z);
+        lms = pow(max(lms, 0.0), vec3(1.0 / 3.0));
+        float L = 0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z;
+        float a = 1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z;
+        float b = 0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z;
+        float C = sqrt(a * a + b * b);
+        float h = atan(b, a) * 57.29577951308232;
+        float d = fmod_metal(h - parameters.value[33] + 540.0, 360.0) - 180.0;
+        float w = abs(d) < parameters.value[34] ? 0.5 * (1.0 + cos(3.14159265358979 * d / parameters.value[34])) : 0.0;
+        float g = clamp((C - parameters.value[35]) / (parameters.value[36] - parameters.value[35]), 0.0, 1.0);
+        w *= g * g * (3.0 - 2.0 * g);
+        if (w > 0.0) {
+            float h2 = (h + w * parameters.value[31]) * 0.017453292519943295;
+            float C2 = C * (1.0 + w * (parameters.value[32] - 1.0));
+            a = C2 * cos(h2);
+            b = C2 * sin(h2);
+            vec3 l_ = vec3(L + 0.3963377774 * a + 0.2158037573 * b,
+                           L - 0.1055613458 * a - 0.0638541728 * b,
+                           L - 0.0894841775 * a - 1.2914855480 * b);
+            lms = l_ * l_ * l_;
+            lin = vec3(parameters.value[21] * lms.x + parameters.value[22] * lms.y + parameters.value[23] * lms.z,
+                       parameters.value[24] * lms.x + parameters.value[25] * lms.y + parameters.value[26] * lms.z,
+                       parameters.value[27] * lms.x + parameters.value[28] * lms.y + parameters.value[29] * lms.z);
+        }
+    }
+    // Kodak's Cineon encode with the black offset (`log_encoding_Cineon`).
+    vec3 code = (parameters.value[37] + parameters.value[38] * log10_metal(max(lin, 0.0) * (1.0 - parameters.value[41]) + parameters.value[41]))
+                / parameters.value[39];
+    code = clamp(code, 0.0, 1.0);
+    output_data.value[3u * i] = code.x;
+    output_data.value[3u * i + 1u] = code.y;
+    output_data.value[3u * i + 2u] = code.z;
+}

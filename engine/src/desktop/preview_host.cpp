@@ -147,6 +147,10 @@ Json opening_params(const RenderSettings& settings, bool scan_film) {
     params.set("glare_amount", Json(settings.glare_amount));
     params.set("y_filter_shift", Json(settings.y_filter_shift));
     params.set("m_filter_shift", Json(settings.m_filter_shift));
+    // The Cineon Digital Intermediate travels with every open too: a saved
+    // DI-on session must restore as one when the photograph is reopened.
+    params.set("digital_intermediate", Json(settings.di_active));
+    params.set("digital_intermediate_blue_compensation", Json(settings.di_blue_compensation));
     return params;
 }
 
@@ -181,6 +185,9 @@ Json changed_params(const RenderSettings& before, const RenderSettings& after, b
     if (before.glare_amount != after.glare_amount) delta.set("glare_amount", Json(after.glare_amount));
     if (before.y_filter_shift != after.y_filter_shift) delta.set("y_filter_shift", Json(after.y_filter_shift));
     if (before.m_filter_shift != after.m_filter_shift) delta.set("m_filter_shift", Json(after.m_filter_shift));
+    if (before.di_active != after.di_active) delta.set("digital_intermediate", Json(after.di_active));
+    if (before.di_blue_compensation != after.di_blue_compensation)
+        delta.set("digital_intermediate_blue_compensation", Json(after.di_blue_compensation));
     return delta;
 }
 

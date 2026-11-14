@@ -44,6 +44,14 @@ struct RenderSettings {
     // exposure_compensation_ev as the raw film placement. Unlike the WB pair
     // this is an engine parameter: a change re-renders without re-decoding.
     bool auto_exposure = true;
+    // RFC-028's Cineon Digital Intermediate replaces the paper stage: the
+    // developed negative is read in printing density, reversed and written
+    // as Cineon log (`spk_di_encode`, ported in phase 2). Engine parameters
+    // like the meter: a change re-renders without re-decoding. The engine
+    // keeps the DI inactive for slide film (there is no negative to
+    // reverse), so the UI gates the rows on the film's catalog metadata.
+    bool di_active = false;
+    bool di_blue_compensation = false;
 
     bool operator==(const RenderSettings&) const = default;
 };

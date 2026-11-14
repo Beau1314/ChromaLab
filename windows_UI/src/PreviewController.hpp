@@ -68,6 +68,11 @@ class PreviewController final : public QObject {
     // The camera's meter (engine camera.auto_exposure, center-weighted). An
     // engine parameter: a toggle re-renders without re-decoding.
     Q_PROPERTY(bool autoExposure READ autoExposure WRITE setAutoExposure NOTIFY settingsChanged)
+    // The Cineon Digital Intermediate (RFC-028): {"active", "blueCompensation"}
+    // over the current photo's RenderSettings. Like the meter it is an
+    // engine-side setting — setDi goes through changed() and re-renders the
+    // session, never the Layer 2 fast path, and never re-decodes.
+    Q_PROPERTY(QVariantMap di READ di NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap adjustments READ adjustments NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap layer2 READ layer2 NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList libraryItems READ libraryItems NOTIFY libraryChanged)
@@ -124,6 +129,11 @@ public:
     bool wbAsShotAvailable() const;
     bool autoExposure() const { return extra_settings_.auto_exposure; }
     void setAutoExposure(bool value);
+    // name: "active" turns the Cineon DI on/off, "blueCompensation" toggles
+    // the optional blue-sector correction. Ignored for slide film (the
+    // engine has no negative to reverse) and no-ops on unchanged values.
+    QVariantMap di() const;
+    Q_INVOKABLE void setDi(const QString& name, bool value);
     QVariantMap adjustments() const;
     // Layer 2 — the scan-side grade. Keys: enabled + the ten scalar sliders +
     // curves{channel: point list} + colorBalance{zone:{hue,saturation,luminance}}

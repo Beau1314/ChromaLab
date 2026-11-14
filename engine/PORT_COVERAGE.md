@@ -50,7 +50,7 @@ commits.
 | `spk_print_lut_catalog` / `spk_print_lut_table` | tested (Windows) | tested (host smoke `export_cube`) | portable core |
 | `spk_preview_stock_lut` | tested (Windows) | tested (host smoke) | `spk_lut3d_trilinear` |
 | `spk_export_di` | tested (Windows) | tested (host smoke `export_di`) | normalised-density tap |
-| `spk_render_digital_intermediate` | refused | refused | Cineon DI (`spk_di_encode`) unported |
+| `spk_render_digital_intermediate` | refused | tested (`spk_windows_feature_boundaries`: renders the session's negative as Cineon; a slide film still returns `SPK_ERR_USER`) | ported 2026-11-15 (`spk_di_encode`), phase 2 |
 | `spk_output_transform` | untested | tested (every host `rgba8`/display render and export; a P3 export converted by lcms lands within MAE 0.6 % of the host's sRGB export) | portable core |
 | `spk_memory_report` | untested | tested (host smoke) | |
 | `spk_cancel` / `spk_progress` | untested | tested (host smoke: a full render cancelled mid-flight returns `SPK_ERR_CANCELLED` and the session renders again) | |
@@ -67,7 +67,7 @@ commits.
 | §13 date back | `date_imprint_{active,text,text_b,data_text,style,corner,placement,size,ev,inset_x,inset_y}` | **refused** when `active` | refused |
 | §14 `filter_shift_scale` | `filter_shift_scale` | implemented (portable `printing.cpp`) | implemented, untested here |
 | §15 `camera_filter` (2026-10-07) | `camera_filter` | — | implemented (portable `hanatos.cpp`, `params.cpp`; table in `camera_filters.hpp`), untested here; `desktop/mock-host/schema-fields.json` does not list it yet |
-| `io.digital_intermediate` (Cineon DI file) | | refused | refused |
+| `io.digital_intermediate` (Cineon DI file) | | tested (`spk_windows_feature_boundaries` toggles it; host sends it on open and as a delta) | implemented; whole-image Metal parity unverified |
 | anti-halation switch, highlight boost (unpublished-revision) | `halation`/`boost` fields | implemented via `spk_boost` | implemented, untested here |
 
 ## 3. Kernels: Metal vs Vulkan
@@ -85,7 +85,7 @@ commits.
 | `spk_geometry_resample_df` | same | tested | tested on lavapipe at the original bound (§5) |
 | `spk_cam16ucs_compress` | same | tested | tested |
 | `spk_grain_layers`, `spk_grain_simple`, `spk_lognormal_field`, `spk_grain_layer_one` | same (+ `spk_rng_probe`) | tested | tested (`spk_vulkan_grain`) |
-| `spk_di_encode` (Cineon DI) | **missing** | refused | refused |
+| `spk_di_encode` (Cineon DI) | same | refused | tested (`spk_vulkan_di_encode`: float64 transcription, 1e-6 relative, guard cells) |
 | `spk_mask_reduce`, `spk_mask_epilogue` (contrast mask) | **missing** | refused | refused |
 | `spk_scene_latitude` | **missing** | refused | refused |
 | `spk_overscan_canvas`, `spk_overscan_add_mask`, `spk_overscan_film_present`, `spk_overscan_light` | **missing** | refused | refused |

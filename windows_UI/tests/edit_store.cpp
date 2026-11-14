@@ -88,6 +88,9 @@ int main(int argc, char** argv) {
         state.settings.glare_amount = 11.25;
         state.settings.y_filter_shift = -0.3125;
         state.settings.m_filter_shift = 0.375;
+        // The digital-intermediate pair rides the same strict record schema.
+        state.settings.di_active = true;
+        state.settings.di_blue_compensation = true;
         state.mode = spk::desktop::DecodeMode::headroom;
         state.geometry.crop = QRectF(0.125, 0.25, 0.5, 0.625);
         state.geometry.quarterTurns = 3;
@@ -171,6 +174,10 @@ int main(int argc, char** argv) {
         corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) { s["decodeMode"] = "future-decoder"; }); });
         corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
             mutateObject(s, "settings", [](auto& f) { f.remove("film_format_mm"); }); }); });
+        // The DI pair must travel together: a record with one key alone is
+        // incomplete and cannot be interpreted as an edit.
+        corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
+            mutateObject(s, "settings", [](auto& f) { f.remove("di_blue_compensation"); }); }); });
         corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
             mutateObject(s, "settings", [](auto& f) { f["grain_active"] = 1; }); }); });
         corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
@@ -223,6 +230,22 @@ int main(int argc, char** argv) {
         store.save(url, state);
         check(read(path) != legacyBytes && store.load(url, catalog).state == std::optional(state),
               "saving after a legacy record did not restore the layer 2 fields");
+        write(path, validBytes);
+
+        // A record written before the digital intermediate existed must load
+        // with the pair off, and the next save rewrites the current shape.
+        auto legacyDi = validJson;
+        mutateObject(legacyDi, "state", [](auto& s) {
+            mutateObject(s, "settings", [](auto& f) { f.remove("di_active"); f.remove("di_blue_compensation"); }); });
+        const auto legacyDiBytes = QJsonDocument(legacyDi).toJson();
+        write(path, legacyDiBytes);
+        const auto restoredDi = store.load(url, catalog);
+        check(restoredDi.state && restoredDi.state->settings.di_active == false &&
+              restoredDi.state->settings.di_blue_compensation == false && !restoredDi.blocked,
+              "legacy record without the digital intermediate did not load with defaults");
+        store.save(url, state);
+        check(read(path) != legacyDiBytes && store.load(url, catalog).state == std::optional(state),
+              "saving after a legacy DI record did not restore the DI fields");
         write(path, validBytes);
 
         auto invalidState = [&](const std::function<void(editing::State&)>& change) {

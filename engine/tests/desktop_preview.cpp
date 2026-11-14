@@ -92,6 +92,9 @@ void settings_defaults() {
           "desktop glare defaults differ from engine");
     check(settings.y_filter_shift == engine.enlarger.y_filter_shift && settings.m_filter_shift == engine.enlarger.m_filter_shift,
           "desktop enlarger defaults differ from engine");
+    check(settings.di_active == engine.io.digital_intermediate &&
+          settings.di_blue_compensation == engine.io.digital_intermediate_blue_compensation,
+          "desktop digital intermediate defaults differ from engine");
 }
 
 void conversion() {
