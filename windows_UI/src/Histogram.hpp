@@ -12,6 +12,7 @@
 #include <QThread>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <exception>
 #include <mutex>

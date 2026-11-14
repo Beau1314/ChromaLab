@@ -562,7 +562,11 @@ ApplicationWindow {
                             title: "直方图"
                             visible: preview.hasFrame
                             readonly property var bins: preview.histogram
-                            readonly property var channelColors: ["#bdbdbd", "#e8524e", "#62c462", "#5d7de8"]
+                            // Indexed by channel (bins[0..3] = R/G/B/luma):
+                            // R red, G green, B blue, luma gray. The paint
+                            // loop's pass→channel mapping keeps the draw order
+                            // luma behind, R/G/B over it.
+                            readonly property var channelColors: ["#e8524e", "#62c462", "#5d7de8", "#bdbdbd"]
                             readonly property int peak: {
                                 var top = 1
                                 for (var c = 0; c < bins.length; ++c)
