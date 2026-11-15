@@ -1557,7 +1557,13 @@ void PreviewController::flushEdits() {
 QString PreviewController::persistenceWarning() const {
     QStringList warnings;
     for(const auto& item:library_)if(!item.save_warning.isEmpty())
-        warnings.append(QFileInfo(item.url.toLocalFile()).fileName()+": "+item.save_warning);
+        // A pair item owns no file of its own: the warning names the piece
+        // the way the strip does, by its two holes ("left + right"), so the
+        // row never renders as ": message" over an empty URL.
+        warnings.append((item.is_pair
+            ?QFileInfo(item.pair_sources[0].toLocalFile()).fileName()+QStringLiteral(" + ")+
+             QFileInfo(item.pair_sources[1].toLocalFile()).fileName()
+            :QFileInfo(item.url.toLocalFile()).fileName())+": "+item.save_warning);
     return warnings.join("\n");
 }
 QString PreviewController::savedStatus() const {

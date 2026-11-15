@@ -27,7 +27,31 @@ ApplicationWindow {
     property int exportFormat: 0
     property int exportQuality: 95
     property int exportLongEdge: 0
-    readonly property bool canEditCrop: preview.hasFrame && !preview.busy && !preview.batchExporting
+    // The active library item is a half-frame pair (its `pair` map is filled).
+    // The pair's own look sections stay live; the shared photo sections that
+    // pairWireOf overrides are guarded against it below.
+    readonly property bool pairActive: preview.pair.leftUrl !== undefined
+    // On-strip = the pair item's own film edge (`pairWireOf` reads
+    // overscan_active): the wire then forces the strip's 1 mm gap.
+    readonly property bool pairOnStrip: pairActive && preview.overscan.on === true
+    readonly property bool pairAnyDated: pairActive && preview.pair.holes !== undefined &&
+        (preview.pair.holes[0].dated === true || preview.pair.holes[1].dated === true)
+    readonly property real pairSpacingMM: pairActive && preview.pair.spacingMM !== undefined
+        ? Number(preview.pair.spacingMM) : 1.0
+    // 建对 takes the first two selected photographs in library order (a pair
+    // item is never a candidate -- a pair is never a hole of another pair).
+    readonly property var pairCandidates: {
+        var rows = []
+        var items = preview.libraryItems
+        for (var i = 0; i < items.length && rows.length < 2; ++i)
+            if (items[i].selected && !items[i].pair) rows.push(items[i])
+        return rows
+    }
+    // The 建对 refusal message (createPair returns false without changing
+    // anything); cleared automatically so the strip row stays quiet.
+    property string pairNotice: ""
+    Timer { id: pairNoticeTimer; interval: 8000; onTriggered: window.pairNotice = "" }
+    readonly property bool canEditCrop: preview.hasFrame && !preview.busy && !preview.batchExporting && !pairActive
     readonly property bool canBrowse: preview.ready && !preview.busy && !preview.batchExporting && !cropMode
     // Text controls keep their own undo stack while they own keyboard focus.
     readonly property bool editingText: activeFocusItem !== null && typeof activeFocusItem.text === "string" && typeof activeFocusItem.undo === "function"
@@ -238,7 +262,10 @@ ApplicationWindow {
         property int decimals: 1
         property string suffix: ""
         readonly property real current: preview.dateImprint[name] === undefined ? 0 : Number(preview.dateImprint[name])
-        readonly property bool available: preview.settingsEditable && preview.dateImprint.on === true
+        // A pair's date rows live off the holes (any dated hole activates the
+        // face), so the scalars follow the same rule as the dateSection rows.
+        readonly property bool available: preview.settingsEditable &&
+            (preview.dateImprint.on === true || (window.pairActive && window.pairAnyDated))
         Layout.fillWidth: true; spacing: 2
         RowLayout {
             Layout.fillWidth: true
@@ -351,6 +378,96 @@ ApplicationWindow {
             }
         }
     }
+    // One hole of the active half-frame pair (PAIR-WIRING §5): reads
+    // preview.pair.holes[side], writes preview.setPairHole(side, field,
+    // value). Exposure and placement re-compose the piece; the date rows are
+    // wire rows and reprint the kept negative. The print trim rows are
+    // persisted by the controller but not yet wired to pixels (§12's
+    // per-hole print-layer cut is a later port), so they read back
+    // read-only with that note.
+    component PairHoleSection: ColumnLayout {
+        id: holePanel
+        property int side: 0
+        readonly property var hole: window.pairActive && preview.pair.holes !== undefined ? preview.pair.holes[side] : null
+        readonly property bool ok: hole !== null
+        readonly property string sideName: window.pairActive && preview.pair.turned === true
+            ? (side === 0 ? "上" : "下") : (side === 0 ? "左" : "右")
+        Layout.fillWidth: true; spacing: 6
+        Text { text: holePanel.sideName + "孔" + (holePanel.ok && holePanel.hole.sourceName !== undefined && holePanel.hole.sourceName.length > 0 ? " · " + holePanel.hole.sourceName : ""); color: Theme.text; font.pixelSize: 11; font.bold: true }
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "曝光"; color: Theme.text; font.pixelSize: 11 }
+            Item { Layout.fillWidth: true }
+            Text {
+                text: holePanel.ok ? (holePanel.hole.exposureEv >= 0 ? "+" : "") + Number(holePanel.hole.exposureEv).toFixed(2) + " EV" : ""
+                color: Theme.muted; font.pixelSize: 10
+            }
+        }
+        Slider {
+            Layout.fillWidth: true; implicitHeight: 24
+            from: -5; to: 5; stepSize: 0.05
+            value: holePanel.ok ? Number(holePanel.hole.exposureEv) : 0
+            enabled: preview.settingsEditable
+            onPressedChanged: {
+                if (pressed) preview.beginEditGesture("pairHole" + holePanel.side + "ExposureEv")
+                else preview.endEditGesture()
+            }
+            onMoved: preview.setPairHole(holePanel.side, "exposureEv", value)
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "测光读数"; color: Theme.text; font.pixelSize: 11 }
+            Item { Layout.fillWidth: true }
+            Text {
+                // The reading arrives with the compose reply (the meter cache
+                // holds while the hole is dragged, PAIR-WIRING §4.2); while a
+                // job runs with no reading yet it reads as metering.
+                text: !holePanel.ok ? ""
+                    : holePanel.hole.meteredEv === undefined
+                        ? (preview.busy ? "测光中…" : "尚无读数")
+                        : Number(holePanel.hole.meteredEv).toFixed(2) + " EV"
+                color: Theme.muted; font.pixelSize: 10
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Switch {
+                text: "日期"; font.pixelSize: 11
+                palette.windowText: Theme.text
+                checked: holePanel.ok && holePanel.hole.dated === true
+                enabled: preview.settingsEditable
+                onToggled: preview.setPairHole(holePanel.side, "dated", checked)
+            }
+            TextField {
+                objectName: "pairHole" + holePanel.side + "DateText"
+                Layout.fillWidth: true
+                placeholderText: "如 '26 11 15"
+                text: holePanel.ok && holePanel.hole.dateText !== undefined ? holePanel.hole.dateText : ""
+                enabled: preview.settingsEditable && holePanel.ok && holePanel.hole.dated === true
+                font.pixelSize: 11
+                onEditingFinished: {
+                    var current = holePanel.hole.dateText === undefined ? "" : holePanel.hole.dateText
+                    if (text !== current) preview.setPairHole(holePanel.side, "dateText", text)
+                }
+            }
+        }
+        // Print trim (PAIR-WIRING §12): the four enlarger rows stored and
+        // persisted with the pair, shown read-only until the print-layer cut
+        // lands -- a live edit here would silently change nothing.
+        ColumnLayout {
+            Layout.fillWidth: true; spacing: 2
+            Text { text: "印相 trim（暂存）"; color: Theme.muted; font.pixelSize: 10; font.bold: true }
+            Text { text: "亮度 " + (holePanel.ok ? (holePanel.hole.trim.printExposure >= 0 ? "+" : "") + Number(holePanel.hole.trim.printExposure).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
+            Text { text: "黄滤镜 " + (holePanel.ok ? (holePanel.hole.trim.yFilterShift >= 0 ? "+" : "") + Number(holePanel.hole.trim.yFilterShift).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
+            Text { text: "洋红滤镜 " + (holePanel.ok ? (holePanel.hole.trim.mFilterShift >= 0 ? "+" : "") + Number(holePanel.hole.trim.mFilterShift).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
+            Text { text: "预闪 " + (holePanel.ok ? Number(holePanel.hole.trim.preflashExposure).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
+        }
+        // Scene Placement per hole is deferred: requestLatitude() carries no
+        // region parameter yet and refuses on a pair (PAIR-WIRING §6.2/§6.3
+        // want the per-hole region request), so there is deliberately no
+        // 应用映射/Fit row here to build a dead path against.
+        Note { text: "印相 trim 四行随对记录保存；逐孔印相切割在后续任务接线，当前不改变像素。" }
+    }
 
     RowLayout {
         anchors.fill: parent; spacing: 1
@@ -407,6 +524,11 @@ ApplicationWindow {
                         }
                         Section {
                             title: "裁切"
+                            Note {
+                                visible: window.pairActive
+                                text: "半幅对 · 画面级裁切与方向不适用于对件：两孔的画面在孔内逐孔放置（见「半幅对」面板）。"
+                                color: Theme.accent
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 ComboBox {
@@ -654,10 +776,39 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true; spacing: 6
                             Text { text: preview.libraryItems.length + " 张照片 · 已选 " + preview.selectedCount; color: Theme.muted; font.pixelSize: 10 }
-                            Item { Layout.fillWidth: true }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: window.pairNotice.length > 0
+                                text: window.pairNotice
+                                color: "#ffb39f"; font.pixelSize: 10
+                                elide: Text.ElideRight
+                            }
+                            Item { Layout.fillWidth: true; visible: window.pairNotice.length === 0 }
                             ActionButton { text: "全选"; implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.libraryItems.length > 0; onClicked: preview.selectAllPhotos(true) }
                             ActionButton { text: "清除选择"; implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.selectedCount > 0; onClicked: preview.selectAllPhotos(false) }
                             ActionButton { text: "同步设置"; implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.hasFrame && preview.selectedCount > 0; onClicked: preview.syncSelectedSettings(false); ToolTip.visible: hovered; ToolTip.text: "将当前照片的胶片、相纸、解码和效果同步到所选照片，不同步裁切。" }
+                            // 建对 (PAIR-WIRING §5): the two selected photographs
+                            // become one pair library item. The controller
+                            // refuses (and changes nothing) while the engine is
+                            // busy, when a source is itself a pair, or when an
+                            // identical pair already sits in the library (that
+                            // last one selects the existing pair and returns
+                            // true), so the button only surfaces the refusal.
+                            ActionButton {
+                                objectName: "createPairButton"
+                                text: "建对"; implicitHeight: 23; font.pixelSize: 10
+                                enabled: window.canBrowse && window.pairCandidates.length === 2
+                                onClicked: {
+                                    if (preview.createPair(window.pairCandidates[0].url, window.pairCandidates[1].url)) {
+                                        window.pairNotice = ""
+                                    } else {
+                                        window.pairNotice = "无法建对：请等待当前操作完成，或改选两张不同的照片（半幅对不能作为对孔）"
+                                        pairNoticeTimer.restart()
+                                    }
+                                }
+                                ToolTip.visible: hovered
+                                ToolTip.text: "把所选的前两张照片（按库序）合为一件半幅对；对以独立库项出现，逐孔编辑见右侧「半幅对」面板。"
+                            }
                         }
                         ListView {
                             id: filmstrip; objectName: "photoStrip"
@@ -695,6 +846,87 @@ ApplicationWindow {
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                     ColumnLayout {
                         width: parent.width; spacing: 0
+                        // 半幅对 (PAIR-WIRING §5/§6): the pair library item's
+                        // own panel. The piece's spacing/turn and each hole's
+                        // exposure/date edit through setPairPiece/setPairHole;
+                        // the pair's look (film/paper, film edge, print rows)
+                        // stays in the shared sections below. The canvas needs
+                        // no change -- the pair item's previewImage IS the
+                        // piece, and the filmstrip already carries the item.
+                        Section {
+                            id: pairSection
+                            title: "半幅对"
+                            visible: window.pairActive
+                            Note {
+                                visible: window.pairActive
+                                text: "对不拥有自己的照片：两孔随各自源照片的解码与裁切；件的胶片、相纸与胶片边缘在下方共用面板调整。"
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "记录"; color: Theme.text; font.pixelSize: 11 }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: window.pairActive && preview.pair.saved === true ? "已保存" : "保存中…"
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "间距"; color: window.pairOnStrip ? Theme.muted : Theme.text; font.pixelSize: 11 }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: window.pairActive
+                                        ? (window.pairOnStrip ? "1.0 mm（片条固定）" : Number(preview.pair.spacingMM).toFixed(2) + " mm")
+                                        : ""
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            Slider {
+                                objectName: "pairSpacingSlider"
+                                Layout.fillWidth: true; implicitHeight: 24
+                                from: 0.5; to: 2.0; stepSize: 0.05
+                                value: window.pairOnStrip ? 1.0 : (window.pairActive ? Number(preview.pair.spacingMM) : 1.0)
+                                enabled: preview.settingsEditable && !window.pairOnStrip
+                                onPressedChanged: {
+                                    if (pressed) preview.beginEditGesture("pairSpacing")
+                                    else preview.endEditGesture()
+                                }
+                                onMoved: preview.setPairPiece("spacingMM", value)
+                            }
+                            Note { visible: window.pairOnStrip; text: "胶片边缘开启：对走在片条上，间隙固定为片条的 1 mm；关闭胶片边缘后可调。" }
+                            // Wide-gap dated bare pair (PAIR-WIRING §2's gate
+                            // shape): with a date on and no film edge, the
+                            // engine's 37:24 shape gate refuses spacing above
+                            // ~2.85 mm, so a record-loaded wide gap warns here
+                            // (the slider itself caps at 2.0).
+                            Note {
+                                visible: window.pairActive && !window.pairOnStrip && window.pairAnyDated &&
+                                         window.pairSpacingMM > 2.85
+                                text: "有日期且无胶片边缘时间距上限约 2.85 mm：更宽的间隙超出引擎的画幅比例约束，组装会被拒绝。"
+                                color: Theme.accent
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    objectName: "pairTurnedSwitch"
+                                    text: "转向（竖排）"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: window.pairActive && preview.pair.turned === true
+                                    enabled: preview.settingsEditable
+                                    onToggled: preview.setPairPiece("turned", checked)
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: window.pairActive && preview.pair.turned === true ? "上下竖排" : "左右并排"
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line; opacity: 0.35 }
+                            PairHoleSection { side: 0 }
+                            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line; opacity: 0.35 }
+                            PairHoleSection { side: 1 }
+                            Note { text: "曝光与放置改动重新组装整件；日期改动按同底片重印。撤销/重做按对件自己的历史行走。" }
+                        }
                         // Output histogram: 4×256 bins over the published
                         // preview pixels (geometry + grade applied), the same
                         // surface the canvas draws. Four normalized polylines —
@@ -812,7 +1044,12 @@ ApplicationWindow {
                                     id: latitudeButton
                                     objectName: "latitudeButton"
                                     text: preview.latitudeBusy ? "分析中…" : "分析"
-                                    enabled: preview.hasFrame && !preview.busy
+                                    // A pair's reading is the piece's per-hole
+                                    // region (PAIR-WIRING §6.2); until that
+                                    // request exists the controller refuses the
+                                    // analysis on a pair, so the button stands
+                                    // down rather than no-op silently.
+                                    enabled: preview.hasFrame && !preview.busy && !window.pairActive
                                     onClicked: preview.requestLatitude()
                                 }
                                 Text { Layout.fillWidth: true; text: latitudeSection.summary; color: Theme.muted; font.pixelSize: 10; elide: Text.ElideRight }
@@ -941,10 +1178,18 @@ ApplicationWindow {
                                 objectName: "commitFitButton"
                                 Layout.fillWidth: true
                                 text: "提交拟合"
-                                enabled: latitudeSection.fitValid && preview.settingsEditable && preview.hasFrame
+                                // The fit lands on the first curve; a pair's
+                                // commit waits for the per-hole region (§6.3),
+                                // and the controller refuses it on a pair.
+                                enabled: latitudeSection.fitValid && preview.settingsEditable && preview.hasFrame && !window.pairActive
                                 onClicked: preview.commitLatitudeFit()
                             }
                             Note { visible: latitudeSection.summary.length > 0; text: latitudeSection.summary; color: Theme.text }
+                            Note {
+                                visible: window.pairActive
+                                text: "半幅对 · 分析与提交拟合暂不适用于对件（逐孔区域测量待后续任务）；「应用映射」仍按整件生效。"
+                                color: Theme.accent
+                            }
                             Note { text: "分析只读取当前显影结果，不改变画面；「应用映射」按已提交的曲线放置场景，「提交拟合」写入求解的高光/阴影收放。" }
                         }
                         Section {
@@ -985,12 +1230,18 @@ ApplicationWindow {
                         Section {
                             id: cameraSection
                             title: "输入 / 相机"
-                            Adjustment { label: "胶片曝光"; setting: "filmExposureEv"; from: -4; to: 4; step: 0.1; decimals: 1; suffix: " EV" }
+                            Note {
+                                visible: window.pairActive
+                                text: "半幅对 · 胶片曝光、白平衡与测光在件级控制：对的曝光恒为 0（每孔的曝光在「半幅对」面板），解码随各孔源照片。"
+                                color: Theme.accent
+                            }
+                            Adjustment { label: "胶片曝光"; setting: "filmExposureEv"; from: -4; to: 4; step: 0.1; decimals: 1; suffix: " EV"; available: !window.pairActive }
                             Note { text: "在胶片曝光前调整场景亮度。每张照片的效果与裁切自动保存，下次导入时恢复。" }
                             // 白平衡（RAW 解码侧的 Temperature/Tint，Adobe DNG 口径）：
                             // 0 = 自动（As Shot）。改动是解码参数，会重新解码当前照片
                             // 而不是增量重渲染；高光扩展解码不接受覆盖，控件随之禁用。
-                            readonly property bool wbEditable: preview.hasFrame && preview.decodeMode === 0
+                            // 对件没有自己的解码（两孔各随源照片），行随对禁用。
+                            readonly property bool wbEditable: preview.hasFrame && preview.decodeMode === 0 && !window.pairActive
                             readonly property bool wbAsShot: preview.wbTemperature <= 0
                             RowLayout {
                                 Layout.fillWidth: true
@@ -1054,8 +1305,11 @@ ApplicationWindow {
                                     id: meterSwitch
                                     text: "测光"; font.pixelSize: 11
                                     palette.windowText: Theme.text
+                                    // pairWireOf forces the meter off on a pair
+                                    // (each hole's exposure rides its own
+                                    // pixels), so the shared switch stands down.
                                     checked: preview.autoExposure
-                                    enabled: preview.settingsEditable
+                                    enabled: preview.settingsEditable && !window.pairActive
                                     onToggled: preview.autoExposure = checked
                                 }
                                 Item { Layout.fillWidth: true }
@@ -1074,10 +1328,15 @@ ApplicationWindow {
                                     readonly property real actualLength: Number(preview.adjustments.filmFormatMm === undefined ? 35 : preview.adjustments.filmFormatMm)
                                     currentIndex: lengths.indexOf(actualLength)
                                     displayText: currentIndex < 0 ? actualLength.toFixed(1) + " mm（自定）" : currentText
-                                    enabled: preview.settingsEditable
+                                    // pairWireOf derives a pair's format from
+                                    // the piece itself (36 mm + the gap), so
+                                    // the shared row stands down rather than
+                                    // edit a value the wire overrides.
+                                    enabled: preview.settingsEditable && !window.pairActive
                                     onActivated: preview.setAdjustment("filmFormatMm", lengths[currentIndex])
                                 }
                             }
+                            Note { visible: window.pairActive; text: "半幅对 · 画幅长边由整件决定（36 mm + 间距），不单独设置。"; color: Theme.accent }
                             Note { text: "物理画幅决定颗粒与光晕尺度；裁切不改变画幅。" }
                             Effect { label: "颗粒"; activeKey: "grainActive"; amountKey: "grainAmount" }
                             Effect { label: "光晕"; activeKey: "halationActive"; amountKey: "halationAmount"; maximum: 4 }
@@ -1124,7 +1383,11 @@ ApplicationWindow {
                         Section {
                             id: rawSection
                             title: "RAW 解码"
-                            ComboBox { id: decode; Layout.fillWidth: true; model: ["兼容模式（默认）", "高光扩展（实验）"]; currentIndex: preview.decodeMode; enabled: preview.settingsEditable; onActivated: preview.decodeMode = currentIndex }
+                            // A pair opens no RAW of its own: each hole reads
+                            // its source photo's own decode, so the shared
+                            // choice stands down on a pair item.
+                            ComboBox { id: decode; Layout.fillWidth: true; model: ["兼容模式（默认）", "高光扩展（实验）"]; currentIndex: preview.decodeMode; enabled: preview.settingsEditable && !window.pairActive; onActivated: preview.decodeMode = currentIndex }
+                            Note { visible: window.pairActive; text: "半幅对 · 解码随各孔源照片，不在件上设置。"; color: Theme.accent }
                             Note { text: preview.decodeMode ? "保留去马赛克后的部分高光及负值；仍使用整数去马赛克。" : "与已验证的原生 RAW 流程保持一致。" }
                             // HDR 扫描 (2026-11-06, phase 2 port): the slide's
                             // HDR scan is an engine parameter on Windows now —
@@ -1235,7 +1498,9 @@ ApplicationWindow {
                                     objectName: "overscanFormatCombo"
                                     Layout.fillWidth: true
                                     model: overscanSection.formats.map(function(f) { return f.label })
-                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    // pairWireOf forces 135_half on a pair (the
+                                    // strip's own format); the row stands down.
+                                    enabled: overscanSection.osEditable && overscanSection.osOn && !window.pairActive
                                     currentIndex: {
                                         var f = preview.overscan.format === undefined ? "135" : preview.overscan.format
                                         for (var i = 0; i < overscanSection.formats.length; ++i)
@@ -1347,6 +1612,11 @@ ApplicationWindow {
                             }
                             OverscanSlider { label: "边缘雾"; name: "fog"; from: 0; to: 4; step: 0.05 }
                             OverscanSlider { label: "漏光"; name: "leaks"; from: 0; to: 4; step: 0.05 }
+                            Note {
+                                visible: window.pairActive
+                                text: "半幅对 · 开关即对件上/下片条；画幅固定为 135 半幅条（间隙随「半幅对」面板的间距），门栅、片孔、印字与雾光仍作用于整件。"
+                                color: Theme.accent
+                            }
                             Note { text: "胶片边缘把画面外的胶片画出为真实曝光：门栅阴影、片基、片孔、片边印字、边缘雾与漏光一起显影；开关与选择走引擎参数，重新渲染而不重解码。画幅需与照片比例一致（先按门栅裁切）。" }
                         }
                         // 日期背印 (RFC-031, phase 2 port): the date exposed
@@ -1359,6 +1629,19 @@ ApplicationWindow {
                             title: "日期背印"
                             readonly property bool dtOn: preview.dateImprint.on === undefined ? false : preview.dateImprint.on
                             readonly property bool dtEditable: preview.settingsEditable
+                            // On a pair the switch and the per-frame date text
+                            // are the holes' rows (pairWireOf recomputes
+                            // date_imprint_active/text/text_b from the per-hole
+                            // switches), so those stand down; the face,
+                            // placement and size rows still ride the pair's
+                            // look and live whenever any hole is dated.
+                            readonly property bool dtItemEditable: preview.settingsEditable && !window.pairActive
+                            readonly property bool dtLive: dtOn || (window.pairActive && window.pairAnyDated)
+                            Note {
+                                visible: window.pairActive
+                                text: "半幅对 · 日期开关与文本由逐孔设置（见「半幅对」面板）；字面、位置与大小仍作用于整件。"
+                                color: Theme.accent
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Switch {
@@ -1366,82 +1649,82 @@ ApplicationWindow {
                                     text: "日期背印"; font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: dateSection.dtOn
-                                    enabled: dateSection.dtEditable
+                                    enabled: dateSection.dtItemEditable
                                     onToggled: preview.setDateImprint("on", checked)
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: !dateSection.dtOn ? "关闭" : (preview.dateImprint.style === undefined ? "" : preview.dateImprint.style)
+                                    text: !dateSection.dtLive ? "关闭" : (preview.dateImprint.style === undefined ? "" : preview.dateImprint.style)
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "日期"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: "日期"; color: dateSection.dtItemEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 TextField {
                                     objectName: "dateImprintTextInput"
                                     Layout.fillWidth: true
                                     placeholderText: "如 '26 11 15"
                                     text: preview.dateImprint.text === undefined ? "" : preview.dateImprint.text
-                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    enabled: dateSection.dtItemEditable && dateSection.dtLive
                                     font.pixelSize: 11
                                     onEditingFinished: if (text !== (preview.dateImprint.text === undefined ? "" : preview.dateImprint.text)) preview.setDateImprint("text", text)
                                 }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "数据"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: "数据"; color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 TextField {
                                     objectName: "dateImprintDataTextInput"
                                     Layout.fillWidth: true
                                     placeholderText: "拍摄数据（如 1/125 F2.8 A 50mm）"
                                     text: preview.dateImprint.dataText === undefined ? "" : preview.dateImprint.dataText
-                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    enabled: dateSection.dtEditable && dateSection.dtLive
                                     font.pixelSize: 11
                                     onEditingFinished: if (text !== (preview.dateImprint.dataText === undefined ? "" : preview.dateImprint.dataText)) preview.setDateImprint("dataText", text)
                                 }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "字面"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: "字面"; color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ActionButton {
                                     objectName: "dateStyleLcd"
                                     text: "LCD"; accented: preview.dateImprint.style === "lcd"
-                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    enabled: dateSection.dtEditable && dateSection.dtLive
                                     onClicked: preview.setDateImprint("style", "lcd")
                                 }
                                 ActionButton {
                                     objectName: "dateStyleDots"
                                     text: "点阵"; accented: preview.dateImprint.style === "dots"
-                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    enabled: dateSection.dtEditable && dateSection.dtLive
                                     onClicked: preview.setDateImprint("style", "dots")
                                 }
                                 ActionButton {
                                     objectName: "dateStyleData"
                                     text: "数据"; accented: preview.dateImprint.style === "data"
-                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    enabled: dateSection.dtEditable && dateSection.dtLive
                                     onClicked: preview.setDateImprint("style", "data")
                                 }
                                 Item { Layout.fillWidth: true }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "位置"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: "位置"; color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "datePlacementCombo"
                                     Layout.fillWidth: true
                                     model: ["画面内（角上）", "片框（帧间）"]
-                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    enabled: dateSection.dtEditable && dateSection.dtLive
                                     currentIndex: preview.dateImprint.placement === "rebate" ? 1 : 0
                                     onActivated: preview.setDateImprint("placement", currentIndex === 1 ? "rebate" : "frame")
                                 }
-                                Text { text: "角"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: "角"; color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "dateCornerCombo"
                                     Layout.preferredWidth: 88
                                     model: ["右下", "左下", "右上", "左上"]
                                     readonly property var values: ["br", "bl", "tr", "tl"]
-                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    enabled: dateSection.dtEditable && dateSection.dtLive
                                     currentIndex: values.indexOf(preview.dateImprint.corner === undefined ? "br" : preview.dateImprint.corner)
                                     onActivated: preview.setDateImprint("corner", values[currentIndex])
                                 }
