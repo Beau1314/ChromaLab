@@ -242,3 +242,58 @@ Font deployment: the edge print and date faces rasterise **TeX Gyre Heros**
 copies that directory; a hand-rolled deployment must carry `resources/fonts`
 -- the engine refuses to start when a named face file is missing, by design,
 rather than silently dropping the edge print.
+
+## Phase 3 half-frame pairs (半幅对)
+
+Two photographs can be composed into one 37 x 24 mm film piece -- two 18 x
+24 mm half-frame gates separated by an unexposed gap -- that develops as a
+single engine session. 建对 in the filmstrip tool row takes two selected
+photographs (the first two in library order; a pair is refused as a hole) and
+creates a pair as its own library item. The pair's strip thumbnail and canvas
+are the composed piece preview; the source photographs stay untouched in the
+library.
+
+Piece-level controls live in the 半幅对 panel: the gap spacing (0.5-2.0 mm;
+locked to the strip's 1.0 mm while the film edge is on, since the strip
+advance is fixed) and the turned toggle (side-by-side or stacked). Each hole
+has its own exposure EV (±5) with the metered reading next to it, its own
+date imprint switch and text, and its print-trim values shown read-only.
+Metering is per hole: a short single-hole session at most 1024 px solves the
+exposure and the host multiplies the solved gain into the composed pixels
+with the engine's automatic exposure off. The metering key excludes
+placement, so moving a photograph inside its hole never re-meters.
+
+Composition assembles the two decoded RAWs into one linear ProPhoto float32
+buffer in which the gap is zero -- literally unexposed film -- and develops
+it through the ordinary single-session pipeline. The frame cut lands on the
+gap midpoint, so exporting the piece yields the two half frames; the
+latitude-split and second-frame (b_*) fields ride the same settings and the
+b_* fields belong to the second frame only. Pairs persist in an independent
+`.spektrapair` record (version/sources/holes/look semantics) keyed by the
+ordered union hash of both sources, with the same atomic-save, locking and
+conflict discipline as photo records; `scene_latitude_split` and the b_*
+fields ride the settings record as an optional carried group.
+
+On a pair item the shared panels guard what does not apply: input/camera
+exposure, white balance, metering, crop, format, film-edge format (a pair
+forces 135_half) and RAW decode are disabled with a note pointing at the
+piece controls; latitude analysis and fit-commit are refused (the applied
+mapping still rides the whole piece); the date-imprint switch and per-frame
+date text move to the per-hole sections while style, corner and size remain
+live.
+
+Honest boundaries. There are still no RAW fixtures on this machine, so the
+pair render flows are verified by code review plus synthetic evidence: the
+composer/metering unit gates (990 + 21 checks), the edit-store pair record
+gate (506 checks), a synthetic pair session walked through the C API against
+the engine schema, and the engine's `overscan_checks.py` pair cases (145
+PASS / 0 FAIL on this machine). Per-hole print trim (brightness, magenta,
+yellow, preflash) persists in the pair record but does not change pixels yet
+-- the §12 print-layer cut is future work, so the panel shows the values
+read-only instead of live controls. Per-hole Scene Placement (Fit) is
+deferred until the latitude request carries a region argument; the engine
+already pins region Fits in `overscan_checks.py` but the controller surface
+is not plumbed. A dated pair without the film edge is capped by the engine's
+37:24 canvas shape gate at roughly 2.85 mm of spacing: the panel warns when
+a loaded record carries a wider gap (the slider itself caps at 2.0 mm), and
+records stay loadable.
