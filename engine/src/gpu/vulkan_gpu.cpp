@@ -82,6 +82,7 @@ constexpr KernelSpec kKernels[] = {
     {"spk_glare_add", 5, kWorkgroup},
     {"spk_reduce_max", 3, kWorkgroup},
     {"spk_boost", 4, kWorkgroup},
+    {"spk_highlight_headroom", 4, kWorkgroup},
     {"spk_bw_correct", 4, kWorkgroup},
     {"spk_edr", 5, kWorkgroup},
     {"spk_cctf_decode", 3, kWorkgroup},
@@ -94,6 +95,10 @@ constexpr KernelSpec kKernels[] = {
     {"spk_scene_curve", 5, kWorkgroup},
     {"spk_mask_reduce", 7, kWorkgroup},
     {"spk_mask_epilogue", 8, kWorkgroup},
+    {"spk_overscan_canvas", 4, kWorkgroup},
+    {"spk_overscan_add_mask", 4, kWorkgroup},
+    {"spk_overscan_film_present", 4, kWorkgroup},
+    {"spk_overscan_light", 4, kWorkgroup},
 };
 
 const KernelSpec* find_kernel(const char* name) {

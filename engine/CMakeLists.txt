@@ -49,20 +49,22 @@ add_library(spektralab_pipeline OBJECT
     src/pipeline/blur.cpp
     src/pipeline/contrast_mask.cpp
     src/pipeline/disk_checkpoint.cpp
+    src/pipeline/edge_raster.cpp
     src/pipeline/engine.cpp
+    src/pipeline/overscan.cpp
     src/pipeline/pipeline.cpp
     src/pipeline/scene_latitude.cpp
 )
 set_target_properties(spektralab_pipeline PROPERTIES POSITION_INDEPENDENT_CODE ON)
-if(APPLE)
-    target_sources(spektralab_pipeline PRIVATE src/pipeline/overscan.cpp)
-else()
-    target_sources(spektralab_pipeline PRIVATE src/pipeline/windows_unported.cpp)
-endif()
+# windows_unported.cpp left with the overscan unlock (the whole overscan/date
+# family renders through edge_raster.cpp + the four Vulkan kernels now); on
+# macOS overscan.cpp keeps drawing through the system faces via edge_raster's
+# Apple branch.
 target_link_libraries(spektralab_pipeline PRIVATE spektralab_core)
 target_include_directories(spektralab_pipeline PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb"
 )
 
 if(BUILD_TESTING)
@@ -118,11 +120,14 @@ if(NOT APPLE)
             spk_cctf_encode_matrix spk_to_rgba16
             spk_grain_layers spk_grain_layer_one spk_grain_simple
             spk_lognormal_field spk_rng_probe spk_mul spk_glare_add
-            spk_reduce_max spk_boost spk_bw_correct spk_edr spk_cctf_decode
+            spk_reduce_max spk_boost spk_highlight_headroom
+            spk_bw_correct spk_edr spk_cctf_decode
             spk_zoom_bilinear_mirror spk_geometry_resample_df
             spk_lut3d_trilinear spk_di_normalise spk_di_encode
             spk_scene_latitude spk_scene_curve
             spk_mask_reduce spk_mask_epilogue
+            spk_overscan_canvas spk_overscan_add_mask
+            spk_overscan_film_present spk_overscan_light
             CACHE INTERNAL "")
         set(vulkan_spirv)
         file(GLOB vulkan_includes "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/vulkan/*.glsl")
@@ -194,7 +199,7 @@ if(NOT APPLE)
                 add_executable(SpektraLab WIN32 tools/windows_preview.cpp)
                 target_link_libraries(SpektraLab PRIVATE spk_desktop_host comctl32 comdlg32 shell32 gdi32 user32)
                 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/licenses")
-                foreach(notice LICENSE SPEKTRAFILM_LICENSE.txt)
+                foreach(notice LICENSE SPEKTRAFILM_LICENSE.txt GUST-FONT-LICENSE.txt)
                     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../license/${notice}" "licenses/${notice}" COPYONLY)
                 endforeach()
                 if(MINGW)
@@ -260,7 +265,7 @@ if(NOT APPLE)
             add_test(NAME spk_vulkan_smoke
                 COMMAND spk_vulkan_smoke "${vulkan_resource_dir}")
 
-            foreach(probe grain pointwise di_encode resample transfer geometry lut_di scene_latitude scene_curve mask scan_hdr)
+            foreach(probe grain pointwise di_encode resample transfer geometry lut_di scene_latitude scene_curve mask scan_hdr overscan)
                 add_executable(spk_vulkan_${probe} tests/gpu_vulkan_${probe}.cpp)
                 target_include_directories(spk_vulkan_${probe} PRIVATE
                     "${CMAKE_CURRENT_SOURCE_DIR}/include"

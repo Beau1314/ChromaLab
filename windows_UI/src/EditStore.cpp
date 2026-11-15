@@ -135,7 +135,32 @@ QJsonObject stateJson(const State& state) {
         {"contrast_mask_scale", s.contrast_mask_scale},
         {"scan_hdr_headroom", s.scan_hdr_headroom},
         {"scan_hdr_stretch", s.scan_hdr_stretch},
-        {"scan_hdr_output_scale", s.scan_hdr_output_scale}}},
+        {"scan_hdr_output_scale", s.scan_hdr_output_scale},
+        {"overscan_active", s.overscan_active},
+        {"overscan_mode", QString::fromStdString(s.overscan_mode)},
+        {"overscan_format", QString::fromStdString(s.overscan_format)},
+        {"overscan_gate", QString::fromStdString(s.overscan_gate)},
+        {"overscan_holes", QString::fromStdString(s.overscan_holes)},
+        {"overscan_carrier", QString::fromStdString(s.overscan_carrier)},
+        {"overscan_edge_text", QString::fromStdString(s.overscan_edge_text)},
+        {"overscan_frame_number", double(s.overscan_frame_number)},
+        {"overscan_frame_seed", double(s.overscan_frame_seed)},
+        {"overscan_camera_seed", double(s.overscan_camera_seed)},
+        {"overscan_f_number", s.overscan_f_number},
+        {"overscan_fog", s.overscan_fog},
+        {"overscan_leaks", s.overscan_leaks},
+        {"overscan_pair", s.overscan_pair},
+        {"date_imprint_active", s.date_imprint_active},
+        {"date_imprint_text", QString::fromStdString(s.date_imprint_text)},
+        {"date_imprint_text_b", QString::fromStdString(s.date_imprint_text_b)},
+        {"date_imprint_data_text", QString::fromStdString(s.date_imprint_data_text)},
+        {"date_imprint_placement", QString::fromStdString(s.date_imprint_placement)},
+        {"date_imprint_exposure_ev", s.date_imprint_exposure_ev},
+        {"date_imprint_style", QString::fromStdString(s.date_imprint_style)},
+        {"date_imprint_size", s.date_imprint_size},
+        {"date_imprint_corner", QString::fromStdString(s.date_imprint_corner)},
+        {"date_imprint_inset_x", s.date_imprint_inset_x},
+        {"date_imprint_inset_y", s.date_imprint_inset_y}}},
         {"decodeMode", mode}, {"geometry", QJsonObject{
             {"crop", QJsonObject{{"x", g.crop.x()}, {"y", g.crop.y()},
                                   {"width", g.crop.width()}, {"height", g.crop.height()}}},
@@ -193,6 +218,28 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
         setting_keys.insert(setting_keys.end(),
                             {"scan_hdr_headroom", "scan_hdr_stretch",
                              "scan_hdr_output_scale"});
+    // RFC-031/032's film edge arrived with the same port; records that carry
+    // one of its keys must carry all fourteen.
+    const bool hasOverscan = s.contains(QLatin1String("overscan_active"));
+    if (hasOverscan)
+        setting_keys.insert(setting_keys.end(),
+                            {"overscan_active", "overscan_mode", "overscan_format",
+                             "overscan_gate", "overscan_holes", "overscan_carrier",
+                             "overscan_edge_text", "overscan_frame_number",
+                             "overscan_frame_seed", "overscan_camera_seed",
+                             "overscan_f_number", "overscan_fog", "overscan_leaks",
+                             "overscan_pair"});
+    // The date back likewise; records that carry one of its keys must carry
+    // all eleven.
+    const bool hasDateImprint = s.contains(QLatin1String("date_imprint_active"));
+    if (hasDateImprint)
+        setting_keys.insert(setting_keys.end(),
+                            {"date_imprint_active", "date_imprint_text",
+                             "date_imprint_text_b", "date_imprint_data_text",
+                             "date_imprint_placement", "date_imprint_exposure_ev",
+                             "date_imprint_style", "date_imprint_size",
+                             "date_imprint_corner", "date_imprint_inset_x",
+                             "date_imprint_inset_y"});
     keys(s, setting_keys, QStringLiteral("settings"));
     auto& out = state.settings;
     out.film_stock = stockId(s, "film_stock", catalog ? &catalog->films : nullptr).toStdString();
@@ -248,6 +295,78 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
         out.scan_hdr_headroom = number(s, "scan_hdr_headroom", 0.0, 16.0);
         out.scan_hdr_stretch = boolean(s, "scan_hdr_stretch");
         out.scan_hdr_output_scale = number(s, "scan_hdr_output_scale", 0.0625, 1.0);
+    }
+    if (hasOverscan) {
+        out.overscan_active = boolean(s, "overscan_active");
+        const QString overscanMode = string(s, "overscan_mode");
+        require(overscanMode == QLatin1String("strip") || overscanMode == QLatin1String("filed"),
+                QStringLiteral("Saved overscan mode is unknown"));
+        out.overscan_mode = overscanMode.toStdString();
+        static const char* overscanFormats[] = {"135", "135_half", "120_645", "120_6x6", "120_6x7",
+                                                "120_6x8", "120_6x9", "135_xpan", "120_6x12", "120_6x17"};
+        const QString overscanFormat = string(s, "overscan_format");
+        require(std::any_of(overscanFormats, overscanFormats + 10,
+                            [&](const char* f) { return overscanFormat == QLatin1String(f); }),
+                QStringLiteral("Saved overscan format is unknown"));
+        out.overscan_format = overscanFormat.toStdString();
+        static const char* overscanGates[] = {"auto", "square", "rounded", "eared", "shouldered", "kicked"};
+        const QString overscanGate = string(s, "overscan_gate");
+        require(std::any_of(overscanGates, overscanGates + 6,
+                            [&](const char* g) { return overscanGate == QLatin1String(g); }),
+                QStringLiteral("Saved overscan gate is unknown"));
+        out.overscan_gate = overscanGate.toStdString();
+        const QString overscanHoles = string(s, "overscan_holes");
+        require(overscanHoles == QLatin1String("white") || overscanHoles == QLatin1String("black"),
+                QStringLiteral("Saved overscan holes choice is unknown"));
+        out.overscan_holes = overscanHoles.toStdString();
+        const QString overscanCarrier = string(s, "overscan_carrier");
+        require(overscanCarrier == QLatin1String("none") || overscanCarrier == QLatin1String("black") ||
+                    overscanCarrier == QLatin1String("open"),
+                QStringLiteral("Saved overscan carrier choice is unknown"));
+        out.overscan_carrier = overscanCarrier.toStdString();
+        out.overscan_edge_text = string(s, "overscan_edge_text").toStdString();
+        const double frameNumber = number(s, "overscan_frame_number", 0.0, 99.0);
+        require(std::floor(frameNumber) == frameNumber,
+                QStringLiteral("Saved overscan frame number must be an integer"));
+        out.overscan_frame_number = int(frameNumber);
+        const double frameSeed = number(s, "overscan_frame_seed", 0.0, 2147483647.0);
+        require(std::floor(frameSeed) == frameSeed,
+                QStringLiteral("Saved overscan frame seed must be an integer"));
+        out.overscan_frame_seed = int(frameSeed);
+        const double cameraSeed = number(s, "overscan_camera_seed", 0.0, 2147483647.0);
+        require(std::floor(cameraSeed) == cameraSeed,
+                QStringLiteral("Saved overscan camera seed must be an integer"));
+        out.overscan_camera_seed = int(cameraSeed);
+        out.overscan_f_number = number(s, "overscan_f_number", 0.0, 64.0);
+        out.overscan_fog = number(s, "overscan_fog", 0.0, 4.0);
+        out.overscan_leaks = number(s, "overscan_leaks", 0.0, 4.0);
+        out.overscan_pair = boolean(s, "overscan_pair");
+    }
+    if (hasDateImprint) {
+        out.date_imprint_active = boolean(s, "date_imprint_active");
+        out.date_imprint_text = string(s, "date_imprint_text").toStdString();
+        out.date_imprint_text_b = string(s, "date_imprint_text_b").toStdString();
+        out.date_imprint_data_text = string(s, "date_imprint_data_text").toStdString();
+        const QString placement = string(s, "date_imprint_placement");
+        require(placement == QLatin1String("frame") || placement == QLatin1String("rebate"),
+                QStringLiteral("Saved date imprint placement is unknown"));
+        out.date_imprint_placement = placement.toStdString();
+        out.date_imprint_exposure_ev = number(s, "date_imprint_exposure_ev", -2.0, 8.0);
+        static const char* dateStyles[] = {"lcd", "dots", "data"};
+        const QString dateStyle = string(s, "date_imprint_style");
+        require(std::any_of(dateStyles, dateStyles + 3,
+                            [&](const char* st) { return dateStyle == QLatin1String(st); }),
+                QStringLiteral("Saved date imprint style is unknown"));
+        out.date_imprint_style = dateStyle.toStdString();
+        out.date_imprint_size = number(s, "date_imprint_size", 0.4, 3.0);
+        static const char* dateCorners[] = {"br", "bl", "tr", "tl"};
+        const QString dateCorner = string(s, "date_imprint_corner");
+        require(std::any_of(dateCorners, dateCorners + 4,
+                            [&](const char* c) { return dateCorner == QLatin1String(c); }),
+                QStringLiteral("Saved date imprint corner is unknown"));
+        out.date_imprint_corner = dateCorner.toStdString();
+        out.date_imprint_inset_x = number(s, "date_imprint_inset_x", 0.0, 30.0);
+        out.date_imprint_inset_y = number(s, "date_imprint_inset_y", 0.0, 30.0);
     }
     const auto mode = string(value, "decodeMode");
     require(mode == "compatible16" || mode == "headroom",

@@ -564,6 +564,74 @@ int main(int argc,char** argv) {
                 c.setAdjustment("glareActive",glareWas);idle(c,"Stochastic layers restored");
             }
 
+            // 胶片边缘 + 日期背印 (RFC-031/032, phase 2 port): the film edge
+            // and the date back are engine parameters like the DI and the
+            // mask, through changed() (re-renders, never re-decodes; the
+            // overscan fields are shoot-layer, so the film re-develops — the
+            // walk pins grain, halation and glare off first for the byte-for-
+            // byte off-return). The date alone works on any frame; the film
+            // edge needs the photo to match its gate's shape within 5 %, so
+            // the format is picked from the fixture's own aspect at run time
+            // and the canvas walk is fixture-gated (a fixture that matches no
+            // gate exercises the date half only).
+            {
+                const auto paper=c.frame();const auto paperShown=c.previewImage().copy();
+                const bool grainWas=c.adjustments()["grainActive"].toBool(),
+                    halationWas=c.adjustments()["halationActive"].toBool(),
+                    glareWas=c.adjustments()["glareActive"].toBool();
+                c.setAdjustment("grainActive",false);c.setAdjustment("halationActive",false);
+                c.setAdjustment("glareActive",false);idle(c,"Stochastic layers off for the overscan walk");
+                check(!c.dateImprint()["on"].toBool(),"The date back begins off");
+                c.setDateImprint("text","'26 11 15");c.setDateImprint("on",true);idle(c,"Date back render");
+                check(c.frame()!=paper&&c.frame()->settings.date_imprint_active&&
+                      c.frame()->timings.decode_ms==0,
+                      "Enabling the date back re-renders without re-decoding");
+                check(!samePixels(c.previewImage(),paperShown),
+                      "The date visibly lands on the negative");
+                c.setDateImprint("corner","tl");idle(c,"Date corner render");
+                check(c.dateImprint()["corner"].toString()==QLatin1String("tl"),
+                      "The corner lands as an engine parameter");
+                c.setDateImprint("style","dots");idle(c,"Date style render");
+                check(c.dateImprint()["style"].toString()==QLatin1String("dots"),
+                      "The style lands as an engine parameter");
+                c.setDateImprint("on",false);c.setDateImprint("text","");idle(c,"Date back off render");
+                check(samePixels(c.previewImage(),paperShown),
+                      "Without the date the print returns to the paper pixels byte for byte");
+                const double aspect=double(paper->width())/double(paper->height());
+                const std::vector<std::pair<const char*,double>> gates{
+                    {"135",36.25/24.3},{"135_half",18.0/24.0},{"120_645",41.5/56.0},{"120_6x6",1.0},
+                    {"120_6x7",69.5/56.0},{"120_6x8",76.0/56.0},{"120_6x9",84.0/56.0},
+                    {"135_xpan",65.0/24.0},{"120_6x12",2.0},{"120_6x17",3.0}};
+                QString match;
+                for(const auto& g:gates)
+                    if(std::fabs((aspect/g.second)-1.0)<=0.05){match=QLatin1String(g.first);break;}
+                if(!match.isEmpty()) {
+                    c.setOverscan("format",match);c.setOverscan("on",true);idle(c,"Film edge render");
+                    check(c.frame()!=paper&&c.frame()->settings.overscan_active&&
+                          c.frame()->timings.decode_ms==0,
+                          "Enabling the film edge re-renders without re-decoding");
+                    check(c.frame()->width()!=paper->width()||c.frame()->height()!=paper->height(),
+                          "The film canvas replaces the frame's size");
+                    c.setOverscan("frameNumber",7);idle(c,"Frame number render");
+                    check(near(c.overscan()["frameNumber"].toDouble(),7.0),
+                          "The frame number lands as an engine parameter");
+                    c.undo();idle(c,"Frame number undo re-render");
+                    check(near(c.overscan()["frameNumber"].toDouble(),0.0),
+                          "Undo removes the frame number edit but keeps the edge on");
+                    c.redo();idle(c,"Frame number redo re-render");
+                    check(near(c.overscan()["frameNumber"].toDouble(),7.0),
+                          "Redo restores the frame number edit");
+                    c.setOverscan("on",false);c.setOverscan("format","135");idle(c,"Film edge off render");
+                    check(!c.frame()->settings.overscan_active,"The film edge returns off");
+                    check(samePixels(c.previewImage(),paperShown),
+                          "Without the film edge the print returns to the paper pixels byte for byte");
+                } else {
+                    check(true,"No gate matches this fixture's shape: the film-edge canvas walk is fixture-gated");
+                }
+                c.setAdjustment("grainActive",grainWas);c.setAdjustment("halationActive",halationWas);
+                c.setAdjustment("glareActive",glareWas);idle(c,"Stochastic layers restored");
+            }
+
             // 宽容度映射 (RFC-023, phase 2 port): the analysis card's
             // engine side. The toggle is an engine parameter through changed()
             // (re-renders, never re-decodes); with nothing committed the

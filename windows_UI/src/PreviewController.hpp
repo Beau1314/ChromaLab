@@ -94,6 +94,21 @@ class PreviewController final : public QObject {
     // positive scanned, and setScanHdr goes through changed() and re-renders
     // the session like every other engine parameter.
     Q_PROPERTY(QVariantMap scanHdr READ scanHdr NOTIFY settingsChanged)
+    // RFC-031/032's film edge (phase 2 port): {"on", "mode", "format",
+    // "gate", "holes", "carrier", "edgeText", "frameNumber", "frameSeed",
+    // "cameraSeed", "fNumber", "fog", "leaks", "pair"} over the current
+    // photo's RenderSettings. The same engine-side shape as the scan HDR
+    // fields — setOverscan goes through changed() and re-renders the session
+    // (overscan_active is a shoot-layer field, so its edits re-develop the
+    // film); the render's own canvas replaces the frame, so the crop stays
+    // valid over the larger picture.
+    Q_PROPERTY(QVariantMap overscan READ overscan NOTIFY settingsChanged)
+    // The date back (RFC-031, phase 2 port): {"on", "text", "textB",
+    // "dataText", "placement", "ev", "style", "size", "corner", "insetX",
+    // "insetY"}. Works with the film edge off (the date alone draws on the
+    // bare frame) and on; the lcd/dots faces are the engine's own, the data
+    // face prints the shooting data beside the date.
+    Q_PROPERTY(QVariantMap dateImprint READ dateImprint NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap adjustments READ adjustments NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap layer2 READ layer2 NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList libraryItems READ libraryItems NOTIFY libraryChanged)
@@ -169,6 +184,21 @@ public:
     // on unchanged values.
     QVariantMap scanHdr() const;
     Q_INVOKABLE void setScanHdr(const QString& name, const QVariant& value);
+    // The film edge. name: "on" toggles the canvas, "mode"/"format"/"gate"/
+    // "holes"/"carrier" the engine's own enumerations, "edgeText" the
+    // manufacturer's edge print, "frameNumber" the edge print's frame number
+    // (0 = the seed's draw), "frameSeed"/"cameraSeed" the RFC-032 §26.1
+    // randomness, "fNumber" the gate penumbra's EXIF input, "fog"/"leaks"
+    // the spool's light (0..4), "pair" the half-frame pair. No-ops on
+    // unchanged values; goes through changed() like every engine parameter.
+    QVariantMap overscan() const;
+    Q_INVOKABLE void setOverscan(const QString& name, const QVariant& value);
+    // The date back. name: "on", "text", "textB" (a pair's second frame's
+    // date), "dataText" (shooting data printed as well), "placement"
+    // (frame|rebate), "ev" (-2..8), "style" (lcd|dots|data), "size" (0.4..3),
+    // "corner" (br|bl|tr|tl), "insetX"/"insetY" (0..30 mm).
+    QVariantMap dateImprint() const;
+    Q_INVOKABLE void setDateImprint(const QString& name, const QVariant& value);
     QVariantMap adjustments() const;
     // Layer 2 — the scan-side grade. Keys: enabled + the ten scalar sliders +
     // curves{channel: point list} + colorBalance{zone:{hue,saturation,luminance}}

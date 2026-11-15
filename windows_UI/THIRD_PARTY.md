@@ -26,3 +26,12 @@ tree. Before distributing a release binary, retain these notices and provide
 corresponding source and build/relink information for the selected open-source
 license terms. The current output is a local development bundle, not a signed
 installer or a release-compliance certification.
+
+Bundled with the engine's resources (phase 2 film edge):
+
+- TeX Gyre Heros Regular/Bold (`engine/resources/fonts/`), the film edge's
+  substitute faces for the Apple system fonts the upstream code reads:
+  <http://www.gust.org.pl/projects/e-foundry/tex-gyre/heros> - GUST Font
+  License (LPPL 1.3c), `license/GUST-FONT-LICENSE.txt`
+- stb_truetype.h v1.26 (`engine/third_party/stb/`, already vendored) draws the
+  faces off Apple - MIT / public domain dual license, `engine/third_party/stb/LICENSE`

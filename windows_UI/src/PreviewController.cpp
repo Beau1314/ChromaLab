@@ -481,6 +481,100 @@ void PreviewController::setScanHdr(const QString& name,const QVariant& value) {
     extra_settings_=next;changed(QStringLiteral("scanHdr:")+name);
 }
 
+// --- Film edge: RFC-031/032's overscan, the phase 2 port ---------------------
+
+QVariantMap PreviewController::overscan() const {
+    const auto& s=extra_settings_;
+    return {{"on",s.overscan_active},{"mode",text(s.overscan_mode)},{"format",text(s.overscan_format)},
+        {"gate",text(s.overscan_gate)},{"holes",text(s.overscan_holes)},{"carrier",text(s.overscan_carrier)},
+        {"edgeText",text(s.overscan_edge_text)},{"frameNumber",s.overscan_frame_number},
+        {"frameSeed",s.overscan_frame_seed},{"cameraSeed",s.overscan_camera_seed},
+        {"fNumber",s.overscan_f_number},{"fog",s.overscan_fog},{"leaks",s.overscan_leaks},
+        {"pair",s.overscan_pair}};
+}
+void PreviewController::setOverscan(const QString& name,const QVariant& value) {
+    if(!settingsEditable())return;
+    auto next=extra_settings_;
+    // The engine's own enumerations (params.cpp) and schema ranges.
+    static const char* kModes[]={"strip","filed"};
+    static const char* kFormats[]={"135","135_half","120_645","120_6x6","120_6x7","120_6x8",
+                                    "120_6x9","135_xpan","120_6x12","120_6x17"};
+    static const char* kGates[]={"auto","square","rounded","eared","shouldered","kicked"};
+    static const char* kHoles[]={"white","black"};
+    static const char* kCarriers[]={"none","black","open"};
+    const auto choice=[&](const QVariant& v,const char** choices,int n){
+        const QString s=v.toString();
+        for(int i=0;i<n;++i)if(s==QLatin1String(choices[i]))return std::string(choices[i]);
+        return std::string();
+    };
+    if(name==QLatin1String("on"))next.overscan_active=value.toBool();
+    else if(name==QLatin1String("mode")){auto v=choice(value,kModes,2);if(v.empty())return;next.overscan_mode=v;}
+    else if(name==QLatin1String("format")){auto v=choice(value,kFormats,10);if(v.empty())return;next.overscan_format=v;}
+    else if(name==QLatin1String("gate")){auto v=choice(value,kGates,6);if(v.empty())return;next.overscan_gate=v;}
+    else if(name==QLatin1String("holes")){auto v=choice(value,kHoles,2);if(v.empty())return;next.overscan_holes=v;}
+    else if(name==QLatin1String("carrier")){auto v=choice(value,kCarriers,3);if(v.empty())return;next.overscan_carrier=v;}
+    else if(name==QLatin1String("edgeText"))next.overscan_edge_text=value.toString().toStdString();
+    else if(name==QLatin1String("frameNumber")||name==QLatin1String("frameSeed")||name==QLatin1String("cameraSeed")) {
+        bool ok=false;const int v=value.toInt(&ok);
+        if(!ok)return;
+        if(name==QLatin1String("frameNumber")){if(v<0||v>99)return;next.overscan_frame_number=v;}
+        else if(name==QLatin1String("frameSeed")){if(v<0)return;next.overscan_frame_seed=v;}
+        else {if(v<0)return;next.overscan_camera_seed=v;}
+    } else if(name==QLatin1String("fNumber")||name==QLatin1String("fog")||name==QLatin1String("leaks")) {
+        bool ok=false;const double v=value.toDouble(&ok);
+        if(!ok||!std::isfinite(v))return;
+        if(name==QLatin1String("fNumber")){if(v<0||v>64)return;next.overscan_f_number=v;}
+        else if(name==QLatin1String("fog")){if(v<0||v>4)return;next.overscan_fog=v;}
+        else {if(v<0||v>4)return;next.overscan_leaks=v;}
+    } else if(name==QLatin1String("pair"))next.overscan_pair=value.toBool();
+    else return;
+    if(next==extra_settings_)return;
+    extra_settings_=next;changed(QStringLiteral("overscan:")+name);
+}
+
+// --- Date back: RFC-031, the phase 2 port ------------------------------------
+
+QVariantMap PreviewController::dateImprint() const {
+    const auto& s=extra_settings_;
+    return {{"on",s.date_imprint_active},{"text",text(s.date_imprint_text)},
+        {"textB",text(s.date_imprint_text_b)},{"dataText",text(s.date_imprint_data_text)},
+        {"placement",text(s.date_imprint_placement)},{"ev",s.date_imprint_exposure_ev},
+        {"style",text(s.date_imprint_style)},{"size",s.date_imprint_size},
+        {"corner",text(s.date_imprint_corner)},{"insetX",s.date_imprint_inset_x},
+        {"insetY",s.date_imprint_inset_y}};
+}
+void PreviewController::setDateImprint(const QString& name,const QVariant& value) {
+    if(!settingsEditable())return;
+    auto next=extra_settings_;
+    if(name==QLatin1String("on"))next.date_imprint_active=value.toBool();
+    else if(name==QLatin1String("text"))next.date_imprint_text=value.toString().toStdString();
+    else if(name==QLatin1String("textB"))next.date_imprint_text_b=value.toString().toStdString();
+    else if(name==QLatin1String("dataText"))next.date_imprint_data_text=value.toString().toStdString();
+    else if(name==QLatin1String("placement")) {
+        const QString v=value.toString();
+        if(v!=QLatin1String("frame")&&v!=QLatin1String("rebate"))return;
+        next.date_imprint_placement=v.toStdString();
+    } else if(name==QLatin1String("style")) {
+        const QString v=value.toString();
+        if(v!=QLatin1String("lcd")&&v!=QLatin1String("dots")&&v!=QLatin1String("data"))return;
+        next.date_imprint_style=v.toStdString();
+    } else if(name==QLatin1String("corner")) {
+        const QString v=value.toString();
+        if(v!=QLatin1String("br")&&v!=QLatin1String("bl")&&v!=QLatin1String("tr")&&v!=QLatin1String("tl"))return;
+        next.date_imprint_corner=v.toStdString();
+    } else if(name==QLatin1String("ev")||name==QLatin1String("size")||name==QLatin1String("insetX")||name==QLatin1String("insetY")) {
+        bool ok=false;const double v=value.toDouble(&ok);
+        if(!ok||!std::isfinite(v))return;
+        // The engine schema's own rows (params.cpp).
+        if(name==QLatin1String("ev")){if(v<-2||v>8)return;next.date_imprint_exposure_ev=v;}
+        else if(name==QLatin1String("size")){if(v<0.4||v>3.0)return;next.date_imprint_size=v;}
+        else if(name==QLatin1String("insetX")){if(v<0||v>30)return;next.date_imprint_inset_x=v;}
+        else {if(v<0||v>30)return;next.date_imprint_inset_y=v;}
+    } else return;
+    if(next==extra_settings_)return;
+    extra_settings_=next;changed(QStringLiteral("dateImprint:")+name);
+}
+
 // --- Scene Latitude Mapping: the analysis card's engine side -----------------
 
 void PreviewController::setSceneLatitude(const bool value) {

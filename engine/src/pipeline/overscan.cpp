@@ -19,16 +19,14 @@
 //                 error, weave, scan rotation/offset, fog and leak realisation,
 //                 and (on 120, which is not sprocket-locked) where the edge
 //                 numbers land.
-// Text is rasterised with CoreText/CoreGraphics.
-#include <Accelerate/Accelerate.h>
-#include <CoreGraphics/CoreGraphics.h>
-#include <CoreText/CoreText.h>
-
+// Text rasterises through edge_raster.cpp: CoreText/CoreGraphics on macOS,
+// the bundled TeX Gyre Heros over stb_truetype elsewhere.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
+#include "edge_raster.hpp"
 #include "pipeline.hpp"
 #include "spectral.hpp"
 #include "timer.hpp"
@@ -36,6 +34,11 @@
 namespace spk {
 
 namespace {
+
+using edge_raster::Group;
+using edge_raster::Op;
+using edge_raster::rasterise;
+using edge_raster::text_width;
 
 // Indices into the kernel parameter block; `overscan.metal` mirrors them.
 enum OsP : int {
@@ -238,32 +241,9 @@ const EdgeLook& edge_look_for(const std::string& stock) {
     return kEdgeLookDefault;
 }
 
-// --- imprint drawing ops, in film millimetres (s along, t across, t down) ----
-struct Op {
-    enum Kind { Text, Poly, Circle } kind = Text;   // Circle: pts = {s, t}, radius = size_mm
-    std::string text;
-    const char* font = "HelveticaNeue-Bold";
-    double size_mm = 1.0;       // font size (em), mm
-    double s = 0, t = 0;        // baseline start (Text) in film mm
-    double rot_deg = 0;         // about (s, t)
-    double tracking_mm = 0;
-    double skew = 0;            // horizontal shear (seven-segment slant)
-    double hscale = 1.0;        // Text: glyphs widened along the baseline (Kodak's wide numerals)
-    // Text: `hscale` widens the glyphs' shapes only -- CoreText places them at
-    // their own advances, so widened letters close up on each other. With this
-    // set the whole line is scaled, advances and tracking with it, and the
-    // string is `hscale` times as long (Kodak 120's extended face).
-    bool scale_advances = false;
-    std::vector<double> pts;    // Poly: s0,t0,s1,t1,... in film mm
-    double gain = 1.0;          // this mark's share of the group's exposure (printing variance)
-};
-
-struct Group {
-    bool factory = true;
-    std::vector<Op> ops;
-    double exposure[3] = {0, 0, 0};   // raw exposure at full coverage, per layer
-    double blur_mm = 0.0;
-};
+// The imprint drawing ops (edge_raster.hpp) live with the raster surface that
+// draws them: one group is one exposure event, its ops are laid out here in
+// film millimetres (s along, t across, t down).
 
 // Seven segments, a b c d e f g, as the data back's LCD: glyph units, digit
 // height 1, baseline at 0 (y up), no slant (the op carries the shear).
@@ -858,137 +838,6 @@ void film_to_canvas_px(const OverscanLayout& L, double s, double t, double& x, d
     y = v / L.px;
 }
 
-CFAttributedStringRef make_text(const Op& op, CTFontRef font, double gain) {
-    CFStringRef str = CFStringCreateWithCString(nullptr, op.text.c_str(), kCFStringEncodingUTF8);
-    CGFloat white[] = {CGFloat(std::clamp(gain, 0.0, 1.0)), 1.0};
-    CGColorSpaceRef gray = CGColorSpaceCreateDeviceGray();
-    CGColorRef col = CGColorCreate(gray, white);
-    CFNumberRef kern = CFNumberCreate(nullptr, kCFNumberCGFloatType, &op.tracking_mm);
-    const void* keys[] = {kCTFontAttributeName, kCTForegroundColorAttributeName, kCTKernAttributeName};
-    const void* vals[] = {font, col, kern};
-    CFDictionaryRef attrs = CFDictionaryCreate(nullptr, keys, vals, 3, &kCFTypeDictionaryKeyCallBacks,
-                                               &kCFTypeDictionaryValueCallBacks);
-    CFAttributedStringRef as = CFAttributedStringCreate(nullptr, str, attrs);
-    CFRelease(attrs); CFRelease(kern); CFRelease(col); CFRelease(gray); CFRelease(str);
-    return as;
-}
-
-// Rasterise one group into a canvas-aligned coverage bitmap (its bounding box).
-bool rasterise(const OverscanLayout& L, const Group& g, std::vector<float>& cov, int& x0, int& y0,
-               int& w, int& h) {
-    // Bounding box in canvas px from each op's film-space extent (generous for text).
-    double xmin = 1e30, ymin = 1e30, xmax = -1e30, ymax = -1e30;
-    auto grow = [&](double s, double t) {
-        double x, y;
-        film_to_canvas_px(L, s, t, x, y);
-        xmin = std::min(xmin, x); ymin = std::min(ymin, y); xmax = std::max(xmax, x); ymax = std::max(ymax, y);
-    };
-    for (const Op& op : g.ops) {
-        if (op.kind == Op::Poly) {
-            for (size_t k = 0; k + 1 < op.pts.size(); k += 2) grow(op.pts[k], op.pts[k + 1]);
-        } else if (op.kind == Op::Circle) {
-            grow(op.pts[0] - op.size_mm, op.pts[1] - op.size_mm);
-            grow(op.pts[0] + op.size_mm, op.pts[1] + op.size_mm);
-        } else {
-            const double len = (0.75 * op.size_mm * op.hscale + op.tracking_mm * (op.scale_advances ? op.hscale : 1.0)) *
-                               double(op.text.size()) + op.size_mm;
-            const double r = op.rot_deg * M_PI / 180.0;
-            const double ex = std::cos(r), ey = std::sin(r);
-            for (double a : {-0.3 * op.size_mm, len})
-                for (double b : {-1.1 * op.size_mm, 0.4 * op.size_mm})
-                    grow(op.s + a * ex - b * ey, op.t + a * ey + b * ex);
-        }
-    }
-    const double pad = 3.0 + 3.0 * g.blur_mm / L.px;
-    x0 = std::max(0, int(std::floor(xmin - pad)));
-    y0 = std::max(0, int(std::floor(ymin - pad)));
-    const int x1 = std::min(int(L.canvas_w), int(std::ceil(xmax + pad)));
-    const int y1 = std::min(int(L.canvas_h), int(std::ceil(ymax + pad)));
-    w = x1 - x0; h = y1 - y0;
-    if (w <= 0 || h <= 0) return false;
-
-    std::vector<uint8_t> px(size_t(w) * size_t(h), 0);
-    CGColorSpaceRef gray = CGColorSpaceCreateDeviceGray();
-    CGContextRef ctx = CGBitmapContextCreate(px.data(), size_t(w), size_t(h), 8, size_t(w), gray,
-                                             kCGImageAlphaNone);
-    CGColorSpaceRelease(gray);
-    if (!ctx) return false;
-    CGContextSetGrayFillColor(ctx, 1.0, 1.0);
-    CGContextSetShouldAntialias(ctx, true);
-    CGContextSetShouldSmoothFonts(ctx, false);
-    // User space = film millimetres, t downward: flip to y-down bitmap pixels,
-    // shift to this box, scale to mm, then canvas <- film.
-    CGContextTranslateCTM(ctx, 0, h);
-    CGContextScaleCTM(ctx, 1, -1);
-    CGContextTranslateCTM(ctx, -x0, -y0);
-    CGContextScaleCTM(ctx, 1.0 / L.px, 1.0 / L.px);
-    CGContextTranslateCTM(ctx, L.cu, L.cv);
-    {
-        const double a = L.A[0], b = L.A[1], c = L.A[2], d = L.A[3], det = a * d - b * c;
-        // (u, v) = Ainv (s, t): CG's (a, b, c, d) maps x' = a x + c y, y' = b x + d y.
-        CGContextConcatCTM(ctx, CGAffineTransformMake(d / det, -c / det, -b / det, a / det, 0, 0));
-    }
-    CGContextTranslateCTM(ctx, -L.cs, -L.ct);
-
-    for (const Op& op : g.ops) {
-        CGContextSetGrayFillColor(ctx, std::clamp(op.gain, 0.0, 1.0), 1.0);
-        if (op.kind == Op::Poly) {
-            CGContextBeginPath(ctx);
-            CGContextMoveToPoint(ctx, op.pts[0], op.pts[1]);
-            for (size_t k = 2; k + 1 < op.pts.size(); k += 2) CGContextAddLineToPoint(ctx, op.pts[k], op.pts[k + 1]);
-            CGContextClosePath(ctx);
-            CGContextFillPath(ctx);
-            continue;
-        }
-        if (op.kind == Op::Circle) {
-            const double r = op.size_mm;
-            CGContextFillEllipseInRect(ctx, CGRectMake(op.pts[0] - r, op.pts[1] - r, 2 * r, 2 * r));
-            continue;
-        }
-        CFStringRef fname = CFStringCreateWithCString(nullptr, op.font, kCFStringEncodingUTF8);
-        CTFontRef font = CTFontCreateWithName(fname, op.size_mm, nullptr);
-        CFRelease(fname);
-        CFAttributedStringRef as = make_text(op, font, op.gain);
-        CTLineRef line = CTLineCreateWithAttributedString(as);
-        CGContextSaveGState(ctx);
-        CGContextTranslateCTM(ctx, op.s, op.t);
-        CGContextRotateCTM(ctx, op.rot_deg * M_PI / 180.0);
-        if (op.scale_advances) CGContextScaleCTM(ctx, op.hscale, 1.0);
-        CGContextSetTextMatrix(ctx, CGAffineTransformMakeScale(op.scale_advances ? 1.0 : op.hscale, -1.0));   // t is down; glyphs are up
-        CGContextSetTextPosition(ctx, 0, 0);
-        CTLineDraw(line, ctx);
-        CGContextRestoreGState(ctx);
-        CFRelease(line); CFRelease(as); CFRelease(font);
-    }
-    CGContextRelease(ctx);
-
-    cov.resize(px.size());
-    for (size_t i = 0; i < px.size(); ++i) cov[i] = float(px[i]) * (1.0f / 255.0f);
-    // The projection's softness (RFC-031 §3.4): a small Gaussian on the mask.
-    // Separable, edges extended, through vImage rather than two scalar loops:
-    // the edge-print bands are full-width boxes (8,189 x 512 px at the full
-    // tier of a 45 MP frame, sigma ~5 px), and the loops cost 95 ms each at
-    // -O2 and ~1.2 s each in the Debug build's -O0 -- the whole of "Film Edge
-    // is slow" (2026-10-03). vImage is optimised whatever the build setting.
-    const double sigma = g.blur_mm / L.px;
-    if (sigma > 0.3) {
-        const int r = int(std::ceil(3.0 * sigma));
-        std::vector<float> k(size_t(2 * r + 1));
-        double sum = 0.0;
-        for (int i = -r; i <= r; ++i) { k[size_t(i + r)] = float(std::exp(-0.5 * i * i / (sigma * sigma))); sum += k[size_t(i + r)]; }
-        for (float& v : k) v = float(v / sum);
-        std::vector<float> tmp(cov.size(), 0.0f);
-        vImage_Buffer src{cov.data(), vImagePixelCount(h), vImagePixelCount(w), size_t(w) * sizeof(float)};
-        vImage_Buffer dst{tmp.data(), vImagePixelCount(h), vImagePixelCount(w), size_t(w) * sizeof(float)};
-        const uint32_t taps = uint32_t(2 * r + 1);
-        if (vImageConvolve_PlanarF(&src, &dst, nullptr, 0, 0, k.data(), 1, taps, 0.0f, kvImageEdgeExtend)
-                != kvImageNoError ||
-            vImageConvolve_PlanarF(&dst, &src, nullptr, 0, 0, k.data(), taps, 1, 0.0f, kvImageEdgeExtend)
-                != kvImageNoError)
-            return false;
-    }
-    return true;
-}
 
 // A 5x7 dot-matrix face (rows top to bottom, bit 4 = left column): the
 // data backs that print shooting data (645N, F5/F6) and the dot-matrix date
@@ -1371,20 +1220,6 @@ double dot_text(const std::string& text, const DotFace& f, double ps, double pt,
         x += f.advance * ps;
     }
     return std::max(0.0, x - (f.advance - f.ncol + 1) * ps + d);
-}
-
-// A Helvetica-family string's advance in film mm, as CoreText lays it out.
-double text_width(const char* font, double size_mm, const std::string& text, double tracking_mm, double hscale) {
-    Op op;
-    op.font = font; op.size_mm = size_mm; op.text = text; op.tracking_mm = tracking_mm;
-    CFStringRef fname = CFStringCreateWithCString(nullptr, font, kCFStringEncodingUTF8);
-    CTFontRef f = CTFontCreateWithName(fname, size_mm, nullptr);
-    CFRelease(fname);
-    CFAttributedStringRef as = make_text(op, f, 1.0);
-    CTLineRef line = CTLineCreateWithAttributedString(as);
-    const double w = CTLineGetTypographicBounds(line, nullptr, nullptr, nullptr);
-    CFRelease(line); CFRelease(as); CFRelease(f);
-    return w * hscale;
 }
 
 // The film edge -- the stock's own (`edge_look_for`), measured on the owner's
@@ -1989,11 +1824,25 @@ void imprint_groups(const OverscanLayout& L, const Params& params, double frame_
     // The manufacturer's printing is not uniform: each mark's density varies a
     // little (film data would fix it per roll; the frame's draw stands in).
     // A dot-matrix print's dots are one mark between them: they vary a little
-    // each, not as much as one mark from the next.
+    // each, not as much as one mark from the next. Each mark's draw hangs off
+    // its own place in the film (the same three-level rule the layout uses,
+    // RFC-032 §26.1): adding or removing a mark -- the date back's data line
+    // joining a frame's date, an edge text's length -- never shifts another
+    // mark's share, so the same seed draws the same film whatever else is
+    // printed beside it.
     for (Group& g : out)
-        for (Op& op : g.ops)
-            op.gain = op.kind == Op::Circle ? std::clamp(0.92 + 0.03 * rf.normal(), 0.8, 1.0)
-                                            : std::clamp(0.80 + 0.2 * rf.uni() + 0.05 * rf.normal(), 0.6, 1.0);
+        for (Op& op : g.ops) {
+            const double ks = op.kind == Op::Poly && op.pts.size() >= 2 ? op.pts[0] : op.s;
+            const double kt = op.kind == Op::Poly && op.pts.size() >= 2 ? op.pts[1] : op.t;
+            uint64_t ks_bits, kt_bits;
+            std::memcpy(&ks_bits, &ks, sizeof ks_bits);
+            std::memcpy(&kt_bits, &kt, sizeof kt_bits);
+            const uint64_t place = ks_bits * 0x9E3779B97F4A7C15ull ^ (kt_bits + 0x9E3779B97F4A7C15ull);
+            Rng rg(stream(frm ^ (cam << 32), kFrame, 7) ^ (place ^ (place >> 31) * 0xBF58476D1CE4E5B9ull) ^
+                   (uint64_t(op.kind == Op::Circle ? 1 : 0) << 56));
+            op.gain = op.kind == Op::Circle ? std::clamp(0.92 + 0.03 * rg.normal(), 0.8, 1.0)
+                                            : std::clamp(0.80 + 0.2 * rg.uni() + 0.05 * rg.normal(), 0.6, 1.0);
+        }
 
     // The date back (RFC-031 §8): one mechanism -- a light behind the film
     // through a mask. It prints two things, each where a camera put it, and

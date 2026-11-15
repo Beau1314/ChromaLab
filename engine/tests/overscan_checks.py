@@ -793,8 +793,12 @@ def main():
         check("CineStill: the print is yellow to orange, G/R 0.65-0.90 and B/R under 0.30 (scans: .59-.97, .16-.35)",
               0.65 <= gr <= 0.90 and br < 0.30, f"({gr:.2f}, {br:.2f})")
         # the number band: "12" standing on the film's edge, then the arrow and "12A" a half frame on
+        # (join 0.70: the strips' face is Menlo Bold, whose footed "1" fills its
+        # advance; the substitution's Heros "1" is narrower, and the inter-digit
+        # gap opens by that glyph-shape difference -- PORT_PLAN §4's recorded
+        # tolerance -- so the pair is joined as one run here as on the strips)
         bb = red[H - int(1.95 / mm):]
-        groups = lit_runs(bb, mm, 0.45)
+        groups = lit_runs(bb, mm, 0.70)
         big = [gr_ for gr_ in groups if 2.6 <= gr_[1] - gr_[0] <= 3.6]
         tall, foot = 0.0, 9.0
         if big:
@@ -832,13 +836,23 @@ def main():
 
 
 def product_overlay(tmp):
-    """engine/resources with the product's profiles laid over it, by symlink (as bw_checks.py does)."""
+    """engine/resources with the product's profiles laid over it, by symlink (as bw_checks.py does).
+
+    The Vulkan kernels a Windows engine loads are not in the source tree --
+    glslang builds them into the build's resources -- so the overlay takes the
+    build's vulkan/ directory when the source one has none."""
     engine = Path(__file__).resolve().parents[1]
     res = Path(tmp) / "resources"
     (res / "profiles").mkdir(parents=True)
     for f in (engine / "resources").iterdir():
         if f.name != "profiles":
             os.symlink(f, res / f.name)
+    if not (res / "vulkan").exists():
+        import spk_test_paths
+        build_resources = spk_test_paths.resolve_library(None).parent / "resources"
+        built = build_resources / "vulkan"
+        if built.is_dir():
+            os.symlink(built, res / "vulkan")
     for d in (engine / "resources" / "profiles", engine / "resources_product" / "profiles"):
         for f in d.glob("*.json"):
             dst = res / "profiles" / f.name

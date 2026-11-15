@@ -191,6 +191,73 @@ ApplicationWindow {
             onMoved: preview.setMask(maskSlider.name, value)
         }
     }
+    component OverscanSlider: ColumnLayout {
+        id: overscanSlider
+        // The film edge's scalars: reads preview.overscan, writes
+        // preview.setOverscan(name, value) -- the engine-parameter path (a
+        // moved slider re-renders the print, never re-decodes). The ranges
+        // are the engine schema's own rows.
+        property string label
+        property string name
+        property real from: 0
+        property real to: 4
+        property real step: 0.05
+        property int decimals: 2
+        property string suffix: ""
+        readonly property real current: preview.overscan[name] === undefined ? 0 : Number(preview.overscan[name])
+        readonly property bool available: preview.settingsEditable && preview.overscan.on === true
+        Layout.fillWidth: true; spacing: 2
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: overscanSlider.label; color: overscanSlider.available ? Theme.text : Theme.muted; font.pixelSize: 11 }
+            Item { Layout.fillWidth: true }
+            Text { text: overscanSlider.current.toFixed(overscanSlider.decimals) + overscanSlider.suffix; color: Theme.muted; font.pixelSize: 10 }
+        }
+        Slider {
+            Layout.fillWidth: true; implicitHeight: 24
+            from: overscanSlider.from; to: overscanSlider.to; stepSize: overscanSlider.step
+            value: overscanSlider.current
+            enabled: overscanSlider.available
+            onPressedChanged: {
+                if (pressed) preview.beginEditGesture("overscan:" + overscanSlider.name)
+                else preview.endEditGesture()
+            }
+            onMoved: preview.setOverscan(overscanSlider.name, value)
+        }
+    }
+    component DateSlider: ColumnLayout {
+        id: dateSlider
+        // The date back's scalars: reads preview.dateImprint, writes
+        // preview.setDateImprint(name, value) -- the same engine-parameter
+        // path, active with or without the film edge.
+        property string label
+        property string name
+        property real from: 0
+        property real to: 30
+        property real step: 0.5
+        property int decimals: 1
+        property string suffix: ""
+        readonly property real current: preview.dateImprint[name] === undefined ? 0 : Number(preview.dateImprint[name])
+        readonly property bool available: preview.settingsEditable && preview.dateImprint.on === true
+        Layout.fillWidth: true; spacing: 2
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: dateSlider.label; color: dateSlider.available ? Theme.text : Theme.muted; font.pixelSize: 11 }
+            Item { Layout.fillWidth: true }
+            Text { text: dateSlider.current.toFixed(dateSlider.decimals) + dateSlider.suffix; color: Theme.muted; font.pixelSize: 10 }
+        }
+        Slider {
+            Layout.fillWidth: true; implicitHeight: 24
+            from: dateSlider.from; to: dateSlider.to; stepSize: dateSlider.step
+            value: dateSlider.current
+            enabled: dateSlider.available
+            onPressedChanged: {
+                if (pressed) preview.beginEditGesture("dateImprint:" + dateSlider.name)
+                else preview.endEditGesture()
+            }
+            onMoved: preview.setDateImprint(dateSlider.name, value)
+        }
+    }
     component Layer2Adjustment: ColumnLayout {
         id: layer2Adjustment
         property string label
@@ -1105,6 +1172,271 @@ ApplicationWindow {
                             }
                             Note { visible: preview.hasFrame && !preview.filmIsPositive; text: "HDR 扫描仅适用于直接扫描的反转片；负片走相纸冲印，不适用。"; color: Theme.accent }
                             Note { text: "HDR 扫描把反转片每层的肩部移过各自的膝点、在光谱扫描内提升，使片基落在今日扫描的余量倍数上；走引擎参数，重新渲染而不重解码。" }
+                        }
+                        // 胶片边缘 (RFC-032, phase 2 port): the film outside
+                        // the frame as real exposure — the gate, the rebate,
+                        // the perforations, the maker's edge print. Engine-side
+                        // settings like the HDR scan: setOverscan goes through
+                        // changed() and re-renders the session (开 is a
+                        // shoot-layer field, so its edits re-develop the film
+                        // and the picture's size becomes the film canvas's).
+                        Section {
+                            id: overscanSection
+                            title: "胶片边缘"
+                            readonly property bool osOn: preview.overscan.on === undefined ? false : preview.overscan.on
+                            readonly property bool osEditable: preview.settingsEditable
+                            readonly property var formats: [
+                                {"id": "135", "label": "135 全幅（36×24）"},
+                                {"id": "135_half", "label": "135 半幅（18×24）"},
+                                {"id": "120_645", "label": "120 6×4.5"},
+                                {"id": "120_6x6", "label": "120 6×6"},
+                                {"id": "120_6x7", "label": "120 6×7"},
+                                {"id": "120_6x8", "label": "120 6×8"},
+                                {"id": "120_6x9", "label": "120 6×9"},
+                                {"id": "135_xpan", "label": "135 宽幅 XPan（65×24）"},
+                                {"id": "120_6x12", "label": "120 6×12"},
+                                {"id": "120_6x17", "label": "120 6×17"}
+                            ]
+                            readonly property var gates: ["auto", "square", "rounded", "eared", "shouldered", "kicked"]
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    objectName: "overscanSwitch"
+                                    text: "胶片边缘"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: overscanSection.osOn
+                                    enabled: overscanSection.osEditable
+                                    onToggled: preview.setOverscan("on", checked)
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: !overscanSection.osOn ? "关闭" : (preview.overscan.format === undefined ? "" : preview.overscan.format)
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "画幅"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ComboBox {
+                                    objectName: "overscanFormatCombo"
+                                    Layout.fillWidth: true
+                                    model: overscanSection.formats.map(function(f) { return f.label })
+                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    currentIndex: {
+                                        var f = preview.overscan.format === undefined ? "135" : preview.overscan.format
+                                        for (var i = 0; i < overscanSection.formats.length; ++i)
+                                            if (overscanSection.formats[i].id === f) return i
+                                        return 0
+                                    }
+                                    onActivated: preview.setOverscan("format", overscanSection.formats[currentIndex].id)
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "门栅"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ComboBox {
+                                    objectName: "overscanGateCombo"
+                                    Layout.fillWidth: true
+                                    model: ["自动（真实机型）", "方形", "圆角", "带耳", "带肩", "外凸角"]
+                                    readonly property var values: overscanSection.gates
+                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    currentIndex: values.indexOf(preview.overscan.gate === undefined ? "auto" : preview.overscan.gate)
+                                    onActivated: preview.setOverscan("gate", values[currentIndex])
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "片孔"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ComboBox {
+                                    objectName: "overscanHolesCombo"
+                                    Layout.fillWidth: true
+                                    model: ["白孔（透过扫描光）", "黑孔（黑色背衬）"]
+                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    currentIndex: preview.overscan.holes === "black" ? 1 : 0
+                                    onActivated: preview.setOverscan("holes", currentIndex === 1 ? "black" : "white")
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "载体"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ComboBox {
+                                    objectName: "overscanCarrierCombo"
+                                    Layout.fillWidth: true
+                                    model: ["无（画布止于片边）", "黑色载体", "开放（扫描亮）"]
+                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    currentIndex: preview.overscan.carrier === "black" ? 1 : preview.overscan.carrier === "open" ? 2 : 0
+                                    onActivated: preview.setOverscan("carrier", ["none", "black", "open"][currentIndex])
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "印字"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                TextField {
+                                    objectName: "overscanEdgeTextInput"
+                                    Layout.fillWidth: true
+                                    placeholderText: "边缘印字（如 KODAK PORTRA 400）"
+                                    text: preview.overscan.edgeText === undefined ? "" : preview.overscan.edgeText
+                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    font.pixelSize: 11
+                                    onEditingFinished: if (text !== (preview.overscan.edgeText === undefined ? "" : preview.overscan.edgeText)) preview.setOverscan("edgeText", text)
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "帧号"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: Number(preview.overscan.frameNumber === undefined ? 0 : preview.overscan.frameNumber) === 0
+                                          ? "种子抽定" : String(preview.overscan.frameNumber)
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            Slider {
+                                objectName: "overscanFrameNumberSlider"; Layout.fillWidth: true; implicitHeight: 24
+                                from: 0; to: 99; stepSize: 1
+                                value: Number(preview.overscan.frameNumber === undefined ? 0 : preview.overscan.frameNumber)
+                                enabled: overscanSection.osEditable && overscanSection.osOn
+                                onPressedChanged: {
+                                    if (pressed) preview.beginEditGesture("overscan:frameNumber")
+                                    else preview.endEditGesture()
+                                }
+                                onMoved: preview.setOverscan("frameNumber", value)
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "相机种子"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                TextField {
+                                    objectName: "overscanCameraSeedInput"
+                                    Layout.preferredWidth: 96
+                                    validator: IntValidator { bottom: 0; top: 2147483647 }
+                                    text: String(preview.overscan.cameraSeed === undefined ? 1 : preview.overscan.cameraSeed)
+                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    font.pixelSize: 11
+                                    onEditingFinished: {
+                                        var v = parseInt(text, 10)
+                                        if (!isNaN(v) && v !== preview.overscan.cameraSeed) preview.setOverscan("cameraSeed", v)
+                                    }
+                                }
+                                Text { text: "帧种子"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                TextField {
+                                    objectName: "overscanFrameSeedInput"
+                                    Layout.preferredWidth: 96
+                                    validator: IntValidator { bottom: 0; top: 2147483647 }
+                                    text: String(preview.overscan.frameSeed === undefined ? 1 : preview.overscan.frameSeed)
+                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    font.pixelSize: 11
+                                    onEditingFinished: {
+                                        var v = parseInt(text, 10)
+                                        if (!isNaN(v) && v !== preview.overscan.frameSeed) preview.setOverscan("frameSeed", v)
+                                    }
+                                }
+                            }
+                            OverscanSlider { label: "边缘雾"; name: "fog"; from: 0; to: 4; step: 0.05 }
+                            OverscanSlider { label: "漏光"; name: "leaks"; from: 0; to: 4; step: 0.05 }
+                            Note { text: "胶片边缘把画面外的胶片画出为真实曝光：门栅阴影、片基、片孔、片边印字、边缘雾与漏光一起显影；开关与选择走引擎参数，重新渲染而不重解码。画幅需与照片比例一致（先按门栅裁切）。" }
+                        }
+                        // 日期背印 (RFC-031, phase 2 port): the date exposed
+                        // onto the negative from behind — with or without the
+                        // film edge (画面内 placement works on the bare
+                        // frame). lcd/dots are the engine's own faces; the
+                        // data face prints the shooting data beside the date.
+                        Section {
+                            id: dateSection
+                            title: "日期背印"
+                            readonly property bool dtOn: preview.dateImprint.on === undefined ? false : preview.dateImprint.on
+                            readonly property bool dtEditable: preview.settingsEditable
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    objectName: "dateImprintSwitch"
+                                    text: "日期背印"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: dateSection.dtOn
+                                    enabled: dateSection.dtEditable
+                                    onToggled: preview.setDateImprint("on", checked)
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: !dateSection.dtOn ? "关闭" : (preview.dateImprint.style === undefined ? "" : preview.dateImprint.style)
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "日期"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                TextField {
+                                    objectName: "dateImprintTextInput"
+                                    Layout.fillWidth: true
+                                    placeholderText: "如 '26 11 15"
+                                    text: preview.dateImprint.text === undefined ? "" : preview.dateImprint.text
+                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    font.pixelSize: 11
+                                    onEditingFinished: if (text !== (preview.dateImprint.text === undefined ? "" : preview.dateImprint.text)) preview.setDateImprint("text", text)
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "数据"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                TextField {
+                                    objectName: "dateImprintDataTextInput"
+                                    Layout.fillWidth: true
+                                    placeholderText: "拍摄数据（如 1/125 F2.8 A 50mm）"
+                                    text: preview.dateImprint.dataText === undefined ? "" : preview.dateImprint.dataText
+                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    font.pixelSize: 11
+                                    onEditingFinished: if (text !== (preview.dateImprint.dataText === undefined ? "" : preview.dateImprint.dataText)) preview.setDateImprint("dataText", text)
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "字面"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ActionButton {
+                                    objectName: "dateStyleLcd"
+                                    text: "LCD"; accented: preview.dateImprint.style === "lcd"
+                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    onClicked: preview.setDateImprint("style", "lcd")
+                                }
+                                ActionButton {
+                                    objectName: "dateStyleDots"
+                                    text: "点阵"; accented: preview.dateImprint.style === "dots"
+                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    onClicked: preview.setDateImprint("style", "dots")
+                                }
+                                ActionButton {
+                                    objectName: "dateStyleData"
+                                    text: "数据"; accented: preview.dateImprint.style === "data"
+                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    onClicked: preview.setDateImprint("style", "data")
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "位置"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ComboBox {
+                                    objectName: "datePlacementCombo"
+                                    Layout.fillWidth: true
+                                    model: ["画面内（角上）", "片框（帧间）"]
+                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    currentIndex: preview.dateImprint.placement === "rebate" ? 1 : 0
+                                    onActivated: preview.setDateImprint("placement", currentIndex === 1 ? "rebate" : "frame")
+                                }
+                                Text { text: "角"; color: dateSection.dtEditable && dateSection.dtOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ComboBox {
+                                    objectName: "dateCornerCombo"
+                                    Layout.preferredWidth: 88
+                                    model: ["右下", "左下", "右上", "左上"]
+                                    readonly property var values: ["br", "bl", "tr", "tl"]
+                                    enabled: dateSection.dtEditable && dateSection.dtOn
+                                    currentIndex: values.indexOf(preview.dateImprint.corner === undefined ? "br" : preview.dateImprint.corner)
+                                    onActivated: preview.setDateImprint("corner", values[currentIndex])
+                                }
+                            }
+                            DateSlider { label: "曝光"; name: "ev"; from: -2; to: 8; step: 0.1; suffix: " EV" }
+                            DateSlider { label: "大小"; name: "size"; from: 0.4; to: 3; step: 0.05; decimals: 2; suffix: "×" }
+                            DateSlider { label: "横内缩"; name: "insetX"; from: 0; to: 30; step: 0.5; suffix: " mm" }
+                            DateSlider { label: "纵内缩"; name: "insetY"; from: 0; to: 30; step: 0.5; suffix: " mm" }
+                            Note { text: "日期背印从胶片背面曝光日期与拍摄数据：与胶片边缘同用，也可单独印在画面角上；「片框」位置把日期印在帧间，需要胶片边缘开启。" }
                         }
                         Section {
                             title: "照片信息"

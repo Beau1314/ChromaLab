@@ -1,0 +1,37 @@
+#version 450
+
+// RFC-032 §27: a rasterised imprint (the edge print or the date back -- the
+// host draws it through edge_raster.cpp) added to the film canvas as exposure,
+// one thread per coverage pixel. The Windows port of overscan.metal :208
+// `spk_overscan_add_mask`.
+//
+// m = {x0, y0, mw, mh, cw, ch, e_r, e_g, e_b}: the mask's box on the canvas
+// and the group's per-layer exposure at full coverage. `n[0]` is the box's
+// pixel count; the bound the pipeline states at the dispatch. The float64
+// gate tests/gpu_vulkan_overscan.cpp checks this against the double
+// transcription.
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Mask { float value[]; } mask_data;
+layout(set = 0, binding = 1, std430) readonly buffer Box { float value[]; } m;
+layout(set = 0, binding = 2, std430) readonly buffer Count { uint value[]; } count_data;
+layout(set = 0, binding = 3, std430) buffer Canvas { float value[]; } canvas;
+
+// vulkan_gpu.cpp folds a dispatch past maxComputeWorkGroupCount[0] (65535 on
+// lavapipe and Intel) into rows of workgroups; this is the 1D index it means.
+uint spk_global_index() {
+    return gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+}
+
+void main() {
+    const uint i = spk_global_index();
+    if (i >= count_data.value[0]) return;
+    const uint mw = uint(m.value[2]);
+    const int x = int(m.value[0]) + int(i % mw), y = int(m.value[1]) + int(i / mw);
+    if (x < 0 || y < 0 || x >= int(m.value[4]) || y >= int(m.value[5])) return;
+    const float c = mask_data.value[i];
+    if (c <= 0.0) return;
+    const uint o = 3u * (uint(y) * uint(m.value[4]) + uint(x));
+    canvas.value[o] += c * m.value[6];
+    canvas.value[o + 1u] += c * m.value[7];
+    canvas.value[o + 2u] += c * m.value[8];
+}

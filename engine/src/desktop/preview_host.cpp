@@ -111,6 +111,48 @@ bool validate_settings(const RenderSettings& settings, const Catalog& catalog) {
     // own rows (params.cpp). The stretch flag has no range of its own.
     range(settings.scan_hdr_headroom, 0.0, 16.0, "Scan HDR headroom");
     range(settings.scan_hdr_output_scale, 0.0625, 1.0, "Scan HDR output scale");
+    // The film edge's numbers, ranges and choices are the engine schema's own
+    // rows (params.cpp): the seeds are the RFC-032 §26.1 draw, fog/leaks are
+    // EV-ish gains in [0, 4], f_number is EXIF's [0, 64] with 0 = unknown,
+    // frame_number is the edge print's [0, 99] with 0 = the seed's draw, and
+    // the date back's exposure is [-2, 8] EV with its size in [0.4, 3] and
+    // insets in [0, 30] mm. The enumerations (mode/format/gate/holes/carrier,
+    // placement/style/corner) the engine validates at the layout and the date
+    // back's own validation, and the schema refuses anything else first.
+    range(settings.overscan_fog, 0.0, 4.0, "Overscan fog");
+    range(settings.overscan_leaks, 0.0, 4.0, "Overscan leaks");
+    range(settings.overscan_f_number, 0.0, 64.0, "Overscan f-number");
+    range(settings.date_imprint_exposure_ev, -2.0, 8.0, "Date imprint exposure");
+    range(settings.date_imprint_size, 0.4, 3.0, "Date imprint size");
+    range(settings.date_imprint_inset_x, 0.0, 30.0, "Date imprint inset X");
+    range(settings.date_imprint_inset_y, 0.0, 30.0, "Date imprint inset Y");
+    require(settings.overscan_frame_seed >= 0 && settings.overscan_camera_seed >= 0,
+            "Overscan seeds must be non-negative");
+    require(settings.overscan_frame_number >= 0 && settings.overscan_frame_number <= 99,
+            "Overscan frame number must be between 0 and 99");
+    static const char* kModes[] = {"strip", "filed"};
+    static const char* kFormats[] = {"135", "135_half", "120_645", "120_6x6", "120_6x7",
+                                     "120_6x8", "120_6x9", "135_xpan", "120_6x12", "120_6x17"};
+    static const char* kGates[] = {"auto", "square", "rounded", "eared", "shouldered", "kicked"};
+    static const char* kHoles[] = {"white", "black"};
+    static const char* kCarriers[] = {"none", "black", "open"};
+    static const char* kPlacements[] = {"frame", "rebate"};
+    static const char* kStyles[] = {"lcd", "dots", "data"};
+    static const char* kCorners[] = {"br", "bl", "tr", "tl"};
+    const auto one_of = [](const std::string& value, const char* const* choices, size_t n,
+                           const char* label) {
+        require(std::any_of(choices, choices + n,
+                            [&](const char* c) { return value == c; }),
+                std::string(label) + " is not one of the engine's choices: " + value);
+    };
+    one_of(settings.overscan_mode, kModes, 2, "Overscan mode");
+    one_of(settings.overscan_format, kFormats, 10, "Overscan format");
+    one_of(settings.overscan_gate, kGates, 6, "Overscan gate");
+    one_of(settings.overscan_holes, kHoles, 2, "Overscan holes");
+    one_of(settings.overscan_carrier, kCarriers, 3, "Overscan carrier");
+    one_of(settings.date_imprint_placement, kPlacements, 2, "Date imprint placement");
+    one_of(settings.date_imprint_style, kStyles, 3, "Date imprint style");
+    one_of(settings.date_imprint_corner, kCorners, 4, "Date imprint corner");
     // The WB override is the decode's own protocol range (R2, mirrored by
     // the engine host): 0 = As Shot, otherwise an illuminant in Kelvin the
     // decoder must be able to neutralise. The Robertson mapping clamps to
@@ -186,6 +228,35 @@ Json opening_params(const RenderSettings& settings, bool scan_film) {
     params.set("scan_hdr_headroom", Json(settings.scan_hdr_headroom));
     params.set("scan_hdr_stretch", Json(settings.scan_hdr_stretch));
     params.set("scan_hdr_output_scale", Json(settings.scan_hdr_output_scale));
+    // The film edge and the date back travel with every open too: a saved
+    // overscan-on session must restore as one when the photograph is
+    // reopened. The pair and its second frame's date ride along (the reader
+    // gap the unlock closed).
+    params.set("overscan_active", Json(settings.overscan_active));
+    params.set("overscan_mode", Json(settings.overscan_mode));
+    params.set("overscan_format", Json(settings.overscan_format));
+    params.set("overscan_gate", Json(settings.overscan_gate));
+    params.set("overscan_holes", Json(settings.overscan_holes));
+    params.set("overscan_carrier", Json(settings.overscan_carrier));
+    params.set("overscan_edge_text", Json(settings.overscan_edge_text));
+    params.set("overscan_frame_number", Json(double(settings.overscan_frame_number)));
+    params.set("overscan_frame_seed", Json(double(settings.overscan_frame_seed)));
+    params.set("overscan_camera_seed", Json(double(settings.overscan_camera_seed)));
+    params.set("overscan_f_number", Json(settings.overscan_f_number));
+    params.set("overscan_fog", Json(settings.overscan_fog));
+    params.set("overscan_leaks", Json(settings.overscan_leaks));
+    params.set("overscan_pair", Json(settings.overscan_pair));
+    params.set("date_imprint_active", Json(settings.date_imprint_active));
+    params.set("date_imprint_text", Json(settings.date_imprint_text));
+    params.set("date_imprint_text_b", Json(settings.date_imprint_text_b));
+    params.set("date_imprint_data_text", Json(settings.date_imprint_data_text));
+    params.set("date_imprint_placement", Json(settings.date_imprint_placement));
+    params.set("date_imprint_ev", Json(settings.date_imprint_exposure_ev));
+    params.set("date_imprint_style", Json(settings.date_imprint_style));
+    params.set("date_imprint_size", Json(settings.date_imprint_size));
+    params.set("date_imprint_corner", Json(settings.date_imprint_corner));
+    params.set("date_imprint_inset_x", Json(settings.date_imprint_inset_x));
+    params.set("date_imprint_inset_y", Json(settings.date_imprint_inset_y));
     return params;
 }
 
@@ -263,6 +334,45 @@ Json changed_params(const RenderSettings& before, const RenderSettings& after, b
         delta.set("scan_hdr_stretch", Json(after.scan_hdr_stretch));
     if (before.scan_hdr_output_scale != after.scan_hdr_output_scale)
         delta.set("scan_hdr_output_scale", Json(after.scan_hdr_output_scale));
+    // The film edge and the date back: the same engine-parameter channel, the
+    // engine's own wire keys (params.cpp -- the date's exposure travels as
+    // date_imprint_ev).
+    if (before.overscan_active != after.overscan_active) delta.set("overscan_active", Json(after.overscan_active));
+    if (before.overscan_mode != after.overscan_mode) delta.set("overscan_mode", Json(after.overscan_mode));
+    if (before.overscan_format != after.overscan_format) delta.set("overscan_format", Json(after.overscan_format));
+    if (before.overscan_gate != after.overscan_gate) delta.set("overscan_gate", Json(after.overscan_gate));
+    if (before.overscan_holes != after.overscan_holes) delta.set("overscan_holes", Json(after.overscan_holes));
+    if (before.overscan_carrier != after.overscan_carrier) delta.set("overscan_carrier", Json(after.overscan_carrier));
+    if (before.overscan_edge_text != after.overscan_edge_text) delta.set("overscan_edge_text", Json(after.overscan_edge_text));
+    if (before.overscan_frame_number != after.overscan_frame_number)
+        delta.set("overscan_frame_number", Json(double(after.overscan_frame_number)));
+    if (before.overscan_frame_seed != after.overscan_frame_seed)
+        delta.set("overscan_frame_seed", Json(double(after.overscan_frame_seed)));
+    if (before.overscan_camera_seed != after.overscan_camera_seed)
+        delta.set("overscan_camera_seed", Json(double(after.overscan_camera_seed)));
+    if (before.overscan_f_number != after.overscan_f_number) delta.set("overscan_f_number", Json(after.overscan_f_number));
+    if (before.overscan_fog != after.overscan_fog) delta.set("overscan_fog", Json(after.overscan_fog));
+    if (before.overscan_leaks != after.overscan_leaks) delta.set("overscan_leaks", Json(after.overscan_leaks));
+    if (before.overscan_pair != after.overscan_pair) delta.set("overscan_pair", Json(after.overscan_pair));
+    if (before.date_imprint_active != after.date_imprint_active)
+        delta.set("date_imprint_active", Json(after.date_imprint_active));
+    if (before.date_imprint_text != after.date_imprint_text) delta.set("date_imprint_text", Json(after.date_imprint_text));
+    if (before.date_imprint_text_b != after.date_imprint_text_b)
+        delta.set("date_imprint_text_b", Json(after.date_imprint_text_b));
+    if (before.date_imprint_data_text != after.date_imprint_data_text)
+        delta.set("date_imprint_data_text", Json(after.date_imprint_data_text));
+    if (before.date_imprint_placement != after.date_imprint_placement)
+        delta.set("date_imprint_placement", Json(after.date_imprint_placement));
+    if (before.date_imprint_exposure_ev != after.date_imprint_exposure_ev)
+        delta.set("date_imprint_ev", Json(after.date_imprint_exposure_ev));
+    if (before.date_imprint_style != after.date_imprint_style) delta.set("date_imprint_style", Json(after.date_imprint_style));
+    if (before.date_imprint_size != after.date_imprint_size) delta.set("date_imprint_size", Json(after.date_imprint_size));
+    if (before.date_imprint_corner != after.date_imprint_corner)
+        delta.set("date_imprint_corner", Json(after.date_imprint_corner));
+    if (before.date_imprint_inset_x != after.date_imprint_inset_x)
+        delta.set("date_imprint_inset_x", Json(after.date_imprint_inset_x));
+    if (before.date_imprint_inset_y != after.date_imprint_inset_y)
+        delta.set("date_imprint_inset_y", Json(after.date_imprint_inset_y));
     return delta;
 }
 

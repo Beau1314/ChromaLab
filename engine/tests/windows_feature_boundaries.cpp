@@ -44,10 +44,11 @@ int main(int argc, char** argv) {
         require(bool(engine), std::string("engine creation failed: ") + spk_last_error(nullptr));
         const char* capabilities = spk_capabilities(engine.get());
         require(capabilities && std::string(capabilities).find("unsupported_features") != std::string::npos,
-                "Windows capabilities must disclose unported effects");
-        // The Cineon Digital Intermediate, RFC-023's Scene Latitude Mapping,
-        // RFC-024's contrast mask and the slide HDR scan were ported (phase
-        // 2); none may stay on the disclosed refusal list.
+                "Windows capabilities must disclose the unported-effects list");
+        // The five ported effects (phase 2) must stay off the disclosed list:
+        // the Cineon Digital Intermediate, RFC-023's Scene Latitude Mapping,
+        // RFC-024's contrast mask, the slide HDR scan, and RFC-031/032's
+        // overscan + date back (this task).
         require(std::string(capabilities).find("\"digital_intermediate\"") == std::string::npos,
                 "ported digital intermediate still listed as unsupported");
         require(std::string(capabilities).find("scene_latitude_mapping") == std::string::npos,
@@ -56,6 +57,10 @@ int main(int argc, char** argv) {
                 "ported contrast mask still listed as unsupported");
         require(std::string(capabilities).find("\"scan_hdr\"") == std::string::npos,
                 "ported scan_hdr still listed as unsupported");
+        require(std::string(capabilities).find("\"overscan\"") == std::string::npos,
+                "ported overscan still listed as unsupported");
+        require(std::string(capabilities).find("\"date_imprint\"") == std::string::npos,
+                "ported date_imprint still listed as unsupported");
 
         std::vector<float> pixels(32 * 16 * 3);
         for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = 0.025f + float(i % 31) * 0.025f;
@@ -80,32 +85,77 @@ int main(int argc, char** argv) {
         render(engine.get(), session.get());
         const std::string before = params(session.get());
 
-        struct Feature { const char* key; const char* label; };
-        // RFC-024's contrast mask was ported in the same phase; its refusal
-        // row is gone and the field request below covers it instead.
-        const std::array<Feature, 2> features{{
-            {"overscan_active", "overscan"},
-            {"date_imprint_active", "date imprint"},
-        }};
-        for (const Feature& feature : features) {
-            // Include a supported change to catch partial application before
-            // the unsupported field is rejected.
-            const std::string delta = std::string("{\"") + feature.key +
-                                      "\":true,\"print_exposure\":1.25}";
-            const spk_status status = spk_set_params(session.get(), delta.c_str(), nullptr);
-            const std::string error = spk_last_error(engine.get());
-            require(status == SPK_ERR_USER && error.find(feature.label) != std::string::npos &&
-                    error.find("Windows Vulkan backend") != std::string::npos,
-                    std::string("unclear feature refusal: ") + feature.key + ": " + error);
-            require(params(session.get()) == before, std::string("refused delta mutated params: ") + feature.key);
-            render(engine.get(), session.get());
-
-            spk_session* rejected = spk_open(engine.get(), &input, delta.c_str(), nullptr);
-            const std::string open_error = spk_last_error(engine.get());
-            if (rejected) spk_session_release(rejected);
-            require(!rejected && open_error.find(feature.label) != std::string::npos,
-                    std::string("open accepted an unported effect: ") + feature.key);
+        // RFC-031/032's film edge and date back were ported in the same phase
+        // (this task): both toggles are ordinary engine parameters now. The
+        // same apply-with-a-supported-change channel the DI and the mapping
+        // use; each reverts so the later `before` comparisons hold. The
+        // fixture's 32x16 frame is the 120_6x12 gate's shape exactly (its
+        // 112x56 gate is 2:1), so a render with the film edge on has a real
+        // canvas to build, and `spk_overscan_geometry` reports the gate it
+        // laid out.
+        require(spk_set_params(session.get(),
+                               "{\"overscan_active\":true,\"overscan_format\":\"120_6x12\","
+                               "\"overscan_edge_text\":\"KODAK PORTRA 400\",\"print_exposure\":1.25}",
+                               nullptr) == SPK_OK,
+                "ported overscan delta was refused");
+        require(params(session.get()) != before, "overscan delta did not change params");
+        // The film canvas replaces the frame, so the tier is no longer 32x16:
+        // render without the fixed-size helper and check the canvas grew.
+        {
+            spk_result film{};
+            const spk_status film_status = spk_render(session.get(), "full", &film);
+            const std::string film_error = spk_last_error(engine.get());
+            const bool film_ok = film_status == SPK_OK && film.rgba16 && film.texture &&
+                                 (film.width != 32 || film.height != 16);
+            spk_result_free(&film);
+            require(film_ok, "the film edge's canvas failed to render: " + film_error);
         }
+        {
+            char* geometry_json = nullptr;
+            const spk_status geometry_status = spk_overscan_geometry(session.get(), &geometry_json);
+            const std::string geometry_error = spk_last_error(engine.get());
+            const std::string geometry(geometry_json ? geometry_json : "");
+            spk_string_free(geometry_json);
+            require(geometry_status == SPK_OK && geometry.find("\"valid\":true") != std::string::npos &&
+                        geometry.find("\"gates\":[") != std::string::npos &&
+                        geometry.find("\"120_6x12\"") != std::string::npos,
+                    "the overscan render must expose its gate geometry: " + geometry_error);
+        }
+        // An unknown format is refused at the layout (the film run), not by
+        // the params channel: the delta applies, the render names the field.
+        {
+            require(spk_set_params(session.get(), "{\"overscan_format\":\"110\"}", nullptr) == SPK_OK,
+                    "the format delta itself must apply");
+            spk_result bad{};
+            const spk_status bad_status = spk_render(session.get(), "full", &bad);
+            spk_result_free(&bad);
+            const std::string bad_error = spk_last_error(engine.get());
+            require(bad_status != SPK_OK && bad_error.find("format") != std::string::npos &&
+                        bad_error.find("110") != std::string::npos,
+                    "an unknown overscan format must refuse the render: " + bad_error);
+        }
+        require(spk_set_params(session.get(),
+                               "{\"overscan_active\":false,\"overscan_format\":\"135\","
+                               "\"overscan_edge_text\":\"\",\"print_exposure\":1.0}",
+                               nullptr) == SPK_OK,
+                "overscan could not be reverted");
+        require(params(session.get()) == before, "overscan round trip changed other params");
+        render(engine.get(), session.get());
+
+        require(spk_set_params(session.get(),
+                               "{\"date_imprint_active\":true,\"date_imprint_text\":\"'26 11 15\","
+                               "\"print_exposure\":1.25}",
+                               nullptr) == SPK_OK,
+                "ported date imprint delta was refused");
+        require(params(session.get()) != before, "date imprint delta did not change params");
+        render(engine.get(), session.get());
+        require(spk_set_params(session.get(),
+                               "{\"date_imprint_active\":false,\"date_imprint_text\":\"\","
+                               "\"print_exposure\":1.0}",
+                               nullptr) == SPK_OK,
+                "date imprint could not be reverted");
+        require(params(session.get()) == before, "date imprint round trip changed other params");
+        render(engine.get(), session.get());
 
         // The ported flag is an ordinary parameter: a delta that also carries
         // a supported change applies in one request, and the session still
@@ -370,8 +420,9 @@ int main(int argc, char** argv) {
         require(latitude_status == SPK_OK && latitude_valid, "latitude analysis failed: " + latitude_error);
         require(params(session.get()) == before, "latitude analysis mutated the session");
         render(engine.get(), session.get());
-        std::cout << "Windows feature boundaries passed (2 flags, DI + scene latitude + contrast mask "
-                     "mapped and reverted, mask field round trip, "
+        std::cout << "Windows feature boundaries passed (DI + scene latitude + contrast mask + overscan/"
+                     "date imprint applied and reverted, overscan geometry, unknown format refused, "
+                     "mask field round trip, "
                      "slide refused, mask off, HDR scan applied and reverted on a slide, "
                      "latitude analysis)\n";
         return 0;

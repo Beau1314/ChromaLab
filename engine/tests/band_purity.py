@@ -356,7 +356,7 @@ def main() -> int:
                         help="mutate the source in memory and assert the verdict flips")
     args = parser.parse_args()
 
-    src = args.source.read_text()
+    src = args.source.read_text(encoding="utf-8")
     print(f"source: {args.source}")
 
     if args.self_test:

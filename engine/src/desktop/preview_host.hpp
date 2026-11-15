@@ -96,6 +96,42 @@ struct RenderSettings {
     double scan_hdr_headroom = 0.0;
     bool scan_hdr_stretch = false;
     double scan_hdr_output_scale = 1.0;
+    // RFC-031/032's film edge and date back (ported in phase 2, the four
+    // `spk_overscan_*` kernels on Vulkan, the edge print drawn through
+    // edge_raster.cpp): the film outside the frame, and the date exposed onto
+    // the negative from behind. Engine parameters like the scan HDR fields --
+    // a change re-renders without re-decoding (overscan_active is a
+    // shoot-layer field, so its edits re-develop the film). The seeds fix the
+    // machine (camera) and the film advance + scan (frame) per RFC-032 §26.1;
+    // 0 frame_number is the seed's own draw. The date is already formatted
+    // text ("'26 11 15"); the data face (date_imprint data_text) prints the
+    // shooting data as well as the date. The defaults are the engine's own
+    // (params.hpp): everything off, format 135, white holes, no carrier.
+    bool overscan_active = false;
+    std::string overscan_mode = "strip";      // strip | filed
+    std::string overscan_format = "135";      // 135 | 135_half | 120_645 | ... | 120_6x17
+    std::string overscan_gate = "auto";       // auto | square | rounded | eared | shouldered | kicked
+    std::string overscan_holes = "white";     // white (the scan's light) | black
+    std::string overscan_carrier = "none";    // none | black | open
+    std::string overscan_edge_text;           // the manufacturer's edge print
+    int overscan_frame_number = 0;            // 0 = the frame seed's draw
+    int overscan_frame_seed = 1;
+    int overscan_camera_seed = 1;
+    double overscan_f_number = 0.0;           // EXIF; 0 = unknown (f/5.6 assumed)
+    double overscan_fog = 1.0;                // edge fog, 0 = none
+    double overscan_leaks = 0.0;              // spool light leaks, 0 = none
+    bool overscan_pair = false;               // a half-frame pair on one strip
+    bool date_imprint_active = false;
+    std::string date_imprint_text;            // already formatted, e.g. "'26 11 15"
+    std::string date_imprint_text_b;          // a pair's second frame's date; empty = none on it
+    std::string date_imprint_data_text;       // shooting data printed as well as the date
+    std::string date_imprint_placement = "frame";   // frame | rebate
+    double date_imprint_exposure_ev = 3.5;    // red-layer exposure above 18 % grey
+    std::string date_imprint_style = "lcd";   // lcd | dots | data
+    double date_imprint_size = 1.0;           // scale on the style's own character height
+    std::string date_imprint_corner = "br";   // br | bl | tr | tl, in the film's frame
+    double date_imprint_inset_x = 3.0;        // mm from the gate's side to the text
+    double date_imprint_inset_y = 2.4;        // mm from the gate's top/bottom to the text
 
     bool operator==(const RenderSettings&) const = default;
 };

@@ -1,0 +1,149 @@
+#version 450
+
+// RFC-032 §30: where there is no film -- the perforations, and outside the
+// strip -- the negative's density goes to the cmy that cancels this film's
+// base, so the enlarger or the scanner sees clear light. One thread per
+// canvas pixel. The Windows port of overscan.metal :305
+// `spk_overscan_film_present`.
+//
+// Reads the same OsP parameter block as the canvas kernel (overscan.cpp :41).
+// The float64 gate tests/gpu_vulkan_overscan.cpp checks this against the
+// double transcription.
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Cmy { float value[]; } cmy;
+layout(set = 0, binding = 1, std430) readonly buffer Params { float value[]; } p;
+layout(set = 0, binding = 2, std430) readonly buffer Count { uint value[]; } count_data;
+layout(set = 0, binding = 3, std430) writeonly buffer Output { float value[]; } output_data;
+
+// vulkan_gpu.cpp folds a dispatch past maxComputeWorkGroupCount[0] (65535 on
+// lavapipe and Intel) into rows of workgroups; this is the 1D index it means.
+uint spk_global_index() {
+    return gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+}
+
+const float kPi = 3.14159265358979;   // Metal's M_PI_F, to float32
+
+// The OsP indices (overscan.cpp :41); explicit numbers, GLSL has no enums.
+const uint P_CW = 0u, P_CH = 1u, P_PX = 2u, P_FW = 3u, P_FH = 4u;
+const uint P_A00 = 5u, P_A01 = 6u, P_A10 = 7u, P_A11 = 8u, P_CS = 9u, P_CT = 10u, P_CU = 11u, P_CV = 12u;
+const uint P_VERTICAL = 13u;
+const uint P_GS0 = 14u, P_GT0 = 15u, P_GW = 16u, P_GH = 17u, P_CORNER = 18u, P_PENUMBRA = 19u;
+const uint P_WOB_A = 20u;                 // 4 sides x 3 harmonics
+const uint P_WOB_PH = 32u;                // 4 sides x 3 harmonics
+const uint P_FILM_W = 44u, P_FOG_AMP = 45u, P_FOG_WIDTH = 46u, P_FOG_SEED = 47u, P_FOG_PERIOD = 48u;
+const uint P_FOG_R = 49u, P_FOG_G = 50u, P_FOG_B = 51u;
+const uint P_N_LEAKS = 52u;
+const uint P_PERFORATED = 83u, P_PERF_PITCH = 84u, P_PERF_W = 85u, P_PERF_H = 86u, P_PERF_EDGE = 87u,
+           P_PERF_R = 88u, P_PERF_PHASE = 89u;
+const uint P_HOLE_C = 90u, P_HOLE_M = 91u, P_HOLE_Y = 92u;
+const uint P_FLARE_AMP = 93u, P_FLARE_WIDTH = 94u;
+const uint P_GATE_R = 95u;                // 4 corner radii
+const uint P_N_Q = 99u, P_Q = 100u;       // up to 8 x 10 floats (sign: +1/-1 quad adds/cuts, +2/-2 ellipse)
+const uint P_ROUGH_AMP = 180u, P_ROUGH_PERIOD = 181u, P_ROUGH_SEED = 182u;
+const uint P_HOLES_LIGHT = 183u, P_LIGHT_R = 184u, P_LIGHT_G = 185u, P_LIGHT_B = 186u;
+const uint P_PERF_SEED = 187u, P_LIGHT_FALL = 188u, P_LIGHT_DIR = 189u;
+const uint P_WALL_T = 190u, P_WALL_VS = 191u, P_WALL_VT = 192u, P_WALL_PAR = 193u,
+           P_BASE_R = 194u, P_BASE_G = 195u, P_BASE_B = 196u, P_WALL_GLOW = 197u, P_WALL_SCATTER = 198u;
+const uint P_CARRIER = 199u;
+const uint P_LEAKS = 200u;                // up to 12 x 5 floats
+const uint P_PAIR_ADV = 260u;             // > 0: a half-frame pair's second exposure
+const uint P_COUNT = 261u;
+
+vec2 canvas_to_film(float x, float y) {
+    const float u = (x + 0.5) * p.value[P_PX] - p.value[P_CU];
+    const float v = (y + 0.5) * p.value[P_PX] - p.value[P_CV];
+    return vec2(p.value[P_A00] * u + p.value[P_A01] * v + p.value[P_CS],
+                p.value[P_A10] * u + p.value[P_A11] * v + p.value[P_CT]);
+}
+
+uint hash_u(uint x) {
+    x ^= x >> 16u; x *= 0x7feb352du; x ^= x >> 15u; x *= 0x846ca68bu; x ^= x >> 16u;
+    return x;
+}
+float hash_f(int i, uint seed) { return float(hash_u(uint(i) * 0x9E3779B9u ^ seed)) * (1.0 / 4294967295.0); }
+float value_noise(float x, uint seed) {
+    const float i0 = floor(x), f = x - i0;
+    const float w = f * f * (3.0 - 2.0 * f);
+    return mix(hash_f(int(i0), seed), hash_f(int(i0) + 1, seed), w);
+}
+
+// The nearest perforation's signed distance (mm, negative inside). KS holes
+// are punched to tight tolerances, not drawn: each hole sits a few microns
+// off the ideal pitch and row, is a few microns off size, its corners are not
+// all the same, and the punched edge is not a perfect line. `hole` returns the
+// hole's own hash (row and index) for the scan's dust.
+float perf_sdf(vec2 st, out uint hole) {
+    const float W = p.value[P_FILM_W];
+    const float pitch = p.value[P_PERF_PITCH], ph = p.value[P_PERF_PHASE];
+    // The nearest hole: the cell is centred on it. (It began at the hole's
+    // leading edge, so just outside that edge the distance was the previous
+    // hole's -- 2.8 mm -- and that side had no shoulder, no flare, and a hard
+    // cut where the other three sides were soft.)
+    const float k = floor((st.x - ph - 0.5 * p.value[P_PERF_W]) / pitch + 0.5);
+    const bool top = st.y < 0.5 * W;
+    const uint seed = uint(p.value[P_PERF_SEED]);
+    hole = hash_u(uint(int(k) * 2 + (top ? 0 : 1)) * 0x9E3779B9u ^ seed);
+    const float j0 = hash_f(int(hole & 0xFFFFu), seed ^ 0x1u) - 0.5, j1 = hash_f(int(hole & 0xFFFFu), seed ^ 0x2u) - 0.5;
+    const float j2 = hash_f(int(hole & 0xFFFFu), seed ^ 0x3u) - 0.5, j3 = hash_f(int(hole & 0xFFFFu), seed ^ 0x4u) - 0.5;
+    const float j4 = hash_f(int(hole & 0xFFFFu), seed ^ 0x5u) - 0.5;
+    const float wa = p.value[P_PERF_W] + 0.016 * j2, hc = p.value[P_PERF_H] + 0.016 * j3;
+    const float r = clamp(p.value[P_PERF_R] + 0.08 * j4, 0.3, 0.6);
+    const float sc = ph + k * pitch + 0.5 * p.value[P_PERF_W] + 0.020 * j0;
+    const float tc = (top ? p.value[P_PERF_EDGE] + 0.5 * p.value[P_PERF_H] : W - p.value[P_PERF_EDGE] - 0.5 * p.value[P_PERF_H]) + 0.024 * j1;
+    const vec2 q = abs(vec2(st.x - sc, st.y - tc)) - vec2(0.5 * wa - r, 0.5 * hc - r);
+    float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+    // the punched edge: each hole's own roughness, 1-4 microns
+    const float rough = 0.001 + 0.003 * hash_f(int(hole & 0xFFFFu), seed ^ 0x6u);
+    d += rough * (value_noise(st.x / 0.05, seed ^ 0x77u) + value_noise(st.y / 0.05, seed ^ 0x99u) - 1.0) * 2.0;
+    // a burr or a chip on about one hole in four: a 20-50 micron bump on the
+    // edge, into the hole or out of it, somewhere around its outline
+    if (hash_f(int(hole & 0xFFFFu), seed ^ 0x7u) < 0.25) {
+        const float ang = 6.2831853 * hash_f(int(hole & 0xFFFFu), seed ^ 0x8u);
+        const vec2 pb = vec2(sc, tc) + vec2(cos(ang) * 0.5 * wa, sin(ang) * 0.5 * hc);
+        const float sig = 0.020 + 0.030 * hash_f(int(hole & 0xFFFFu), seed ^ 0x9u);
+        const float amp = (hash_f(int(hole & 0xFFFFu), seed ^ 0xAu) < 0.5 ? -1.0 : 1.0) *
+                          (0.006 + 0.010 * hash_f(int(hole & 0xFFFFu), seed ^ 0xBu));
+        d += amp * exp(-dot(st - pb, st - pb) / (sig * sig));
+    }
+    return d;
+}
+
+// erf, Abramowitz and Stegun 7.1.26 (|error| < 1.5e-7).
+float erf_as(float x) {
+    const float t = 1.0 / (1.0 + 0.3275911 * abs(x));
+    const float y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-x * x);
+    return x < 0.0 ? -y : y;
+}
+
+// Where there is film: 1 on the strip, 0 in the perforations and past its edges.
+float film_alpha(vec2 st) {
+    const float W = p.value[P_FILM_W], px = p.value[P_PX];
+    // (with no carrier the canvas is the film's width, and the film runs on
+    // under the corners a tilted scan carries past its edge)
+    float a = p.value[P_CARRIER] > 1.5 ? 1.0 : clamp(min(st.y, W - st.y) / px + 0.5, 0.0, 1.0);
+    if (p.value[P_PERFORATED] > 0.5) {
+        uint hole;
+        // The hole's edge as the scan resolves it: the measured softness, and
+        // the pixel's own width (a one-pixel ramp is a sigma of 0.31 px), so a
+        // small render is no softer than it was and a large one no harder
+        // than film.
+        const float sigma = sqrt(0.017 * 0.017 + 0.0961 * px * px);
+        a *= 0.5 + 0.5 * erf_as(perf_sdf(st, hole) / (1.41421356 * sigma));
+    }
+    return a;
+}
+
+// ④ (the pointwise body): film alpha blends the negative's cmy against the
+// hole's cancelling cmy.
+void main() {
+    const uint i = spk_global_index();
+    if (i >= count_data.value[0]) return;
+    const uint cw = uint(p.value[P_CW]);
+    const float a = film_alpha(canvas_to_film(float(i % cw), float(i / cw)));
+    precise vec3 c = vec3(cmy.value[3u * i], cmy.value[3u * i + 1u], cmy.value[3u * i + 2u]);
+    const vec3 hole = vec3(p.value[P_HOLE_C], p.value[P_HOLE_M], p.value[P_HOLE_Y]);
+    const vec3 r3 = a * c + (1.0 - a) * hole;
+    output_data.value[3u * i] = r3.x;
+    output_data.value[3u * i + 1u] = r3.y;
+    output_data.value[3u * i + 2u] = r3.z;
+}
