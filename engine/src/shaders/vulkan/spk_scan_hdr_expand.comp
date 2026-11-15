@@ -1,0 +1,34 @@
+#version 450
+
+// `scan_hdr` (2026-11-06), the Windows port of nodes.metal:220
+// `spk_scan_hdr_expand`. Each dye layer's density is read back from the
+// develop's squeezed range: below its knee's density dk the layer is expanded
+// about dk by s, so the clear base goes below zero by the layer's lift (a
+// gain on that dye's band, then integrated by `spk_spectral_epilogue` as
+// ever). At and above dk the density is copied as it is, so a pixel below
+// every knee scans to the same bits as today's. The table itself is solved
+// entirely on the host in double (`core/scan_hdr.cpp`
+// `scan_hdr_scan_table`): this pass is only the per-pixel lookup.
+//
+// hdr = {dk0, s0, dk1, s1, dk2, s2}; n[0] is the pixel count (three channels
+// a thread), the bound the pipeline states at the dispatch.
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) readonly buffer Cmy { float value[]; } cmy_data;
+layout(set = 0, binding = 1, std430) readonly buffer Table { float value[]; } hdr_data;
+layout(set = 0, binding = 2, std430) readonly buffer Count { uint value[]; } count_data;
+layout(set = 0, binding = 3, std430) writeonly buffer Output { float value[]; } output_data;
+
+// vulkan_gpu.cpp folds a dispatch past maxComputeWorkGroupCount[0] (65535 on
+// lavapipe and Intel) into rows of workgroups; this is the 1D index it means.
+uint spk_global_index() {
+    return gl_GlobalInvocationID.y * (gl_NumWorkGroups.x * gl_WorkGroupSize.x) + gl_GlobalInvocationID.x;
+}
+
+void main() {
+    uint i = spk_global_index();
+    if (i >= count_data.value[0]) return;
+    for (uint c = 0u; c < 3u; ++c) {
+        float v = cmy_data.value[3u * i + c], dk = hdr_data.value[2u * c];
+        output_data.value[3u * i + c] = v < dk ? dk - (dk - v) * hdr_data.value[2u * c + 1u] : v;
+    }
+}

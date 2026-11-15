@@ -132,7 +132,10 @@ QJsonObject stateJson(const State& state) {
         {"contrast_mask_highlights", s.contrast_mask_highlights},
         {"contrast_mask_shadows", s.contrast_mask_shadows},
         {"contrast_mask_core", s.contrast_mask_core},
-        {"contrast_mask_scale", s.contrast_mask_scale}}},
+        {"contrast_mask_scale", s.contrast_mask_scale},
+        {"scan_hdr_headroom", s.scan_hdr_headroom},
+        {"scan_hdr_stretch", s.scan_hdr_stretch},
+        {"scan_hdr_output_scale", s.scan_hdr_output_scale}}},
         {"decodeMode", mode}, {"geometry", QJsonObject{
             {"crop", QJsonObject{{"x", g.crop.x()}, {"y", g.crop.y()},
                                   {"width", g.crop.width()}, {"height", g.crop.height()}}},
@@ -183,6 +186,13 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
                             {"contrast_mask_active", "contrast_mask_highlights",
                              "contrast_mask_shadows", "contrast_mask_core",
                              "contrast_mask_scale"});
+    // The slide's HDR scan arrived with the same phase-2 port; records that
+    // carry one of its keys must carry all three.
+    const bool hasScanHdr = s.contains(QLatin1String("scan_hdr_headroom"));
+    if (hasScanHdr)
+        setting_keys.insert(setting_keys.end(),
+                            {"scan_hdr_headroom", "scan_hdr_stretch",
+                             "scan_hdr_output_scale"});
     keys(s, setting_keys, QStringLiteral("settings"));
     auto& out = state.settings;
     out.film_stock = stockId(s, "film_stock", catalog ? &catalog->films : nullptr).toStdString();
@@ -233,6 +243,11 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
         out.contrast_mask_shadows = number(s, "contrast_mask_shadows", 0.0, 3.0);
         out.contrast_mask_core = number(s, "contrast_mask_core", 0.0, 3.0);
         out.contrast_mask_scale = number(s, "contrast_mask_scale", 0.002, 0.12);
+    }
+    if (hasScanHdr) {
+        out.scan_hdr_headroom = number(s, "scan_hdr_headroom", 0.0, 16.0);
+        out.scan_hdr_stretch = boolean(s, "scan_hdr_stretch");
+        out.scan_hdr_output_scale = number(s, "scan_hdr_output_scale", 0.0625, 1.0);
     }
     const auto mode = string(value, "decodeMode");
     require(mode == "compatible16" || mode == "headroom",

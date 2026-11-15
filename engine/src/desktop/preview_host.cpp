@@ -106,6 +106,11 @@ bool validate_settings(const RenderSettings& settings, const Catalog& catalog) {
     range(settings.contrast_mask_shadows, 0.0, 3.0, "Contrast mask shadows");
     range(settings.contrast_mask_core, 0.0, 3.0, "Contrast mask core");
     range(settings.contrast_mask_scale, 0.002, 0.12, "Contrast mask scale");
+    // The HDR scan's headroom is the clear base's gain and the output scale
+    // is the rendition's post-gamut gain; the ranges are the engine schema's
+    // own rows (params.cpp). The stretch flag has no range of its own.
+    range(settings.scan_hdr_headroom, 0.0, 16.0, "Scan HDR headroom");
+    range(settings.scan_hdr_output_scale, 0.0625, 1.0, "Scan HDR output scale");
     // The WB override is the decode's own protocol range (R2, mirrored by
     // the engine host): 0 = As Shot, otherwise an illuminant in Kelvin the
     // decoder must be able to neutralise. The Robertson mapping clamps to
@@ -175,6 +180,12 @@ Json opening_params(const RenderSettings& settings, bool scan_film) {
     params.set("contrast_mask_shadows", Json(settings.contrast_mask_shadows));
     params.set("contrast_mask_core", Json(settings.contrast_mask_core));
     params.set("contrast_mask_scale", Json(settings.contrast_mask_scale));
+    // The slide's HDR scan travels with every open too: a saved HDR-on session
+    // must restore as one when the photograph is reopened (a negative film
+    // ignores the fields, so carrying them is always safe).
+    params.set("scan_hdr_headroom", Json(settings.scan_hdr_headroom));
+    params.set("scan_hdr_stretch", Json(settings.scan_hdr_stretch));
+    params.set("scan_hdr_output_scale", Json(settings.scan_hdr_output_scale));
     return params;
 }
 
@@ -243,6 +254,15 @@ Json changed_params(const RenderSettings& before, const RenderSettings& after, b
         delta.set("contrast_mask_core", Json(after.contrast_mask_core));
     if (before.contrast_mask_scale != after.contrast_mask_scale)
         delta.set("contrast_mask_scale", Json(after.contrast_mask_scale));
+    // The slide's HDR scan: the same engine-parameter channel the DI and the
+    // mask travel by. A film that is not a positive scanned ignores it, so
+    // the diff can carry it without a film gate of its own.
+    if (before.scan_hdr_headroom != after.scan_hdr_headroom)
+        delta.set("scan_hdr_headroom", Json(after.scan_hdr_headroom));
+    if (before.scan_hdr_stretch != after.scan_hdr_stretch)
+        delta.set("scan_hdr_stretch", Json(after.scan_hdr_stretch));
+    if (before.scan_hdr_output_scale != after.scan_hdr_output_scale)
+        delta.set("scan_hdr_output_scale", Json(after.scan_hdr_output_scale));
     return delta;
 }
 

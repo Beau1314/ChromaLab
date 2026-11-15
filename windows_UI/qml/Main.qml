@@ -1055,9 +1055,56 @@ ApplicationWindow {
                             Note { text: "数字中间片以 Cineon 对数编码输出负片的正像，替代相纸冲印；蓝补偿按胶片拟合的蓝区窗口旋转色相。" }
                         }
                         Section {
+                            id: rawSection
                             title: "RAW 解码"
                             ComboBox { id: decode; Layout.fillWidth: true; model: ["兼容模式（默认）", "高光扩展（实验）"]; currentIndex: preview.decodeMode; enabled: preview.settingsEditable; onActivated: preview.decodeMode = currentIndex }
                             Note { text: preview.decodeMode ? "保留去马赛克后的部分高光及负值；仍使用整数去马赛克。" : "与已验证的原生 RAW 流程保持一致。" }
+                            // HDR 扫描 (2026-11-06, phase 2 port): the slide's
+                            // HDR scan is an engine parameter on Windows now —
+                            // the switch turns it on and the slider sets the
+                            // clear base's headroom (the engine schema's own
+                            // [0, 16] row; anything up to 1 is today's scan,
+                            // byte for byte). Only a positive film scanned has
+                            // it: slide film is scanned directly, so the group
+                            // is dead for negatives like the DI's rows.
+                            readonly property bool hdrAvailable: preview.settingsEditable && preview.filmIsPositive
+                            readonly property bool hdrOn: preview.scanHdr.on === undefined ? false : preview.scanHdr.on
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch {
+                                    objectName: "scanHdrSwitch"
+                                    text: "HDR 扫描"; font.pixelSize: 11
+                                    palette.windowText: Theme.text
+                                    checked: rawSection.hdrOn
+                                    enabled: rawSection.hdrAvailable
+                                    onToggled: preview.setScanHdr("on", checked)
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: !rawSection.hdrOn ? "关闭"
+                                        : Number(preview.scanHdr.headroom).toFixed(1) + "×"
+                                    color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "余量"; color: rawSection.hdrOn && rawSection.hdrAvailable ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Item { Layout.fillWidth: true }
+                                Text { text: Number(preview.scanHdr.headroom === undefined ? 0 : preview.scanHdr.headroom).toFixed(1) + "×"; color: Theme.muted; font.pixelSize: 10 }
+                            }
+                            Slider {
+                                objectName: "scanHdrSlider"; Layout.fillWidth: true; implicitHeight: 24
+                                from: 1; to: 16; stepSize: 0.1
+                                value: Number(preview.scanHdr.headroom === undefined ? 0 : preview.scanHdr.headroom)
+                                enabled: rawSection.hdrAvailable && rawSection.hdrOn
+                                onPressedChanged: {
+                                    if (pressed) preview.beginEditGesture("scanHdr:headroom")
+                                    else preview.endEditGesture()
+                                }
+                                onMoved: preview.setScanHdr("headroom", value)
+                            }
+                            Note { visible: preview.hasFrame && !preview.filmIsPositive; text: "HDR 扫描仅适用于直接扫描的反转片；负片走相纸冲印，不适用。"; color: Theme.accent }
+                            Note { text: "HDR 扫描把反转片每层的肩部移过各自的膝点、在光谱扫描内提升，使片基落在今日扫描的余量倍数上；走引擎参数，重新渲染而不重解码。" }
                         }
                         Section {
                             title: "照片信息"

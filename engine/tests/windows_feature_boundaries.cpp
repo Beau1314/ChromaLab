@@ -45,15 +45,17 @@ int main(int argc, char** argv) {
         const char* capabilities = spk_capabilities(engine.get());
         require(capabilities && std::string(capabilities).find("unsupported_features") != std::string::npos,
                 "Windows capabilities must disclose unported effects");
-        // The Cineon Digital Intermediate, RFC-023's Scene Latitude Mapping
-        // and RFC-024's contrast mask were ported (phase 2); none may stay on
-        // the disclosed refusal list.
+        // The Cineon Digital Intermediate, RFC-023's Scene Latitude Mapping,
+        // RFC-024's contrast mask and the slide HDR scan were ported (phase
+        // 2); none may stay on the disclosed refusal list.
         require(std::string(capabilities).find("\"digital_intermediate\"") == std::string::npos,
                 "ported digital intermediate still listed as unsupported");
         require(std::string(capabilities).find("scene_latitude_mapping") == std::string::npos,
                 "ported scene latitude mapping still listed as unsupported");
         require(std::string(capabilities).find("\"contrast_mask\"") == std::string::npos,
                 "ported contrast mask still listed as unsupported");
+        require(std::string(capabilities).find("\"scan_hdr\"") == std::string::npos,
+                "ported scan_hdr still listed as unsupported");
 
         std::vector<float> pixels(32 * 16 * 3);
         for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = 0.025f + float(i % 31) * 0.025f;
@@ -289,6 +291,73 @@ int main(int argc, char** argv) {
         require(spk_contrast_mask_field(session.get(), "full", &mask, &width, &height) == SPK_OK &&
                 !mask && width == 0 && height == 0, "disabled contrast mask must have an empty field");
 
+        // The slide's HDR scan is an ordinary engine parameter now (the
+        // 2026-11-06 port): the headroom applies to a positive film scanned,
+        // the params reply carries the solved model, and the render runs the
+        // per-pixel expansion (`spk_scan_hdr_expand` on Vulkan). A negative
+        // film ignores the field harmlessly -- the engine's own rule is
+        // `scan_film` on a positive film, and neither holds here.
+        require(spk_set_params(session.get(),
+                               "{\"scan_hdr_headroom\":4.0,\"print_exposure\":1.25}",
+                               nullptr) == SPK_OK,
+                "scan_hdr headroom was refused on a negative film");
+        render(engine.get(), session.get());
+        require(spk_set_params(session.get(),
+                               "{\"scan_hdr_headroom\":0.0,\"print_exposure\":1.0}",
+                               nullptr) == SPK_OK,
+                "scan_hdr headroom could not be reverted");
+        require(params(session.get()) == before, "scan_hdr round trip changed other params");
+        render(engine.get(), session.get());
+
+        {
+            const char* slide_delta =
+                "{\"film_stock\":\"fujifilm_provia_100f\",\"scan_film\":true,"
+                "\"scan_hdr_headroom\":4.0}";
+            spk_session* slide = spk_open(engine.get(), &input, slide_delta, nullptr);
+            require(bool(slide), std::string("slide session with the HDR scan failed to open: ") +
+                                     spk_last_error(engine.get()));
+            // The solved model travels in the progress reply's additive block
+            // (what the pipeline was built with): the headroom as requested,
+            // the stretch flag off, and the per-layer lift the host solve
+            // produced. The params reply only echoes the raw fields.
+            const auto progress_json = [&](spk_session* s) {
+                char* json = nullptr;
+                require(spk_progress(s, nullptr, &json) == SPK_OK && json,
+                        "progress readback failed");
+                std::string result(json);
+                spk_string_free(json);
+                return result;
+            };
+            const std::string slide_progress = progress_json(slide);
+            require(slide_progress.find("\"scan_hdr\"") != std::string::npos &&
+                        slide_progress.find("\"headroom\":4") != std::string::npos &&
+                        slide_progress.find("\"stretch\":false") != std::string::npos &&
+                        slide_progress.find("\"lift_density\"") != std::string::npos,
+                    "the HDR scan's solved model is missing from the progress reply");
+            render(engine.get(), slide);
+            // The stretch variant solves its own headroom (the clear base at
+            // the page's white) and wins over the manual one; both variants
+            // revert through the ordinary channel, and the inactive scan's
+            // readback block disappears with it.
+            require(spk_set_params(slide, "{\"scan_hdr_headroom\":0.0}", nullptr) == SPK_OK,
+                    "the slide's headroom could not be reverted");
+            require(progress_json(slide).find("\"scan_hdr\"") == std::string::npos,
+                    "the inactive scan still reports a solved model");
+            require(spk_set_params(slide, "{\"scan_hdr_stretch\":true}", nullptr) == SPK_OK,
+                    "the stretch variant was refused");
+            const std::string stretched = progress_json(slide);
+            require(stretched.find("\"scan_hdr\"") != std::string::npos &&
+                        stretched.find("\"stretch\":true") != std::string::npos,
+                    "the stretch variant's model is missing from the progress reply");
+            render(engine.get(), slide);
+            require(spk_set_params(slide, "{\"scan_hdr_stretch\":false}", nullptr) == SPK_OK,
+                    "the stretch variant could not be reverted");
+            require(progress_json(slide).find("\"scan_hdr\"") == std::string::npos,
+                    "the reverted scan still reports a solved model");
+            render(engine.get(), slide);
+            spk_session_release(slide);
+        }
+
         // Latitude analysis uses the existing pipeline; only applying its
         // mapping is unported. This also exercises probe_medium's readback.
         char* latitude_json = nullptr;
@@ -303,7 +372,8 @@ int main(int argc, char** argv) {
         render(engine.get(), session.get());
         std::cout << "Windows feature boundaries passed (2 flags, DI + scene latitude + contrast mask "
                      "mapped and reverted, mask field round trip, "
-                     "slide refused, mask off, latitude analysis)\n";
+                     "slide refused, mask off, HDR scan applied and reverted on a slide, "
+                     "latitude analysis)\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

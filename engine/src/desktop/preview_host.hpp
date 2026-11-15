@@ -82,6 +82,20 @@ struct RenderSettings {
     double contrast_mask_shadows = 0.0;     ///< stops lowered, print-shadow side
     double contrast_mask_core = 1.0;        ///< half-width of the identity core, stops
     double contrast_mask_scale = 0.03;      ///< base extractor's sigma, long-edge fraction
+    // The slide's HDR scan (2026-11-06, ported in phase 2, `spk_scan_hdr_expand`
+    // on Vulkan): each dye layer's shoulder moved above its own knee and the
+    // layer lifted inside the spectral scan, so the clear base lands at
+    // `scan_hdr_headroom` x today's (the table solve is entirely CPU double in
+    // core/scan_hdr.cpp; the kernel only expands per pixel). Only a positive
+    // film scanned has it -- a negative film ignores the fields, and
+    // headroom <= 1 is today's scan byte for byte. The stretch variant solves
+    // its own headroom (the clear base at the page's white) and wins over the
+    // manual one. Like the DI and the mask these are engine parameters -- a
+    // change re-renders without re-decoding -- and the UI gates the rows on
+    // the film's catalog metadata (positive films only).
+    double scan_hdr_headroom = 0.0;
+    bool scan_hdr_stretch = false;
+    double scan_hdr_output_scale = 1.0;
 
     bool operator==(const RenderSettings&) const = default;
 };

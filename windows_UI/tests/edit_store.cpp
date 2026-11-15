@@ -178,6 +178,9 @@ int main(int argc, char** argv) {
         // incomplete and cannot be interpreted as an edit.
         corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
             mutateObject(s, "settings", [](auto& f) { f.remove("di_blue_compensation"); }); }); });
+        // The HDR scan's triple as well.
+        corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
+            mutateObject(s, "settings", [](auto& f) { f.remove("scan_hdr_output_scale"); }); }); });
         corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
             mutateObject(s, "settings", [](auto& f) { f["grain_active"] = 1; }); }); });
         corrupt([](auto& d) { mutateObject(d, "state", [](auto& s) {
@@ -248,6 +251,25 @@ int main(int argc, char** argv) {
               "saving after a legacy DI record did not restore the DI fields");
         write(path, validBytes);
 
+        // The slide's HDR scan follows the same rule: a record from before the
+        // phase-2 port loads with the scan off, and a record carrying one of
+        // its keys without the others is incomplete.
+        auto legacyHdr = validJson;
+        mutateObject(legacyHdr, "state", [](auto& s) {
+            mutateObject(s, "settings", [](auto& f) {
+                f.remove("scan_hdr_headroom"); f.remove("scan_hdr_stretch"); f.remove("scan_hdr_output_scale"); }); });
+        const auto legacyHdrBytes = QJsonDocument(legacyHdr).toJson();
+        write(path, legacyHdrBytes);
+        const auto restoredHdr = store.load(url, catalog);
+        check(restoredHdr.state && restoredHdr.state->settings.scan_hdr_headroom == 0.0 &&
+              restoredHdr.state->settings.scan_hdr_stretch == false &&
+              restoredHdr.state->settings.scan_hdr_output_scale == 1.0 && !restoredHdr.blocked,
+              "legacy record without the HDR scan did not load with defaults");
+        store.save(url, state);
+        check(read(path) != legacyHdrBytes && store.load(url, catalog).state == std::optional(state),
+              "saving after a legacy HDR scan record did not restore the scan fields");
+        write(path, validBytes);
+
         auto invalidState = [&](const std::function<void(editing::State&)>& change) {
             auto candidate = state;
             change(candidate);
@@ -260,6 +282,8 @@ int main(int argc, char** argv) {
         invalidState([](auto& s) { s.settings.print_exposure = 0.049; });
         invalidState([](auto& s) { s.settings.halation_amount = 4.01; });
         invalidState([](auto& s) { s.settings.m_filter_shift = 1.01; });
+        invalidState([](auto& s) { s.settings.scan_hdr_headroom = 16.01; });
+        invalidState([](auto& s) { s.settings.scan_hdr_output_scale = 0.06; });
         invalidState([](auto& s) { s.settings.film_stock = "syntactically_valid_but_missing"; });
         invalidState([](auto& s) { s.mode = static_cast<spk::desktop::DecodeMode>(17); });
         invalidState([](auto& s) { s.geometry.quarterTurns = 4; });

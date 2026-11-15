@@ -452,6 +452,35 @@ void PreviewController::setMask(const QString& name,const QVariant& value) {
     extra_settings_=next;changed(QStringLiteral("mask:")+name);
 }
 
+// --- The slide's HDR scan: the positive film's engine parameters -------------
+
+QVariantMap PreviewController::scanHdr() const {
+    const auto& s=extra_settings_;
+    return {{"on",s.scan_hdr_stretch||s.scan_hdr_headroom>1.0},
+        {"headroom",s.scan_hdr_headroom},{"stretch",s.scan_hdr_stretch}};
+}
+void PreviewController::setScanHdr(const QString& name,const QVariant& value) {
+    // Only a positive film scanned has the HDR scan (the engine's own rule,
+    // core/scan_hdr.hpp): the mirror image of the DI and the mask gates.
+    if(!settingsEditable()||!filmIsPositive())return;
+    auto next=extra_settings_;
+    if(name==QLatin1String("on")) {
+        // On backfills the study's working headroom (scan_hdr.hpp's measured
+        // example: blue 8 % short at H = 4) unless a real one is already set;
+        // off returns to 0, which is today's scan byte for byte.
+        next.scan_hdr_headroom=value.toBool()
+            ?(next.scan_hdr_headroom>1.0?next.scan_hdr_headroom:4.0):0.0;
+    } else if(name==QLatin1String("headroom")) {
+        bool ok=false;const double v=value.toDouble(&ok);
+        if(!ok||!std::isfinite(v))return;
+        // The engine schema's own row (params.cpp): the headroom is in [0, 16].
+        if(v<0||v>16)return;
+        next.scan_hdr_headroom=v;
+    } else return;
+    if(next==extra_settings_)return;
+    extra_settings_=next;changed(QStringLiteral("scanHdr:")+name);
+}
+
 // --- Scene Latitude Mapping: the analysis card's engine side -----------------
 
 void PreviewController::setSceneLatitude(const bool value) {

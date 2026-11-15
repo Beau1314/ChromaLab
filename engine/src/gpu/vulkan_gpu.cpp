@@ -69,6 +69,7 @@ constexpr KernelSpec kKernels[] = {
     {"spk_couplers_correction", 7, kWorkgroup},
     {"spk_spectral_epilogue", 7, kWorkgroup},
     {"spk_print_exposure", 4, kWorkgroup},
+    {"spk_scan_hdr_expand", 4, kWorkgroup},
     {"spk_cam16ucs_compress", 7, kWorkgroup},
     {"spk_cctf_encode_matrix", 4, kWorkgroup},
     {"spk_to_rgba16", 3, kWorkgroup},

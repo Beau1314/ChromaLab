@@ -30,7 +30,10 @@ std::string Pipeline::overscan_geometry_json() const { return "{\"valid\":false}
 
 bool Pipeline::node_overscan(const Image& in, Image& out, std::string& error) {
     if (params_.film_render.overscan.active || params_.film_render.date_imprint.active) {
-        error = windows_unported_error(false, params_.film_render.overscan.active,
+        // Unreachable through the C API (the params-level refusal above
+        // Pipeline::build fires first), but the message must still name the
+        // feature that is actually on.
+        error = windows_unported_error(params_.film_render.overscan.active,
                                        params_.film_render.date_imprint.active);
         return false;
     }

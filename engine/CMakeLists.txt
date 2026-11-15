@@ -114,7 +114,7 @@ if(NOT APPLE)
             spk_affine3 spk_tc_b spk_lut2d_cubic spk_sep_fir_acc spk_iir_df_acc
             spk_lincomb3 spk_log10_guarded spk_curves
             spk_couplers_correction spk_spectral_epilogue
-            spk_print_exposure spk_cam16ucs_compress
+            spk_print_exposure spk_scan_hdr_expand spk_cam16ucs_compress
             spk_cctf_encode_matrix spk_to_rgba16
             spk_grain_layers spk_grain_layer_one spk_grain_simple
             spk_lognormal_field spk_rng_probe spk_mul spk_glare_add
@@ -260,7 +260,7 @@ if(NOT APPLE)
             add_test(NAME spk_vulkan_smoke
                 COMMAND spk_vulkan_smoke "${vulkan_resource_dir}")
 
-            foreach(probe grain pointwise di_encode resample transfer geometry lut_di scene_latitude scene_curve mask)
+            foreach(probe grain pointwise di_encode resample transfer geometry lut_di scene_latitude scene_curve mask scan_hdr)
                 add_executable(spk_vulkan_${probe} tests/gpu_vulkan_${probe}.cpp)
                 target_include_directories(spk_vulkan_${probe} PRIVATE
                     "${CMAKE_CURRENT_SOURCE_DIR}/include"

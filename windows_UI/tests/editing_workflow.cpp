@@ -67,6 +67,8 @@ struct Desired {
     bool sceneLatitudeActive=false;
     bool maskActive=false;
     double maskHighlights=0,maskShadows=0,maskCore=1,maskScale=0.03;
+    bool scanHdrOn=false;
+    double scanHdrHeadroom=0;
 };
 Desired desired(const PreviewController& c) {
     return {c.filmIndex(),c.paperIndex(),c.decodeMode(),c.exposureEv(),c.adjustments(),geometry(c),
@@ -75,7 +77,8 @@ Desired desired(const PreviewController& c) {
         c.sceneLatitudeActive(),
         c.mask()["active"].toBool(),
         c.mask()["highlights"].toDouble(),c.mask()["shadows"].toDouble(),
-        c.mask()["core"].toDouble(),c.mask()["scale"].toDouble()};
+        c.mask()["core"].toDouble(),c.mask()["scale"].toDouble(),
+        c.scanHdr()["on"].toBool(),c.scanHdr()["headroom"].toDouble()};
 }
 bool matches(const PreviewController& c,const Desired& expected) {
     return c.filmIndex()==expected.film&&c.paperIndex()==expected.paper&&c.decodeMode()==expected.decode&&
@@ -89,7 +92,9 @@ bool matches(const PreviewController& c,const Desired& expected) {
         near(c.mask()["highlights"].toDouble(),expected.maskHighlights)&&
         near(c.mask()["shadows"].toDouble(),expected.maskShadows)&&
         near(c.mask()["core"].toDouble(),expected.maskCore)&&
-        near(c.mask()["scale"].toDouble(),expected.maskScale);
+        near(c.mask()["scale"].toDouble(),expected.maskScale)&&
+        c.scanHdr()["on"].toBool()==expected.scanHdrOn&&
+        near(c.scanHdr()["headroom"].toDouble(),expected.scanHdrHeadroom);
 }
 bool samePixels(const QImage& left,const QImage& right) {
     if(left.isNull()||right.isNull()||left.size()!=right.size())return false;
@@ -505,6 +510,58 @@ int main(int argc,char** argv) {
                 check(!c.frame()->settings.contrast_mask_active,"The mask returns off");
                 check(closePixels(c.previewImage(),paperShown,2),
                       "Without the mask the print returns to the paper pixels");
+            }
+
+            // HDR 扫描 (2026-11-06, phase 2 port): the slide's HDR scan is an
+            // engine parameter like the DI and the mask — but only a positive
+            // film scanned has it (the engine's own rule), so this block
+            // switches to the catalog's first slide, walks the toggle and the
+            // headroom through the re-render path (`spk_scan_hdr_expand` on
+            // Vulkan, re-developing without decode work), and restores the
+            // negative film afterwards. The headroom is a shoot-layer field:
+            // every edit drops the cached negative and re-develops the film,
+            // which re-draws the stochastic layers, so the walk pins grain,
+            // halation and glare off first (PORT_PLAN §0's own rule for
+            // whole-image checks) and the off-return is byte for byte — a
+            // headroom of 0 builds today's pipeline.
+            {
+                const int negativeFilm=c.filmIndex();
+                const bool grainWas=c.adjustments()["grainActive"].toBool(),
+                    halationWas=c.adjustments()["halationActive"].toBool(),
+                    glareWas=c.adjustments()["glareActive"].toBool();
+                int slideFilm=-1;
+                for(int i=0;i<c.films().size();++i)
+                    if(c.films()[i].toMap()["positive"].toBool()){slideFilm=i;break;}
+                check(slideFilm>=0,"Catalog provides a slide film for the HDR scan");
+                c.setAdjustment("grainActive",false);c.setAdjustment("halationActive",false);
+                c.setAdjustment("glareActive",false);
+                c.setFilmIndex(slideFilm);idle(c,"Slide film render");
+                const auto plain=c.frame();const auto plainShown=c.previewImage().copy();
+                check(!c.scanHdr()["on"].toBool(),"The HDR scan begins off");
+                c.setScanHdr("on",true);idle(c,"HDR scan toggle render");
+                check(c.frame()!=plain&&c.frame()->settings.scan_hdr_headroom>1.0&&
+                      c.frame()->timings.decode_ms==0,
+                      "Enabling the HDR scan re-renders without re-decoding");
+                check(near(c.frame()->settings.scan_hdr_headroom,4.0),
+                      "The switch backfills the study's working headroom");
+                check(!samePixels(c.previewImage(),plainShown),
+                      "The HDR scan visibly expands the layers past their knees");
+                c.setScanHdr("headroom",8.0);idle(c,"HDR headroom render");
+                check(near(c.frame()->settings.scan_hdr_headroom,8.0),
+                      "The headroom lands as an engine parameter");
+                c.undo();idle(c,"HDR headroom undo re-render");
+                check(near(c.frame()->settings.scan_hdr_headroom,4.0),
+                      "Undo removes the headroom edit but keeps the scan on");
+                c.redo();idle(c,"HDR headroom redo re-render");
+                check(near(c.frame()->settings.scan_hdr_headroom,8.0),
+                      "Redo restores the headroom edit");
+                c.setScanHdr("on",false);idle(c,"HDR scan off render");
+                check(!c.frame()->settings.scan_hdr_headroom,"The HDR scan returns off");
+                check(samePixels(c.previewImage(),plainShown),
+                      "Without the scan the print returns to today's pixels byte for byte");
+                c.setFilmIndex(negativeFilm);idle(c,"Restore the negative film");
+                c.setAdjustment("grainActive",grainWas);c.setAdjustment("halationActive",halationWas);
+                c.setAdjustment("glareActive",glareWas);idle(c,"Stochastic layers restored");
             }
 
             // 宽容度映射 (RFC-023, phase 2 port): the analysis card's

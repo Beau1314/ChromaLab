@@ -342,11 +342,11 @@ struct spk_engine {
 #ifndef __APPLE__
         // These upstream effects still require kernels or Apple services that
         // have not been ported. Defaults stay usable; explicit requests fail.
-        // The Cineon Digital Intermediate, RFC-023's Scene Latitude Mapping
-        // and RFC-024's contrast mask were ported (phase 2) and no longer
-        // belong on this list.
+        // The Cineon Digital Intermediate, RFC-023's Scene Latitude Mapping,
+        // RFC-024's contrast mask and the slide HDR scan were ported (phase
+        // 2) and no longer belong on this list.
         Json unported = Json::array();
-        for (const char* feature : {"overscan", "date_imprint", "scan_hdr"})
+        for (const char* feature : {"overscan", "date_imprint"})
             unported.push(Json(std::string(feature)));
         backend.set("unsupported_features", std::move(unported));
 #endif

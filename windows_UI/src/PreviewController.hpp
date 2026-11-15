@@ -85,6 +85,15 @@ class PreviewController final : public QObject {
     // and is refused for slide film (the engine prints a positive scan
     // without the mask).
     Q_PROPERTY(QVariantMap mask READ mask NOTIFY settingsChanged)
+    // The slide's HDR scan (2026-11-06, phase 2 port): {"on", "headroom",
+    // "stretch"} over the current photo's RenderSettings. "on" is the
+    // engine's own activation rule (the stretch variant, or a headroom above
+    // 1); toggling it backfills the study's working headroom of 4 and
+    // clearing it returns to 0 (today's scan, byte for byte). The mirror
+    // image of the DI and the mask: it is dead for film that is not a
+    // positive scanned, and setScanHdr goes through changed() and re-renders
+    // the session like every other engine parameter.
+    Q_PROPERTY(QVariantMap scanHdr READ scanHdr NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap adjustments READ adjustments NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap layer2 READ layer2 NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList libraryItems READ libraryItems NOTIFY libraryChanged)
@@ -153,6 +162,13 @@ public:
     // and no-ops on unchanged values.
     QVariantMap mask() const;
     Q_INVOKABLE void setMask(const QString& name, const QVariant& value);
+    // The slide's HDR scan. name: "on" turns the scan on (headroom backfilled
+    // to 4 when nothing is set) or off (headroom 0), "headroom" sets the
+    // manual variant's gain (0..16, the engine schema's own row; > 1
+    // activates). Ignored for film that is not a positive scanned and no-ops
+    // on unchanged values.
+    QVariantMap scanHdr() const;
+    Q_INVOKABLE void setScanHdr(const QString& name, const QVariant& value);
     QVariantMap adjustments() const;
     // Layer 2 — the scan-side grade. Keys: enabled + the ten scalar sliders +
     // curves{channel: point list} + colorBalance{zone:{hue,saturation,luminance}}
