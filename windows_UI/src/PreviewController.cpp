@@ -401,6 +401,18 @@ void PreviewController::accept(Reply reply) {
     else if(reply.operation=="batch-export")status_=reply.message;
     if(failed_&&reply.operation=="open"&&reply.library_index>=0&&reply.library_index<int(library_.size()))
         library_[reply.library_index].error=status_;
+    // A failed pair job (open or wire) loses the host's live pair session:
+    // open_pair keeps no decode, so preview_host drops impl_->session while
+    // impl_->frame -- the pointer the wire job compares against -- still
+    // matches. The next wire edit would then take host.render()'s
+    // rebuild-from-decode path on the emptied decode and fail with an
+    // unrelated "Open image" error. Drop the item's held frame so that edit
+    // misses the pointer check and takes the full compose+open fallback the
+    // job already carries (photos self-heal in the host itself: their decode
+    // is retained, so the same failure rebuilds from it).
+    if(failed_&&reply.library_index>=0&&reply.library_index<int(library_.size())&&
+        library_[reply.library_index].is_pair)
+        library_[reply.library_index].pair_frame={};
     if(failed_&&reply.operation!="export"&&reply.operation!="batch-export"&&active_index_>=0){
         auto& history=library_[active_index_].undo;
         while(!history.empty()&&sameState(history.back(),currentState()))history.pop_back();
@@ -537,6 +549,17 @@ void PreviewController::exportTiff(const QUrl& url) {
 }
 void PreviewController::exportImage(const QUrl& url,int format,int quality,int maxLongEdge) {
     if(!frame_||busy_||!url.isLocalFile())return;
+    // PAIR-WIRING §6.4: a pair whose source has disappeared is refused, not
+    // exported from the shown piece alone -- the piece would be the only
+    // place the missing frame still exists. The batch path refuses pairs
+    // outright; this is the single-export face of the same refusal.
+    if(const auto* item=activePairItem()) {
+        if(!QFileInfo(item->pair_sources[0].toLocalFile()).isFile()||
+            !QFileInfo(item->pair_sources[1].toLocalFile()).isFile()) {
+            failed_=true;status_=QStringLiteral("源照片缺失，无法导出半幅对");
+            emit stateChanged();return;
+        }
+    }
     const auto p=path(url);const auto held=frame_;const auto gen=++generation_;const auto geometry=geometry_;const auto resources=resources_;
     const auto layer2=layer2_; // the grade as the user saw it at submit time
     submit([p,held,gen,geometry,resources,layer2,format,quality,maxLongEdge](auto&){Reply r;r.generation=gen;r.operation="export";

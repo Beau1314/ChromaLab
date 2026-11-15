@@ -189,6 +189,49 @@ void synthetic_pair(const fs::path& resources) {
           "the two gates are not one advance apart on the canvas");
 }
 
+// Finding A's session-loss chain, pinned without a RAW fixture. A pair
+// session keeps no decode (open_pair clears it, the piece must be handed
+// over again), so after a failed settings operation -- which resets the
+// session and keeps the frame -- the controller's wire job would see its
+// held-frame pointer still matching and take host.render()'s
+// rebuild-from-decode path on the emptied decode. The controller drops the
+// item's held frame on a failed pair reply so the next edit falls back to
+// compose+open; this gate pins the host half of that sequence: the trap
+// (a retry fails cleanly while the frame pointer still matches) and the
+// recovery (handing the piece over reopens the session).
+void pair_session_loss(const fs::path& resources) {
+    constexpr int w = 96, h = 64;
+    std::vector<float> piece(std::size_t(w) * h * 3, 0.25f);
+    const spk::io::RawMetadata metadata;  // the pair carries no decode of its own
+    RenderSettings wire;
+    wire.auto_exposure = false;
+    wire.film_format_mm = 37.0;
+    PreviewHost host(resources);
+    const auto held = host.open_pair(piece.data(), w, h, "pair-piece", metadata, wire);
+    check(host.current() == held, "open_pair did not publish the pair frame");
+    // A deterministic mid-render failure the host's own validation passes:
+    // rolloff is not host-ranged but the engine's schema keeps it in [1, 4],
+    // so spk_set_params refuses it -- the exact kind of failure that drops a
+    // live pair session in production.
+    RenderSettings poisoned = wire;
+    poisoned.scene_latitude_rolloff = 99.0;
+    rejected([&] { host.render(poisoned); }, "the poisoned settings render was accepted");
+    check(host.current() == held, "a failed render must leave the last frame published");
+    // The retry the wire job would take on a still-matching held frame: the
+    // session is gone and the pair kept no decode, so the rebuild refuses.
+    const auto retry = rejected([&] { host.render(wire); },
+                                "the post-loss retry render was accepted");
+    check(retry.find("Open image") != std::string::npos,
+          "the pair's session-loss retry did not fail on the empty-decode rebuild");
+    check(host.current() == held, "the failed retry must still leave the frame published");
+    rejected([&] { host.sceneLatitude(); }, "scene latitude accepted the lost session");
+    // The compose+open fallback the controller takes after the fix: handing
+    // the piece over again reopens the session on a brand-new frame.
+    const auto recovered = host.open_pair(piece.data(), w, h, "pair-piece", metadata, wire);
+    check(host.current() == recovered && recovered != held,
+          "open_pair did not recover the lost pair session");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -196,6 +239,7 @@ int main(int argc, char** argv) {
         const fs::path resources = argc > 1 ? fs::path(argv[1]) : fs::path("resources");
         pair_defaults();
         no_session(resources);
+        pair_session_loss(resources);
         synthetic_pair(resources);
         std::cout << "Pair host boundary: " << checks << " checks passed\n";
         return 0;

@@ -284,7 +284,10 @@ live.
 
 Honest boundaries. There are still no RAW fixtures on this machine, so the
 pair render flows are verified by code review plus synthetic evidence: the
-composer/metering unit gates (990 + 21 checks), the edit-store pair record
+composer/metering unit gates (990 + 29 checks, the pair-host count including
+a synthetic session-loss chain -- a failed settings operation drops the pair
+session and a retry on the emptied decode refuses until the piece is handed
+over again), the edit-store pair record
 gate (506 checks), a synthetic pair session walked through the C API against
 the engine schema, and the engine's `overscan_checks.py` pair cases (145
 PASS / 0 FAIL on this machine). Per-hole print trim (brightness, magenta,
@@ -296,4 +299,7 @@ already pins region Fits in `overscan_checks.py` but the controller surface
 is not plumbed. A dated pair without the film edge is capped by the engine's
 37:24 canvas shape gate at roughly 2.85 mm of spacing: the panel warns when
 a loaded record carries a wider gap (the slider itself caps at 2.0 mm), and
-records stay loadable.
+records stay loadable. A pair whose source file has disappeared is refused
+on single export (源照片缺失，无法导出半幅对, PAIR-WIRING §6.4) instead of
+being exported from the shown piece alone; the batch path's pair refusal
+stands.
