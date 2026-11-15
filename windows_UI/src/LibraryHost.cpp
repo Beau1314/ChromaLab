@@ -97,11 +97,14 @@ QJsonObject metaSetParams(const QStringList& variants, const QStringList& images
     return params;
 }
 
-QJsonObject imagesTrashParams(const QStringList& images, MetaValue trashed) {
+QJsonObject imagesTrashParams(const QStringList& images, TrashFlag trashed) {
     QJsonObject params;
     params.insert(QLatin1String("images"), stringsArray(images));
-    if (trashed.isNumber()) params.insert(QLatin1String("trashed"), trashed.number);
+    // A JSON boolean or null, never a number: the helper validates the type
+    // and refuses a 1 or a 0 (its set_trashed wants is_boolean() || is_null()).
+    if (trashed.isTrue()) params.insert(QLatin1String("trashed"), true);
     else if (trashed.isNull()) params.insert(QLatin1String("trashed"), QJsonValue::Null);
+    else params.insert(QLatin1String("trashed"), false);
     return params;
 }
 
@@ -527,7 +530,7 @@ Reply<AddResult> LibraryHost::imagesAdd(const QString& library, const QVariantLi
 }
 
 Reply<bool> LibraryHost::imagesTrash(const QString& library, const QStringList& images,
-                                     MetaValue trashed) {
+                                     TrashFlag trashed) {
     QJsonObject params = protocol::imagesTrashParams(images, trashed);
     params.insert(QLatin1String("library"), library);
     return callTyped<bool>(QStringLiteral("images.trash"), params,

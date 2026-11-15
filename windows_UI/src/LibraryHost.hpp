@@ -124,7 +124,12 @@ private:
 
 } // namespace protocol
 
-/// `meta.set`/`images.trash`'s tri-state value.
+/// `meta.set`'s tri-state rating/colour tag: omitted (key left off — leave
+/// the stored value), null (explicit JSON null — hand the value back to
+/// Capture One) or a number. Numbers only: a bool has no place on this wire
+/// (the helper validates 0..5 / 0..7), and `MetaValue::of(true)` would
+/// otherwise ride the implicit int conversion as a 1, so bools are refused
+/// at compile time.
 struct MetaValue {
     enum class Kind { Omit, Null, Number };
     Kind kind = Kind::Omit;
@@ -132,9 +137,26 @@ struct MetaValue {
     static MetaValue omit() { return {}; }
     static MetaValue clear() { MetaValue v; v.kind = Kind::Null; return v; }
     static MetaValue of(int number) { MetaValue v; v.kind = Kind::Number; v.number = number; return v; }
+    static MetaValue of(bool) = delete; // a bool must not arrive as a 1
     bool isOmit() const { return kind == Kind::Omit; }
     bool isNull() const { return kind == Kind::Null; }
     bool isNumber() const { return kind == Kind::Number; }
+};
+
+/// `images.trash`'s `trashed` flag — a tri-state BOOLEAN, its own type: the
+/// helper requires the key on the wire (a request without it is refused) and
+/// accepts only true, false or null (null hands the flag back to Capture
+/// One). `false` and `null` are not the same write: false stores an explicit
+/// 0, null stores SQL NULL. There is no "omit" here, unlike meta.set's
+/// values, so the default is a plain false.
+struct TrashFlag {
+    enum class Kind { False, True, Clear };
+    Kind kind = Kind::False;
+    static TrashFlag of(bool value) { return {value ? Kind::True : Kind::False}; }
+    static TrashFlag clear() { return {Kind::Clear}; } // null: follow Capture One
+    bool isTrue() const { return kind == Kind::True; }
+    bool isFalse() const { return kind == Kind::False; }
+    bool isNull() const { return kind == Kind::Clear; }
 };
 
 // --- the typed layer's wire params -------------------------------------------
@@ -156,8 +178,10 @@ QJsonObject imagesListParams(const QVariantMap& query);
 QJsonObject metaSetParams(const QStringList& variants, const QStringList& images,
                           MetaValue rating, MetaValue colorTag);
 
-/// `images.trash`: the flag is the same tri-state as meta.set's values.
-QJsonObject imagesTrashParams(const QStringList& images, MetaValue trashed);
+/// `images.trash`: the flag always rides, as a JSON true, false or null
+/// (the helper refuses a request without the key, and refuses anything that
+/// is not a boolean or null).
+QJsonObject imagesTrashParams(const QStringList& images, TrashFlag trashed);
 
 /// `images.add`: an item is a path string or a {path, metadata} object
 /// (metadata exactly as the app's decoder read it); `recent_import_at` rides
@@ -394,7 +418,7 @@ public:
                                const QString& mode = QLatin1String("reference"),
                                const QString& collection = {},
                                const QString& recentImportAt = {});
-    Reply<bool> imagesTrash(const QString& library, const QStringList& images, MetaValue trashed = {});
+    Reply<bool> imagesTrash(const QString& library, const QStringList& images, TrashFlag trashed = {});
     Reply<RemoveResult> imagesRemove(const QString& library, const QStringList& images);
 
     Reply<QString> collectionCreate(const QString& library, const QString& kind, const QString& name,

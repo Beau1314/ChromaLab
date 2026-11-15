@@ -122,8 +122,11 @@ std::optional<CatalogSourcesStore::Registry> CatalogSourcesStore::parseRegistry(
     const QJsonObject object = document.object();
 
     Registry registry;
-    // Mac's `var version = 1` decodes with its default when the key is
-    // absent; a present non-number is unreadable.
+    // Lenient by design (the header enumerates the divergence): a missing or
+    // null `version` reads as the default 1, where Swift's synthesized
+    // Codable — decode() on the non-optional `var version = 1`, default or
+    // not — would fail the whole file to the aside. A present non-number,
+    // non-null version is unreadable.
     const QJsonValue version = object.value(QLatin1String("version"));
     if (version.isDouble()) registry.version = version.toInt();
     else if (!version.isUndefined() && !version.isNull()) return std::nullopt;

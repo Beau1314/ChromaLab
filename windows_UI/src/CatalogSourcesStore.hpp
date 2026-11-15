@@ -19,20 +19,33 @@
 // caller) pass the path explicitly, so nothing here writes the user's real
 // list by accident.
 //
-// Shape (the Mac's Registry, verbatim): `version` (1, decoded with its
-// default when absent), `sources[]` with `id`/`kind`/`name`/`path`/
-// `libraryPath`/`addedAt`/`openedAt`/`copiedFrom` (the two paths and the last
-// three optional), `selected` (a UUID string). Dates are ISO 8601 UTC at
-// second precision — Mac's `.iso8601` strategy. Saves are pretty-printed with
-// sorted keys (Mac's [.prettyPrinted, .sortedKeys]) and replace the file
-// atomically. The decoding is strict like Swift's generated Codable: an
-// unknown kind, a malformed UUID or a wrong-typed date makes the whole file
-// unreadable, and an unreadable file is set aside beside itself as
-// `sources.unreadable-<time>.json` (once per content, never overwritten;
-// two different contents within one second get -1, -2 suffixes rather than
-// the second copy being skipped) —
-// the reader then carries on with the empty default, exactly as the Mac's
-// KeptFileAside does.
+// Shape (the Mac's Registry, verbatim): `version` (1), `sources[]` with
+// `id`/`kind`/`name`/`path`/`libraryPath`/`addedAt`/`openedAt`/`copiedFrom`
+// (the two paths and the last three optional), `selected` (a UUID string).
+// Dates are ISO 8601 UTC at second precision — Mac's `.iso8601` strategy.
+// Saves are pretty-printed with sorted keys (Mac's [.prettyPrinted,
+// .sortedKeys]) and replace the file atomically. The decoding is strict like
+// Swift's generated Codable: an unknown kind, a malformed UUID or a
+// wrong-typed date makes the whole file unreadable, and an unreadable file is
+// set aside beside itself as `sources.unreadable-<time>.json` (once per
+// content, never overwritten; two different contents within one second get
+// -1, -2 suffixes rather than the second copy being skipped) — the reader
+// then carries on with the empty default, exactly as the Mac's KeptFileAside
+// does.
+//
+// One deliberate divergence, a LENIENT superset of the Mac's decode — files
+// the Mac sets aside that this reader still accepts (all three only appear in
+// foreign or hand-edited files; everything this app writes is identical on
+// both platforms, so the impact on app-written files is zero):
+//   1. a missing `version` key reads as 1 — Swift's synthesized Codable
+//      calls decode() for the non-optional `var version = 1` regardless of
+//      the default, so a version-less file fails decode on the Mac;
+//   2. an explicit `version: null` also reads as 1 — same reason (null is
+//      not an Int);
+//   3. a date carrying milliseconds reads — Mac's `.iso8601` formatter
+//      (no .withFractionalSeconds) rejects them, Qt::ISODate accepts.
+// Kept on purpose: the registry is a cache of user state, and a slightly
+// newer file must not strand the user's list behind an aside copy.
 namespace spk::desktop::library {
 
 class CatalogSourcesStore {
@@ -107,7 +120,8 @@ public:
     static TreeInput treeInput(const std::vector<QVariantMap>& collections);
 
 private:
-    /// Swift-Codable-strict: nullopt when anything is not the shape above.
+    /// Swift-Codable-strict plus the three enumerated lenient cases above:
+    /// nullopt when anything else is not the shape.
     static std::optional<Registry> parseRegistry(const QByteArray& bytes);
     static QString setAside(const QString& path); // once per content; empty on failure
     QString registryPath_;

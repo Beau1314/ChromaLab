@@ -3,13 +3,16 @@
 // gate, id routing, chunk-to-line reassembly — with no QProcess anywhere.
 // The fake-peer half drives a real pipe against this test binary itself in a
 // scripted mode (silent, or a reply split across two chunks), so the timeout
-// and reassembly paths run ungated: no spklib-host needed. The smoke gate is
-// last: it runs only when a built spklib-host is passed as argv[1] (the
-// build points it at the local spklib checkout's build/spklib-host.exe);
-// without one everything above still compiles and runs, so the gate can
-// never masquerade as broken when it merely has no helper to talk to.
+// and reassembly paths run ungated: no spklib-host needed. The helper gates
+// are last: they run only when a built spklib-host is passed as argv[1] (the
+// build points it at the local spklib checkout's build/spklib-host.exe) —
+// the handshake smoke, then the images.trash wire-shape gate driven end to
+// end on a temp catalog. Without a helper everything above still compiles
+// and runs, so the gates can never masquerade as broken when they merely
+// have no helper to talk to.
 #include "LibraryHost.hpp"
 #include <QCoreApplication>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -273,10 +276,23 @@ void testParamBuilders() {
           "a colour-tag number rides as a number");
 
     const QJsonObject trash = protocol::imagesTrashParams(QStringList() << QStringLiteral("I1"),
-                                                          MetaValue::clear());
+                                                          host::TrashFlag::clear());
     check(trash.value(QLatin1String("images")).toArray().size() == 1 &&
               trash.value(QLatin1String("trashed")).type() == QJsonValue::Null,
           "a null trashed flag rides as explicit null");
+    // The flag is a JSON boolean or null — never a number. The real helper
+    // validates the type (its set_trashed wants is_boolean() || is_null())
+    // and would refuse the pre-fix shell's 1.
+    const QJsonObject trashTrue = protocol::imagesTrashParams(
+        QStringList() << QStringLiteral("I1"), host::TrashFlag::of(true));
+    check(trashTrue.value(QLatin1String("trashed")).type() == QJsonValue::Bool &&
+              trashTrue.value(QLatin1String("trashed")).toBool() == true,
+          "a set trash flag rides as JSON true");
+    const QJsonObject trashFalse = protocol::imagesTrashParams(
+        QStringList() << QStringLiteral("I1"), host::TrashFlag::of(false));
+    check(trashFalse.value(QLatin1String("trashed")).type() == QJsonValue::Bool &&
+              trashFalse.value(QLatin1String("trashed")).toBool() == false,
+          "a cleared-to-false trash flag rides as JSON false");
 
     const QJsonObject put =
         protocol::editPutParams(QStringLiteral("V1"), QJsonObject{{QLatin1String("film"), 1}}, 2);
@@ -518,7 +534,21 @@ void runTypedPeer() {
                                         {QLatin1String("stored_at"), QLatin1String("store/Originals/2026/11/14/b.RAW")}}}},
                 {QLatin1String("recent_import"), QLatin1String("ALB1")}, {QLatin1String("echo"), params}};
         } else if (method == QLatin1String("images.trash")) {
-            result = QJsonObject{{QLatin1String("updated"), true}, {QLatin1String("files_moved"), false}};
+            // The real helper's gate (spklib library.cpp set_trashed): the key
+            // must be present and must be a JSON boolean or null. A peer that
+            // validates like this turns a wrong wire shape into the same
+            // invalid_params the real helper answers.
+            const QJsonValue trashed = params.value(QLatin1String("trashed"));
+            if (!params.contains(QLatin1String("trashed")) ||
+                !(trashed.isBool() || trashed.isNull())) {
+                error = QJsonObject{{QLatin1String("code"), QLatin1String("invalid_params")},
+                                    {QLatin1String("message"),
+                                     QLatin1String("'trashed' must be true, false or null")},
+                                    {QLatin1String("data"), QJsonValue::Null}};
+            } else {
+                result = QJsonObject{{QLatin1String("updated"), true},
+                                     {QLatin1String("files_moved"), false}, {QLatin1String("echo"), params}};
+            }
         } else if (method == QLatin1String("images.remove")) {
             result = QJsonObject{{QLatin1String("removed"), 1},
                                  {QLatin1String("refused"),
@@ -768,9 +798,16 @@ void testTypedMethods() {
           "an existing add carries its stored_at");
     check(added.value.recentImport == QLatin1String("ALB1"), "the Recent Imports album surfaces");
 
+    // images.trash: the peer validates `trashed`'s type exactly as the real
+    // helper does (boolean or null, the key required), so an ack here IS the
+    // payload-shape proof — the pre-fix shell's `"trashed": 1` (the silent
+    // MetaValue::of(true) → of(1) conversion) would answer invalid_params.
     const auto trashed = helper.imagesTrash(QLatin1String("L1"), QStringList() << QStringLiteral("I1"),
-                                            MetaValue::of(true));
-    check(trashed.ok && trashed.value, "images.trash acks");
+                                            host::TrashFlag::of(true));
+    check(trashed.ok && trashed.value, "images.trash acks — the flag rode as a JSON boolean");
+    const auto trashedNull = helper.imagesTrash(QLatin1String("L1"), QStringList() << QStringLiteral("I1"),
+                                                host::TrashFlag::clear());
+    check(trashedNull.ok && trashedNull.value, "a null trash flag acks too");
 
     const auto removed = helper.imagesRemove(QLatin1String("L1"),
                                              QStringList() << QStringLiteral("I1") << QStringLiteral("I9"));
@@ -923,6 +960,89 @@ void testHostSmoke(const QString& helperPath) {
                 helper.sdkVersion().version.toUtf8().constData());
 }
 
+/// The trash flag against the real helper (the fake peer cannot prove the
+/// wire): `images.trash`'s `trashed` must arrive as a JSON true/false/null —
+/// spklib's set_trashed refuses anything else with invalid_params, so the
+/// pre-fix shell's `"trashed": 1` (MetaValue::of(true) silently narrowed to
+/// of(1)) would fail right here. Driven end to end: temp catalog, one
+/// synthetic image (images.add wants a real file; a few bytes of anything
+/// will do — the helper records size and metadata, it does not decode),
+/// then set true / false / null with the flag read back each time.
+void testHostTrash(const QString& helperPath) {
+    QTemporaryDir store;
+    check(store.isValid(), "temporary store unavailable");
+    host::LibraryHost helper;
+    const auto failure = helper.start({helperPath, store.path()});
+    check(!failure.has_value(), (std::string("trash-gate helper start: ") +
+                                 failure.value_or("?").toStdString()).c_str());
+
+    const auto created = helper.libraryCreate(store.filePath(QStringLiteral("trash-gate.spektralab")),
+                                              QStringLiteral("catalog"), QStringLiteral("TrashGate"));
+    check(created.ok, (std::string("trash-gate create: ") +
+                       (created.ok ? QString() : created.errorMessage).toStdString()).c_str());
+    const QString library = created.value.library;
+
+    const QString file = store.filePath(QStringLiteral("gate-sample.RAW"));
+    {
+        QFile synthetic(file);
+        check(synthetic.open(QIODevice::WriteOnly), "the synthetic image file opens");
+        check(synthetic.write("spektralab trash gate") > 0, "the synthetic image file is written");
+    }
+    const auto added = helper.imagesAdd(library,
+                                        QVariantList() << QVariantMap{
+                                            {QLatin1String("path"), file},
+                                            {QLatin1String("metadata"),
+                                             QVariantMap{{QLatin1String("camera_model"),
+                                                          QLatin1String("Gate Cam")}}}});
+    check(added.ok && added.value.added == 1 && added.value.rows.size() == 1,
+          (std::string("trash-gate add: ") +
+           (added.ok ? (added.value.rows.front().error.isEmpty()
+                            ? QString("ok")
+                            : added.value.rows.front().error)
+                     : added.errorMessage).toStdString()).c_str());
+    const QString image = added.value.rows.front().image;
+    check(!image.isEmpty(), "the synthetic image got a uuid");
+
+    // The point of the gate: true rides as a JSON boolean and the real
+    // helper acks — invalid_params here means the wire shape is wrong.
+    const auto setTrue = helper.imagesTrash(library, QStringList() << image, host::TrashFlag::of(true));
+    check(setTrue.ok && setTrue.errorCode != QLatin1String("invalid_params"),
+          "images.trash true is accepted by the real helper (no invalid_params)");
+    const auto got = helper.imageGet(library, image);
+    check(got.ok && got.value.value(QLatin1String("trashed")).toBool(),
+          "the flag reads back true through image.get");
+
+    // A trashed row leaves the default list and returns with include_trashed.
+    const auto hidden = helper.imagesList(library);
+    check(hidden.ok && hidden.value.total == 0, "a trashed row leaves the default list");
+    const auto shown = helper.imagesList(
+        library, QVariantMap{{QLatin1String("include_trashed"), true}});
+    check(shown.ok && shown.value.total == 1 && shown.value.images.size() == 1 &&
+              shown.value.images.front().trashed(),
+          "the row is listed with include_trashed, flag true");
+
+    const auto setFalse =
+        helper.imagesTrash(library, QStringList() << image, host::TrashFlag::of(false));
+    check(setFalse.ok, "images.trash false is accepted");
+    const auto gotBack = helper.imageGet(library, image);
+    check(gotBack.ok && !gotBack.value.value(QLatin1String("trashed")).toBool(),
+          "the flag reads back false");
+
+    // null hands the flag to Capture One: stored as SQL NULL, which the
+    // helper reads back as false for its own local rows.
+    const auto setNull =
+        helper.imagesTrash(library, QStringList() << image, host::TrashFlag::clear());
+    check(setNull.ok, "images.trash null is accepted");
+    const auto gotNull = helper.imageGet(library, image);
+    check(gotNull.ok && !gotNull.value.value(QLatin1String("trashed")).toBool(),
+          "a cleared (null) flag reads back untrashed");
+
+    check(helper.libraryClose(library).ok, "trash-gate close acks");
+    helper.shutdown();
+    check(!helper.isRunning(), "the trash-gate helper shuts down");
+    std::printf("host trash gate: true/false/null all accepted, flags read back, no invalid_params\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -975,6 +1095,7 @@ int main(int argc, char** argv) {
         testSplitReplyAcrossChunks();
         if (argc > 1 && QFileInfo(argv[1]).isFile()) {
             testHostSmoke(QString::fromUtf8(argv[1]));
+            testHostTrash(QString::fromUtf8(argv[1]));
         } else {
             // Compile-level gate: no helper binary was handed to this run.
             std::printf("host smoke skipped: no spklib-host given (protocol tier still verified)\n");

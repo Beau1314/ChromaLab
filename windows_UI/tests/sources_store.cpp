@@ -264,18 +264,46 @@ void testStrictDecode() {
         check(!store.lastReadAside().isEmpty(), "the unreadable file is set aside");
     }
 
-    // What must still read: a file without version (Mac's decodeIfPresent
-    // default 1), without selected, with null optionals and unknown extra
-    // keys (Codable ignores what it does not know).
+    // What must still read — the reader's LENIENT SUPERSET of the Mac's
+    // decode, three enumerated divergences (the header documents them):
+    // Swift's synthesized Codable calls decode() for the non-optional
+    // `var version = 1` regardless of the default, so a missing or null
+    // `version` fails the whole file on the Mac and it goes to the aside;
+    // this reader deliberately reads it as 1. And a date with milliseconds
+    // reads here (Qt::ISODate), where Mac's `.iso8601` formatter rejects it.
+    // Everything the app writes is identical on both platforms, so this only
+    // loosens what happens to foreign or hand-edited files. Alongside: no
+    // selected, null optionals, unknown extra keys (Codable ignores what it
+    // does not know).
+    const QByteArray missingVersion =
+        R"json({"sources":[{"id":"0E10D9AC-5B74-4E67-9E04-3DCB4D0E1E11","kind":"session","name":"S","path":"D:/S","addedAt":"2026-11-01T08:00:00Z","openedAt":null,"imageCount":3}],"selected":null})json";
+    const QByteArray nullVersion =
+        R"json({"version":null,"sources":[{"id":"0E10D9AC-5B74-4E67-9E04-3DCB4D0E1E11","kind":"session","name":"S","path":"D:/S","addedAt":"2026-11-01T08:00:00Z"}],"selected":null})json";
+    const QByteArray millisecondDate =
+        R"json({"version":1,"sources":[{"id":"0E10D9AC-5B74-4E67-9E04-3DCB4D0E1E11","kind":"session","name":"S","path":"D:/S","addedAt":"2026-11-01T08:00:00.123Z"}],"selected":null})json";
+    for (const QByteArray& bytes : {missingVersion, nullVersion, millisecondDate}) {
+        QTemporaryDir lenient;
+        check(lenient.isValid(), "temporary directory unavailable");
+        const QString lenientPath = lenient.filePath(QStringLiteral("sources.json"));
+        writeBytes(lenientPath, bytes);
+        lib::CatalogSourcesStore lenientStore(lenientPath);
+        const lib::CatalogSourcesStore::Registry lenientRegistry = lenientStore.load();
+        check(lenientStore.lastReadAside().isEmpty(),
+              "a file inside the lenient superset is read, not set aside");
+        check(lenientRegistry.version == 1, "version reads as the default 1");
+        check(lenientRegistry.sources.size() == 1 &&
+                  lenientRegistry.sources.front().addedAt.isValid(),
+              "the lenient file's source (and its date) decode");
+    }
+
     QTemporaryDir dir;
     check(dir.isValid(), "temporary directory unavailable");
     const QString path = dir.filePath(QStringLiteral("sources.json"));
-    writeBytes(path,
-               QByteArray(R"json({"sources":[{"id":"0E10D9AC-5B74-4E67-9E04-3DCB4D0E1E11","kind":"session","name":"S","path":"D:/S","addedAt":"2026-11-01T08:00:00Z","openedAt":null,"imageCount":3}],"selected":null})json"));
+    writeBytes(path, missingVersion);
     lib::CatalogSourcesStore store(path);
     const lib::CatalogSourcesStore::Registry registry = store.load();
     check(store.lastReadAside().isEmpty(), "a tolerable file is read, not set aside");
-    check(registry.version == 1, "a missing version reads as 1");
+    check(registry.version == 1, "a missing version reads as 1 (Windows; Mac would set the file aside)");
     check(registry.sources.size() == 1 && registry.sources.front().kind ==
                                                 lib::CatalogSourcesStore::Kind::Session,
           "the session kind reads back");
