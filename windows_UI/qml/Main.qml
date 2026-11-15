@@ -1198,6 +1198,7 @@ ApplicationWindow {
                                 {"id": "120_6x17", "label": "120 6×17"}
                             ]
                             readonly property var gates: ["auto", "square", "rounded", "eared", "shouldered", "kicked"]
+                            readonly property var modes: ["strip", "filed"]
                             RowLayout {
                                 Layout.fillWidth: true
                                 Switch {
@@ -1212,6 +1213,19 @@ ApplicationWindow {
                                 Text {
                                     text: !overscanSection.osOn ? "关闭" : (preview.overscan.format === undefined ? "" : preview.overscan.format)
                                     color: Theme.muted; font.pixelSize: 10
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "模式"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                ComboBox {
+                                    objectName: "overscanModeCombo"
+                                    Layout.fillWidth: true
+                                    model: ["条片（整个片宽）", "单帧（少量片边）"]
+                                    readonly property var values: overscanSection.modes
+                                    enabled: overscanSection.osEditable && overscanSection.osOn
+                                    currentIndex: values.indexOf(preview.overscan.mode === undefined ? "strip" : preview.overscan.mode)
+                                    onActivated: preview.setOverscan("mode", values[currentIndex])
                                 }
                             }
                             RowLayout {

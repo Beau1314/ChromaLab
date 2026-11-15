@@ -76,9 +76,13 @@ bool rasterise(const OverscanLayout& L, const Group& g, std::vector<float>& cov,
                int& w, int& h);
 
 // Where the bundled font files live (a `<dir>/fonts/` with the two TeX Gyre
-// Heros faces). Set once per process before the first text op; the engine
-// sets it to its resources directory at creation.
-void set_font_directory(const std::string& dir);
+// Heros faces). Set once per process at engine creation, before the first
+// text op and before any render thread exists: every face the Op table names
+// loads here, so the face table is read-only while renders run concurrently,
+// and a missing or unreadable face file is refused here -- `error` names the
+// file -- instead of silencing the edge print at render time. Always true on
+// macOS, which reads the system's own faces.
+bool set_font_directory(const std::string& dir, std::string& error);
 
 }  // namespace edge_raster
 

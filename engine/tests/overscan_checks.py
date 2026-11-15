@@ -822,6 +822,22 @@ def main():
         check("CineStill 120: the name runs 10.5-12.2 mm along the edge under the frame (the frames' 11.4)",
               len(name) >= 1 and all(10.5 <= r_[1] - r_[0] <= 12.2 for r_ in name),
               str([round(float(r_[1] - r_[0]), 2) for r_ in name]))
+        # The name is the one draw on the narrow face (Arial Narrow), and the
+        # width checks above cannot see its height: a narrow face compresses
+        # advances and shapes along the line but keeps its cap height (real
+        # Arial Narrow's caps are Arial's). Pinned so the compression can
+        # never leak into y again: drawn caps 1.15 mm, the develop puts back
+        # the ~0.05 mm a side it spread, the strips read 1.23 -- and a
+        # 0.82-scaled y would land near 1.05.
+        heights = []
+        for r_ in name:
+            cols = below[:, int(r_[0] / mm):int(r_[1] / mm)]
+            rows_ = np.flatnonzero(cols.max(1) > 0.5 * below.max())
+            if len(rows_):
+                heights.append((rows_[-1] - rows_[0] + 1) * mm)
+        check("CineStill 120: the name's caps stand 1.10-1.45 mm tall (the strips' 1.23; a narrow face keeps its cap height)",
+              len(heights) >= 1 and all(1.10 <= h_ <= 1.45 for h_ in heights),
+              str([round(float(h_), 2) for h_ in heights]))
         above = red[:int(gt) - 1]
         wedges = [r_ for r_ in lit_runs(above, mm, 0.05) if 3.0 <= r_[1] - r_[0] <= 3.8]
         check("CineStill 120: a wedge 3.2-3.6 mm long by each count above the frame (the frames' 3.4)",

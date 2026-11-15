@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -223,8 +224,10 @@ double text_width(const char* font, double size_mm, const std::string& text, dou
 }
 
 // Nothing to load: the Apple path reads the system's own faces.
-void set_font_directory(const std::string& dir) {
+bool set_font_directory(const std::string& dir, std::string& error) {
     (void)dir;
+    (void)error;
+    return true;
 }
 
 bool rasterise(const OverscanLayout& L, const Group& g, std::vector<float>& cov, int& x0, int& y0,
@@ -334,32 +337,46 @@ struct LoadedFace {
     float upem = 1000.0f;
 };
 
-// stbtt's fontinfo holds pointers into `data`, so the loaded faces are
-// address-stable and read-only after init (concurrent glyph reads are safe);
-// loads happen on the render thread that first needs the face.
+// The loaded faces. Filled once by set_font_directory at engine creation --
+// before the first render thread exists -- and read-only afterwards, so
+// concurrent renders (capabilities' concurrent:true) need no lock: stbtt's
+// fontinfo holds pointers into `data`, and the reserve keeps the entries
+// address-stable for the process's lifetime.
+std::vector<LoadedFace> g_loaded;
+
+bool load_face(const Face& sub, LoadedFace& out, std::string& error) {
+    const std::string path = g_font_dir + "/fonts/" + sub.file;
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) { error = "font file missing: " + path; return false; }
+    const std::streamoff length = file.tellg();
+    if (length <= 0) { error = "font file empty: " + path; return false; }
+    out.key = sub.file;
+    out.width_scale = sub.width_scale;
+    out.data.resize(size_t(length) + 1, 0);           // a guard byte: stbtt reads past the last table on rare fonts
+    file.seekg(0);
+    if (!file.read(reinterpret_cast<char*>(out.data.data()), length)) {
+        error = "font file unreadable: " + path;
+        return false;
+    }
+    const int offset = stbtt_GetFontOffsetForIndex(out.data.data(), 0);
+    if (!stbtt_InitFont(&out.info, out.data.data(), offset)) {
+        error = "font file unparsable: " + path;
+        return false;
+    }
+    out.upem = std::max(1.0f, 1.0f / stbtt_ScaleForMappingEmToPixels(&out.info, 1.0f));   // the EM square's font units
+    return true;
+}
+
+// A pure lookup over the table set_font_directory filled. A miss means the
+// font directory was never set -- a caller that skipped engine creation --
+// and is loud with the file named, not a silent no-print.
 const LoadedFace* face_for(const char* name) {
-    static std::vector<LoadedFace> loaded;
     const Face* sub = nullptr;
     for (const Face& f : kFaces) if (std::strcmp(f.name, name) == 0) { sub = &f; break; }
     if (!sub) sub = &kFaces[1];                       // an unknown name takes the default face's weight
-    for (const LoadedFace& f : loaded)
+    for (const LoadedFace& f : g_loaded)
         if (f.key == sub->file && f.width_scale == sub->width_scale) return &f;
-    const std::string path = g_font_dir + "/fonts/" + sub->file;
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) return nullptr;
-    const std::streamoff length = file.tellg();
-    if (length <= 0) return nullptr;
-    LoadedFace f;
-    f.key = sub->file;
-    f.width_scale = sub->width_scale;
-    f.data.resize(size_t(length) + 1, 0);             // a guard byte: stbtt reads past the last table on rare fonts
-    file.seekg(0);
-    if (!file.read(reinterpret_cast<char*>(f.data.data()), length)) return nullptr;
-    const int offset = stbtt_GetFontOffsetForIndex(f.data.data(), 0);
-    if (!stbtt_InitFont(&f.info, f.data.data(), offset)) return nullptr;
-    f.upem = std::max(1.0f, 1.0f / stbtt_ScaleForMappingEmToPixels(&f.info, 1.0f));   // the EM square's font units
-    loaded.push_back(std::move(f));
-    return &loaded.back();
+    throw std::runtime_error(std::string("font face not loaded (no font directory was set): ") + sub->file);
 }
 
 // UTF-8 -> one codepoint; `i` advances past it. Malformed bytes read as 0
@@ -386,16 +403,31 @@ double glyph_advance_mm(const LoadedFace* f, int glyph, double upmm, bool& drawa
 
 }  // namespace
 
-void set_font_directory(const std::string& dir) {
-    // Set once per process, before the first render thread exists; the faces
-    // load lazily on first use and never reload.
+bool set_font_directory(const std::string& dir, std::string& error) {
+    // Set once per process, at engine creation and before the first render
+    // thread exists. Every face the Op table names loads here, so a missing
+    // or unreadable file refuses the engine with the file named instead of
+    // silencing the edge print at render time, and the table is frozen while
+    // renders run concurrently.
     g_font_dir = dir;
+    g_loaded.clear();
+    g_loaded.reserve(sizeof(kFaces) / sizeof(kFaces[0]));
+    for (const Face& f : kFaces) {
+        bool have = false;
+        for (const LoadedFace& l : g_loaded)
+            have = have || (l.key == f.file && l.width_scale == f.width_scale);
+        if (have) continue;
+        LoadedFace l;
+        if (!load_face(f, l, error)) return false;
+        g_loaded.push_back(std::move(l));
+    }
+    return true;
 }
 
 double text_width(const char* font, double size_mm, const std::string& text, double tracking_mm,
                   double hscale) {
     const LoadedFace* f = face_for(font);
-    if (!f || text.empty()) return 0.0;
+    if (text.empty()) return 0.0;
     const double upmm = double(size_mm) / f->upem;
     size_t i = 0;
     size_t count = 0;
@@ -518,7 +550,7 @@ void ellipse_path(const FilmToBitmap& m, double cs, double ct, double r, Path& p
 // glyph fills on its own (its small box keeps the fixed-point unit fine).
 void draw_text(Surface& surf, const FilmToBitmap& m, const Op& op) {
     const LoadedFace* f = face_for(op.font);
-    if (!f || op.text.empty()) return;
+    if (op.text.empty()) return;
     const double upmm = op.size_mm / f->upem;
     const double pre = op.scale_advances ? op.hscale : 1.0;
     const double shape_x = op.scale_advances ? 1.0 : op.hscale;
@@ -548,7 +580,7 @@ void draw_text(Surface& surf, const FilmToBitmap& m, const Op& op) {
                 // the shape hscale widens x when the line's own advances are
                 // not scaled.
                 const double lx = pen + v.x * upmm * f->width_scale * shape_x;
-                const double ly = v.y * upmm * f->width_scale;
+                const double ly = v.y * upmm;
                 double fs, ft;
                 place(lx, ly, fs, ft);
                 const double bx = m.x(fs, ft), by = m.y(fs, ft);
@@ -562,7 +594,7 @@ void draw_text(Surface& surf, const FilmToBitmap& m, const Op& op) {
                     path.line(bx, by);
                 } else if (v.type == STBTT_vcurve) {
                     const double cxs = pen + v.cx * upmm * f->width_scale * shape_x;
-                    const double cys = v.cy * upmm * f->width_scale;
+                    const double cys = v.cy * upmm;
                     double cs, ct;
                     place(cxs, cys, cs, ct);
                     path.quad(m.x(cs, ct), m.y(cs, ct), bx, by);

@@ -582,9 +582,12 @@ spk_engine* spk_engine_create(const char* resources_dir, void* device) {
     std::string error;
     if (!engine->setup_cache.set_resources_dir(engine->resources_dir, error)) { g_error = error; return nullptr; }
     // The film edge's substitute faces (TeX Gyre Heros under resources/fonts/;
-    // a no-op on macOS, which reads the system's own). Set once, before any
-    // render thread exists.
-    edge_raster::set_font_directory(engine->resources_dir);
+    // a no-op on macOS, which reads the system's own). Loaded once, before
+    // any render thread exists; a missing face file refuses the engine.
+    if (!edge_raster::set_font_directory(engine->resources_dir, error)) {
+        g_error = error;
+        return nullptr;
+    }
     if (!engine->blob.open(engine->resources_dir + "/spektralab_constants.bin", error)) {
         g_error = error;
         return nullptr;
