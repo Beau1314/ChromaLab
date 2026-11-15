@@ -200,3 +200,45 @@ pixels; PNG8/JPEG8 use 8-bit samples, and resizing is explicitly requested.
 
 Nikon HE/HE* RAW remains explicitly unsupported by this LibRaw build. A failed
 NEF open must leave the previous ARW and its session usable.
+
+## Phase 2 engine features in the UI
+
+Phase 2 (`phase2-kernels` branch) ported six formerly Metal-only engine
+features to the Windows/Vulkan backend and wired them into this frontend; the
+engine no longer refuses any of them (`capabilities` reports
+`unsupported_features = []`):
+
+- **Cineon digital intermediate (DI 数字中间片)** -- `io.digital_intermediate`
+  renders the session's negative as Cineon through `spk_di_encode`; slide
+  films are still refused by the engine.
+- **Scene latitude mapping with fit commit (宽容度映射 + 拟合提交)** --
+  `spk_scene_latitude`/`spk_scene_curve` apply the mapping in real renders;
+  the controller commits fitted values through the C ABI.
+- **Contrast mask (对比遮罩)** -- RFC-024 fields, `spk_mask_reduce`/
+  `spk_mask_epilogue` and `spk_contrast_mask_field`.
+- **Scan HDR expand (HDR 扫描)** -- `spk_scan_hdr_expand` on the scan path.
+- **Film edge / overscan (胶片边缘)** -- canvas, gate, holes, carrier and
+  Fujifilm/Kodak edge print via four overscan kernels, an EdgeRaster text
+  rasteriser and a threaded Gaussian.
+- **Date imprint (日期背印)** -- three faces (date, text, shooting data) with
+  style/corner/size/exposure/inset controls in the edit store.
+
+Acceptance on the port: CTest 28/28 (21 before phase 2), the engine's
+`overscan_checks.py` Python gate at 145 assertions / 0 failures (the
+whole-feature acceptance for film edge and the date/data faces, including
+half-frame pairs), `windows_features.py` success, offscreen Qt smoke clean.
+
+Honest boundaries, unchanged from the engine docs: there is no Mac in this
+port, so there are no Metal whole-image reference dumps for the new kernels --
+parity rests on the float64 kernel gates and the Python overscan acceptance.
+The Qt workflow gates that would walk these features against real RAW inputs
+are compile-verified but stay unexecuted until RAW fixtures exist.
+`text_b` (date imprint pairing) is future work, and striped execution still
+refuses overscan layouts by name.
+
+Font deployment: the edge print and date faces rasterise **TeX Gyre Heros**
+(GUST font license, see `license/GUST-FONT-LICENSE.txt` and
+`windows_UI/THIRD_PARTY.md`) from `resources/fonts`. The `app/` deployment
+copies that directory; a hand-rolled deployment must carry `resources/fonts`
+-- the engine refuses to start when a named face file is missing, by design,
+rather than silently dropping the edge print.

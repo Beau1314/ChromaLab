@@ -44,9 +44,9 @@ commits.
 | `spk_solve` | untested | tested (host smoke `solve`) | portable (setup only) |
 | `spk_render` (live/preview/full) | tested (Windows) | tested (`spk_windows_c_abi`) | |
 | `spk_reprint` | tested (Windows) | tested (host smoke: `reprinted: true` after a print-side delta) | |
-| `spk_contrast_mask_field` | refused | refused | RFC-024, see §2 |
-| `spk_scene_latitude` (analysis) | tested (Windows) | tested (host smoke) | the *analysis* runs; *applying* the mapping is refused |
-| `spk_overscan_geometry` | missing (link error) | tested: returns `{"valid":false}` | the merge left the symbol undefined; stubbed so the engine links |
+| `spk_contrast_mask_field` | refused | tested (`spk_windows_c_abi`; kernel gate `spk_vulkan_mask`) | RFC-024, see §2; ported in phase 2 |
+| `spk_scene_latitude` (analysis) | tested (Windows) | tested (host smoke; kernel gates `spk_vulkan_scene_latitude`, `spk_vulkan_scene_curve`) | the *analysis* runs and phase 2 ported *applying* the mapping |
+| `spk_overscan_geometry` | missing (link error) | tested (`spk_vulkan_overscan` exercises the C ABI) | the merge left the symbol undefined; stubbed 2026-10-06, real geometry JSON since phase 2; `overscan_geometry` is also in `windows_exports.def` |
 | `spk_print_lut_catalog` / `spk_print_lut_table` | tested (Windows) | tested (host smoke `export_cube`) | portable core |
 | `spk_preview_stock_lut` | tested (Windows) | tested (host smoke) | `spk_lut3d_trilinear` |
 | `spk_export_di` | tested (Windows) | tested (host smoke `export_di`) | normalised-density tap |
@@ -61,10 +61,10 @@ commits.
 | section | fields | Windows_Port | Now |
 |---|---|---|---|
 | §1–§10 core render, tiers, reprint, live-mutable set | every field in `params_schema` predating RFC-024 | implemented; whole-image Metal parity unverified | same |
-| §11 contrast mask (RFC-024) | `contrast_mask_{active,highlights,shadows,core,scale,scheme}` | **refused** when `active` | refused |
-| §12 Scene Latitude (RFC-023) | `scene_latitude_{active,norm,shadow_knee,highlight_knee,shadow_room,highlight_room,max_lift,rolloff}` | **refused** when `active` (analysis call works) | refused |
-| §13 overscan / film edge (RFC-031/032) | `overscan_{active,mode,format,gate,holes,carrier,edge_text,frame_number,frame_seed,camera_seed,f_number,fog,leaks,pair}` | **refused** when `active` | refused |
-| §13 date back | `date_imprint_{active,text,text_b,data_text,style,corner,placement,size,ev,inset_x,inset_y}` | **refused** when `active` | refused |
+| §11 contrast mask (RFC-024) | `contrast_mask_{active,highlights,shadows,core,scale,scheme}` | **refused** when `active` | implemented (phase 2; kernel gate `spk_vulkan_mask`, field gate in `spk_windows_feature_boundaries`) |
+| §12 Scene Latitude (RFC-023) | `scene_latitude_{active,norm,shadow_knee,highlight_knee,shadow_room,highlight_room,max_lift,rolloff}` | **refused** when `active` (analysis call works) | implemented (phase 2; gates `spk_vulkan_scene_latitude`, `spk_vulkan_scene_curve`, fit commit through the C ABI) |
+| §13 overscan / film edge (RFC-031/032) | `overscan_{active,mode,format,gate,holes,carrier,edge_text,frame_number,frame_seed,camera_seed,f_number,fog,leaks,pair}` | **refused** when `active` | implemented (phase 2; whole-feature acceptance `engine/tests/overscan_checks.py`, 145 assertions green on Windows; striped layouts still refused by name) |
+| §13 date back | `date_imprint_{active,text,text_b,data_text,style,corner,placement,size,ev,inset_x,inset_y}` | **refused** when `active` | implemented (phase 2; date + shooting-data faces covered by `overscan_checks.py`; `text_b` pairing is future work) |
 | §14 `filter_shift_scale` | `filter_shift_scale` | implemented (portable `printing.cpp`) | implemented, untested here |
 | §15 `camera_filter` (2026-10-07) | `camera_filter` | — | implemented (portable `hanatos.cpp`, `params.cpp`; table in `camera_filters.hpp`), untested here; `desktop/mock-host/schema-fields.json` does not list it yet |
 | `io.digital_intermediate` (Cineon DI file) | | tested (`spk_windows_feature_boundaries` toggles it; host sends it on open and as a delta) | implemented; whole-image Metal parity unverified |
@@ -86,13 +86,26 @@ commits.
 | `spk_cam16ucs_compress` | same | tested | tested |
 | `spk_grain_layers`, `spk_grain_simple`, `spk_lognormal_field`, `spk_grain_layer_one` | same (+ `spk_rng_probe`) | tested | tested (`spk_vulkan_grain`) |
 | `spk_di_encode` (Cineon DI) | same | refused | tested (`spk_vulkan_di_encode`: float64 transcription, 1e-6 relative, guard cells) |
-| `spk_mask_reduce`, `spk_mask_epilogue` (contrast mask) | **missing** | refused | refused |
-| `spk_scene_latitude` | **missing** | refused | refused |
-| `spk_overscan_canvas`, `spk_overscan_add_mask`, `spk_overscan_film_present`, `spk_overscan_light` | **missing** | refused | refused |
+| `spk_mask_reduce`, `spk_mask_epilogue` (contrast mask) | same | refused | tested (`spk_vulkan_mask`; threaded Gaussian replaces the GCD host path) |
+| `spk_scene_latitude`, `spk_scene_curve` (scene latitude) | same | refused | tested (`spk_vulkan_scene_latitude`, `spk_vulkan_scene_curve`) |
+| `spk_overscan_canvas`, `spk_overscan_add_mask`, `spk_overscan_film_present`, `spk_overscan_light` | same | refused | tested (`spk_vulkan_overscan`; `overscan_checks.py` 145 assertions green on Windows) |
+| `spk_scan_hdr_expand` (scan HDR) | same | refused | tested (`spk_vulkan_scan_hdr`, 543 cases, max scaled error 2.38e-7) |
+| `spk_highlight_headroom` | same | missing on Windows | tested (overscan path reaches it through CineStill back-reflection; transcription case in `spk_vulkan_overscan`) |
 
-Host-side (C++) dependencies of the unported features: `contrast_mask.cpp`
-uses GCD (`dispatch_apply`); `overscan.cpp` uses CoreText/CoreGraphics for the
-edge print and date back, and vImage for a convolution.
+Still `__APPLE__`-gated, by design, with portable equivalents already running:
+`spk_minilab` (the minilab table load and its product node are Apple-only; the
+Windows engine takes the enlarger spectral chain), and the fused
+`spk_xyz_cam16_compress` / `spk_dir_finish` call sites (Windows takes the
+unfused `node_xyz_to_rgb` + `node_gamut_compress` chain and the lincomb-based
+dir finish).
+
+Host-side (C++) replacements of the former Apple-only dependencies:
+`contrast_mask.cpp`'s GCD `dispatch_apply` and `overscan.cpp`'s
+CoreText/CoreGraphics/vImage were replaced by a portable host layer --
+`edge_raster.cpp` (CPU text/geometry rasteriser, stb_truetype over the bundled
+TeX Gyre Heros fonts in `resources/fonts`, GUST license), `line_pool.hpp` and a
+threaded Gaussian. `windows_unported.{hpp,cpp}` (the old refusal sites) were
+deleted; `capabilities` now reports `unsupported_features = []`.
 
 ## 4. What main added after unpublished-revision that Vulkan lacks
 
@@ -101,19 +114,36 @@ edge print and date back, and vImage for a convolution.
 | commit(s) | what | off Apple |
 |---|---|---|
 | unpublished-revision | anti-halation switch, highlight boost | portable (existing kernels) |
-| 2108544, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, 8179327, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision | film edge / overscan: frame number, panoramic formats, carrier, half-frame pair, perforation softness, Fujifilm/Kodak edge print | refused (overscan) |
-| unpublished-revision, unpublished-revision | a pair's second Scene Placement | refused (scene latitude) |
-| unpublished-revision | date back: date + shooting data, date on 120 | refused (date imprint) |
+| 2108544, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, 8179327, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision, unpublished-revision | film edge / overscan: frame number, panoramic formats, carrier, half-frame pair, perforation softness, Fujifilm/Kodak edge print | ported (phase 2; `overscan_checks.py` green on Windows) |
+| unpublished-revision, unpublished-revision | a pair's second Scene Placement | ported (phase 2; `spk_vulkan_scene_latitude`/`_curve`) |
+| unpublished-revision | date back: date + shooting data, date on 120 | ported (phase 2; date/data faces in `overscan_checks.py`) |
 | unpublished-revision | Enlarger filters move the print | portable (`printing.cpp`) |
 
 The merge is textual; semantic reconciliation of `pipeline.cpp`/`engine.cpp`
 between the two lines is verified only by the CTests named above.
 
-## 5. Current state (2026-10-06)
+## 5. Current state (2026-11-15, phase 2)
 
-**The five refused features stay refused, by the owner's decision**
-(2026-10-06); `engine/PORT_PLAN.md` is the handoff for porting them.
-Everything else in the API spec runs on Vulkan.
+**The formerly refused features are ported (phase 2, `phase2-kernels`).**
+The 2026-10-06 decision to leave contrast mask, scene latitude mapping,
+Cineon DI, overscan/film edge and date imprint refused is superseded by the
+2026-11-15 phase 2 port: all six (those five plus scan HDR expand) now run on
+Vulkan, `capabilities` reports `unsupported_features = []`, and the remaining
+`__APPLE__`-gated call sites (`spk_minilab`, fused `spk_xyz_cam16_compress` /
+`spk_dir_finish`) use their portable equivalents (see §3). Everything else in
+the API spec still runs on Vulkan. Phase 2 acceptance on Windows
+(RTX 4090, MinGW, `build/qt`): CTest **28/28**, `overscan_checks.py`
+145 assertions / 0 failures (the whole-feature overscan acceptance incl.
+half-frame pairs and date/data faces), `windows_features.py` success, offscreen
+Qt smoke clean. Not yet verified: whole-image Metal parity for the new kernels
+(needs a Mac dump), the `parity_*.py` oracle tree (not publicly available) and
+the RAW-fixture gate blocks (compiled, not executed).
+
+Earlier state (2026-10-06, Linux/lavapipe) kept below for context:
+
+**The five refused features stayed refused, by the owner's decision**
+(2026-10-06, superseded 2026-11-15); `engine/PORT_PLAN.md` was the handoff
+that phase 2 executed.
 
 Verified on lavapipe (Mesa 25.2, llvmpipe LLVM 20, a CPU device):
 

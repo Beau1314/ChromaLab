@@ -62,6 +62,23 @@ verification of whatever Phase 2 left unverified. Then Phase 4 docs.
   ORIGINAL tolerances: IIR max 1.49e-8 (the Windows RTX figure), geometry
   5.0e-7, resample 2.8e-7.
 
+- 2026-11-15, phase 2 (`phase2-kernels`, Windows): the six formerly refused
+  features are ported and `unsupported_features = []`. New Vulkan kernels:
+  `spk_di_encode`, `spk_scene_latitude`, `spk_scene_curve`, `spk_mask_reduce`,
+  `spk_mask_epilogue`, `spk_scan_hdr_expand`, `spk_overscan_canvas`,
+  `spk_overscan_add_mask`, `spk_overscan_film_present`, `spk_overscan_light`,
+  `spk_highlight_headroom` (45 total). Apple-only host deps replaced:
+  `edge_raster.cpp` (stb_truetype + bundled TeX Gyre Heros) for
+  CoreText/CoreGraphics, a threaded Gaussian for vImage; GCD gone from
+  `contrast_mask.cpp`; `windows_unported.{hpp,cpp}` deleted. Acceptance:
+  CTest 28/28, `overscan_checks.py` 145/0 (whole-feature overscan/date
+  acceptance), `windows_features.py` success, offscreen Qt smoke clean.
+  Boundaries: no Mac dump parity for the new kernels, `parity_*.py` oracle
+  tree unavailable, RAW-fixture gate blocks compiled-not-executed;
+  `spk_minilab` and the fused `spk_xyz_cam16_compress`/`spk_dir_finish` call
+  sites stay `__APPLE__`-gated with portable equivalents (see §3 of
+  PORT_COVERAGE).
+
 ## In progress / next
 
 1. Phase 3a: PROTOCOL-REQUESTS (R2 open), EXIF copy for write_image, more
