@@ -41,6 +41,12 @@ qt_add_qml_module(SpektraLabQt URI SpektraLab VERSION 1.0
         qml/CurveEditor.qml qml/ColorBalance.qml
     NO_CACHEGEN)
 set_target_properties(SpektraLabQt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/app")
+# qmlimportscanner passes the source tree through a UTF-8 response file, and
+# the Windows tool decodes it in the host code page — a non-ASCII checkout
+# path (here: 项目复刻) reaches the scanner as mojibake and configure fails.
+# Shared Qt resolves its QML plugins through the qml/ directory at runtime,
+# so the configure-time import scan (a static-build concern) adds nothing.
+set_property(TARGET SpektraLabQt PROPERTY QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 
 # The one resource directory is explicitly adjacent to the executable. No
 # lookup through another checkout and no Python in the application.
@@ -89,6 +95,21 @@ if(BUILD_TESTING)
     target_compile_features(spk_qt_histogram_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_histogram_test PRIVATE Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_histogram COMMAND spk_qt_histogram_test)
+    # The library helper's wire. The protocol tier is pure JSON (line shapes,
+    # id routing, the ready event, the abi gate) and always runs; the host
+    # smoke runs only when the build knows a built spklib-host (the local
+    # spklib checkout's build/spklib-host.exe on Windows), so a machine
+    # without one still proves the wire code compiles and its protocol tier
+    # passes. Phase 4's full method surface (task 4.1) grows on this shell.
+    set(SPKLIB_HOST_EXECUTABLE "" CACHE FILEPATH
+        "Optional built spklib-host for the library-host smoke gate")
+    qt_add_executable(spk_qt_library_host_test tests/library_host.cpp
+        src/LibraryHost.hpp src/LibraryHost.cpp)
+    target_include_directories(spk_qt_library_host_test PRIVATE src)
+    target_compile_features(spk_qt_library_host_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_library_host_test PRIVATE Qt6::Core)
+    add_test(NAME spk_qt_library_host COMMAND spk_qt_library_host_test
+        "${SPKLIB_HOST_EXECUTABLE}")
     # The Temperature/Tint math the white-balance row drives is pure engine
     # host code (engine/host/white_balance.cpp, compiled into spk_image_io
     # beside its raw_decoder caller): Robertson mapping, its inverse and the
@@ -130,7 +151,7 @@ if(BUILD_TESTING)
             list(APPEND qt_test_runtime_path "PATH=path_list_prepend:${qt_test_compiler_directory}")
         endif()
         set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
-            spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece PROPERTIES
+            spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
@@ -141,6 +162,8 @@ if(BUILD_TESTING)
     # The split-compare gate calls FrameCanvas's composite directly, which
     # pulls in QQuickItem.
     target_link_libraries(spk_qt_editing_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui Qt6::Quick)
+    # Same non-ASCII-path skip as SpektraLabQt above.
+    set_property(TARGET spk_qt_editing_workflow_test PROPERTY QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
     # Full-RAW fixtures and a fresh output directory are explicit test arguments;
     # no absent-fixture skip can masquerade as a green CTest run.
 endif()
