@@ -31,7 +31,12 @@ qt_add_executable(SpektraLabQt WIN32
     src/PairPiece.hpp src/PairPiece.cpp
     src/Layer2.hpp src/Layer2.cpp
     src/Histogram.hpp
-    src/FrameCanvas.hpp src/FrameCanvas.cpp)
+    src/FrameCanvas.hpp src/FrameCanvas.cpp
+    # The library window's data layer (task 4.2): the helper shell, the
+    # sources registry and the row/collection/facet model over them.
+    src/LibraryHost.hpp src/LibraryHost.cpp
+    src/CatalogSourcesStore.hpp src/CatalogSourcesStore.cpp
+    src/LibraryModel.hpp src/LibraryModel.cpp)
 target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
 target_link_libraries(SpektraLabQt PRIVATE
     spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
@@ -120,6 +125,21 @@ if(BUILD_TESTING)
     target_compile_features(spk_qt_sources_store_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_sources_store_test PRIVATE Qt6::Core)
     add_test(NAME spk_qt_sources_store COMMAND spk_qt_sources_store_test)
+    # The library data model (task 4.2) over the helper wire. Two tiers like
+    # the library-host test: the pure tier (tree partition, query mapping,
+    # filter vocabulary, develop-join naming) always runs; the full model
+    # workflow — fixture catalog, thirty synthetic PNGs, paging, facets,
+    # meta round trips, filters, the EditStore develop join, the
+    # openInDevelop signal and a source switch — runs only when a built
+    # spklib-host is handed over as argv[1].
+    qt_add_executable(spk_qt_library_model_test tests/library_model.cpp
+        src/LibraryModel.cpp src/CatalogSourcesStore.cpp src/LibraryHost.cpp
+        src/EditStore.cpp src/Layer2.cpp)
+    target_include_directories(spk_qt_library_model_test PRIVATE src)
+    target_compile_features(spk_qt_library_model_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_library_model_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
+    add_test(NAME spk_qt_library_model COMMAND spk_qt_library_model_test
+        "${SPKLIB_HOST_EXECUTABLE}")
     # The Temperature/Tint math the white-balance row drives is pure engine
     # host code (engine/host/white_balance.cpp, compiled into spk_image_io
     # beside its raw_decoder caller): Robertson mapping, its inverse and the
@@ -162,7 +182,7 @@ if(BUILD_TESTING)
         endif()
         set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
             spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host
-            spk_qt_sources_store PROPERTIES
+            spk_qt_sources_store spk_qt_library_model PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp

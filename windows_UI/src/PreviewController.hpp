@@ -236,6 +236,11 @@ public:
     void setDecodeMode(int value);
     void setExposureEv(double value);
     spk::desktop::FramePtr frame() const { return frame_; }
+    // The engine's stock catalog (empty until the init reply lands). The
+    // library model's develop join resolves EditStore film/paper ids through
+    // it via the provider main.cpp hands the model — no second catalog is
+    // kept anywhere.
+    const spk::desktop::Catalog& catalog() const { return catalog_; }
     Q_INVOKABLE void openRaw(const QUrl& path);
     Q_INVOKABLE void openFiles(const QVariantList& urls);
     Q_INVOKABLE void selectImage(int index);

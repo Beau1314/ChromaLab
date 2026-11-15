@@ -1,5 +1,6 @@
 #include "PreviewController.hpp"
 #include "FrameCanvas.hpp"
+#include "LibraryModel.hpp"
 #include <QCommandLineParser>
 #include <QCryptographicHash>
 #include <QDir>
@@ -13,6 +14,7 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QMouseEvent>
+#include <QStandardPaths>
 #include <QStringList>
 #include <QTimer>
 #include <cmath>
@@ -373,6 +375,9 @@ int main(int argc,char** argv) {
                        {"open","Open a RAW file","file"},
                        {"snapshot","Save one rendered window capture to a new PNG and exit (requires --open)","file"},
                        {"edit-store","Override the per-photo edit directory (tests use an isolated directory)","directory"},
+                       {"library-host","spklib-host executable for the library helper","file"},
+                       {"library-store","Libraries root the helper creates catalogs and sessions in","directory"},
+                       {"library-registry","Override the sources.json registry path (tests use an isolated directory)","file"},
                        {"self-test","Run real RAW frontend checks and save a report in a NEW directory","directory"},
                        {"reject","Unsupported RAW for the failed-open check","file"}});
     parser.process(app);
@@ -395,10 +400,36 @@ int main(int argc,char** argv) {
     PreviewController controller(std::filesystem::path(resources.toStdWString()),nullptr,
         [failDisplay](const auto& frame){if(*failDisplay){*failDisplay=false;throw std::runtime_error("Injected display publication failure");}return PreviewController::imageFromFrame(frame);},editDirectory);
     qmlRegisterType<FrameCanvas>("SpektraLab.Native",1,0,"FrameCanvas");
+    // The library window's data model (task 4.2). The helper path defaults to
+    // a spklib-host beside the app; until one is deployed (or handed over
+    // with --library-host) start() fails with that reason and the model
+    // stands in the empty library state the UI guides from. The develop join
+    // reads the same edit records the editor persists (one directory, both
+    // stores) and resolves film/paper names through the controller's engine
+    // catalog — the only catalog in the process.
+    spk::desktop::library::LibraryModel::Deps libraryDeps;
+    libraryDeps.helper.helperPath=parser.isSet("library-host")?parser.value("library-host"):
+        QCoreApplication::applicationDirPath()+"/spklib-host.exe";
+    if(parser.isSet("library-store"))libraryDeps.helper.storePath=parser.value("library-store");
+    libraryDeps.registryPath=parser.isSet("library-registry")?parser.value("library-registry"):
+        spk::desktop::library::CatalogSourcesStore::defaultRegistryPath();
+    libraryDeps.editDirectory=editDirectory.isEmpty()?
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/Edits":editDirectory;
+    libraryDeps.catalog=[&controller]{return &controller.catalog();};
+    spk::desktop::library::LibraryModel libraryModel(libraryDeps);
+    // openInDevelop hands the row to the existing openRaw channel (whose
+    // addFile already de-duplicates by canonical path) via this seam — a
+    // signal, not a pointer, so the model stays engine-free.
+    QObject::connect(&libraryModel,&spk::desktop::library::LibraryModel::openRequested,
+        &controller,[&controller](const QUrl& url){controller.openRaw(url);});
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("preview",&controller);
+    engine.rootContext()->setContextProperty("library",&libraryModel);
     QObject::connect(&engine,&QQmlApplicationEngine::objectCreationFailed,&app,[]{QCoreApplication::exit(2);},Qt::QueuedConnection);
     engine.loadFromModule("SpektraLab","Main");
     if(engine.rootObjects().isEmpty())return 2;
+    // Synchronous by the recorded decision (small local SQLite, the calls
+    // are single-flight); a failure leaves the empty library state standing.
+    libraryModel.start();
     std::unique_ptr<SelfTest> test;
     if(testing) {
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());if(!window)return 2;
