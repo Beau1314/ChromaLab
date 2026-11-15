@@ -1,9 +1,12 @@
-// The library helper's wire, at two tiers. The protocol half is pure JSON in
-// and JSON out — request lines, reply envelopes, the ready event, the abi
-// gate, id routing — with no QProcess anywhere. The host half is the smoke
-// gate: it runs only when a built spklib-host is passed as argv[1] (the
+// The library helper's wire, at three tiers. The protocol half is pure JSON
+// in and JSON out — request lines, reply envelopes, the ready event, the abi
+// gate, id routing, chunk-to-line reassembly — with no QProcess anywhere.
+// The fake-peer half drives a real pipe against this test binary itself in a
+// scripted mode (silent, or a reply split across two chunks), so the timeout
+// and reassembly paths run ungated: no spklib-host needed. The smoke gate is
+// last: it runs only when a built spklib-host is passed as argv[1] (the
 // build points it at the local spklib checkout's build/spklib-host.exe);
-// without one the protocol tier still compiles and runs, so the gate can
+// without one everything above still compiles and runs, so the gate can
 // never masquerade as broken when it merely has no helper to talk to.
 #include "LibraryHost.hpp"
 #include <QCoreApplication>
@@ -13,9 +16,11 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 
 namespace host = spk::desktop::library;
 namespace protocol = spk::desktop::library::protocol;
@@ -144,6 +149,86 @@ void testAbiGate() {
     check(!protocol::parseSdkVersion(QJsonObject{}).valid, "a missing abi is invalid");
 }
 
+void testLineSplitter() {
+    // A reply split mid-JSON across pipe reads: nothing completes until the
+    // chunk carrying the newline, then exactly one whole line that parses
+    // and routes. Without the carried remainder this reply is lost.
+    protocol::LineSplitter splitter;
+    const QByteArray head = QByteArray(R"json({"id":2,"res)json");
+    check(splitter.feed(head).empty(), "a chunk ending mid-line completes no line");
+    check(splitter.remainder() == head, "the fragment is carried, not dropped");
+    const auto completed = splitter.feed(QByteArray(R"json(ult":{"split":true}})json") + '\n');
+    check(completed.size() == 1, "the completing chunk yields exactly one line");
+    const auto reply = protocol::parseReply(QJsonDocument::fromJson(completed.front()), 2);
+    check(reply.valid && reply.routed && reply.isResult &&
+              reply.result.value(QLatin1String("split")).toBool(),
+          "the reassembled reply parses and routes to its id");
+
+    // One chunk may also hold several lines (plus an empty one, which
+    // handleLine ignores); the splitter yields each and carries nothing.
+    const auto batch = splitter.feed(QByteArray(R"json({"id":3,"result":{}})json") + "\n\n" +
+                                     R"json({"id":4,"error":{"code":"io"}})json" "\n");
+    check(batch.size() == 3, "a chunk holding several lines yields each");
+    check(QJsonDocument::fromJson(batch[0]).object().value(QLatin1String("id")).toDouble() == 3.0,
+          "the first line of a multi-line chunk is whole");
+    check(QJsonDocument::fromJson(batch[2]).object()
+              .value(QLatin1String("error"))
+              .toObject()
+              .value(QLatin1String("code"))
+              .toString() == QLatin1String("io"),
+          "the last line of a multi-line chunk is whole");
+    check(splitter.remainder().isEmpty(),
+          "nothing is carried past a newline-terminated chunk");
+
+    splitter.reset();
+    check(splitter.remainder().isEmpty(), "reset drops a stale child's tail");
+}
+
+// --- the host tier: fake peers over a real pipe (ungated) --------------------
+
+/// A helper that stays alive but never speaks must fail start()'s ready gate,
+/// and waitForReply must return nullopt at its deadline — driven for real:
+/// the peer process is running, the pipe just never answers.
+void testTimeoutGate() {
+    host::LibraryHost helper;
+    host::LibraryHost::Options options;
+    options.helperPath = QCoreApplication::applicationFilePath();
+    options.helperArguments = {QStringLiteral("--spk-silent-peer")};
+    options.startTimeout = std::chrono::milliseconds(1200);
+    const auto failure = helper.start(options);
+    check(failure.has_value(), "a silent helper must fail start()'s ready gate");
+    check(failure->contains(QLatin1String("no ready event")),
+          "the failure names the ready timeout");
+    check(helper.isRunning(), "the silent peer is still alive past the ready timeout");
+    // nextId_ is still 1: the failed start never sent its sdk.version, so id 1
+    // matches and the loop runs to its deadline instead of the id-mismatch exit.
+    const auto reply = helper.waitForReply(1, QStringLiteral("sdk.version"), {},
+                                           std::chrono::milliseconds(800));
+    check(!reply.has_value(), "waitForReply returns nullopt at its deadline");
+    // The sleeping peer is left to the destructor's kill(); shutdown()'s
+    // terminate ladder is for a well-behaved helper, not a fake peer.
+}
+
+/// The partial-line reassembly end to end: the peer writes one reply in two
+/// pipe chunks ~0.6 s apart, split mid-JSON. Without the reassembly fix this
+/// reply reaches handleLine as fragments, is dropped, and the call times out.
+void testSplitReplyAcrossChunks() {
+    host::LibraryHost helper;
+    host::LibraryHost::Options options;
+    options.helperPath = QCoreApplication::applicationFilePath();
+    options.helperArguments = {QStringLiteral("--spk-split-peer")};
+    const auto failure = helper.start(options);
+    check(!failure.has_value(),
+          (std::string("split peer start: ") + failure.value_or("?").toStdString()).c_str());
+    const auto reply = helper.waitForReply(2, QStringLiteral("split.test"), {},
+                                           std::chrono::milliseconds(10000));
+    check(reply.has_value(), "a reply split across pipe reads must still arrive");
+    check(reply->valid && reply->routed && reply->isResult,
+          "the reassembled reply routes to its request id");
+    check(reply->result.value(QLatin1String("split")).toBool(),
+          "the reassembled reply body survives");
+}
+
 // --- the host tier: the smoke gate -------------------------------------------
 
 /// The one handshake phase 4 is built on: spawn, ready, abi, a real catalog
@@ -199,6 +284,32 @@ void testHostSmoke(const QString& helperPath) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // The fake peers: this binary spawned by the tests above as a stand-in
+    // helper. They return before any Qt or test machinery so the child stays
+    // scriptable and DLL-light; the parent's destructor kills them.
+    if (argc > 1 && std::strcmp(argv[1], "--spk-silent-peer") == 0) {
+        std::this_thread::sleep_for(std::chrono::seconds(60)); // alive, never speaks
+        return 0;
+    }
+    if (argc > 1 && std::strcmp(argv[1], "--spk-split-peer") == 0) {
+        // Scripted stdout with gaps, so the parent's pipe reads see real chunk
+        // boundaries: the ready event, the abi-gate reply, then a reply for
+        // id 2 written in two pieces 0.6 s apart, split mid-JSON. Pipe stdout
+        // is block-buffered, so every write flushes explicitly.
+        const auto write = [](const char* bytes) {
+            std::fwrite(bytes, 1, std::strlen(bytes), stdout);
+            std::fflush(stdout);
+        };
+        write(R"json({"event":"ready","version":"spklib 0.4.0 (abi 1, schema 3)","protocol":1})json" "\n");
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        write(R"json({"id":1,"result":{"version":"0.4.0-fake","abi":1,"schema":3}})json" "\n");
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        write(R"json({"id":2,"res)json"); // ends mid-line on purpose
+        std::this_thread::sleep_for(std::chrono::milliseconds(600));
+        write(R"json(ult":{"split":true}})json" "\n");
+        std::this_thread::sleep_for(std::chrono::seconds(60)); // until killed
+        return 0;
+    }
     QCoreApplication application(argc, argv);
     try {
         testReadyEvent();
@@ -206,6 +317,9 @@ int main(int argc, char** argv) {
         testReplyRouting();
         testErrorCodes();
         testAbiGate();
+        testLineSplitter();
+        testTimeoutGate();
+        testSplitReplyAcrossChunks();
         if (argc > 1 && QFileInfo(argv[1]).isFile()) {
             testHostSmoke(QString::fromUtf8(argv[1]));
         } else {

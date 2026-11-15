@@ -108,7 +108,9 @@ std::optional<QString> LibraryHost::start(const Options& options) {
     if (!options.storePath.isEmpty()) {
         arguments << QStringLiteral("--store") << options.storePath;
     }
+    arguments << options.helperArguments;
     process_->setArguments(arguments);
+    splitter_.reset(); // a fresh child must not inherit the last one's tail
     process_->start();
     if (!process_->waitForStarted(5000)) {
         fail(QStringLiteral("cannot start %1: %2").arg(options.helperPath, process_->errorString()));
@@ -192,8 +194,12 @@ std::optional<protocol::ParsedReply> LibraryHost::waitForReply(
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (now >= deadline) return std::nullopt;
         if (!process_->waitForReadyRead(static_cast<int>(deadline - now))) continue;
-        const QByteArray chunk = process_->readAllStandardOutput();
-        for (const QByteArray& raw : chunk.split('\n')) handleLine(raw);
+        // One pipe read is not one line: a chunk can end mid-line or hold
+        // several (the Mac LineSplitter's exact concern). Reassemble before
+        // parsing — feeding fragments to handleLine drops a split reply as
+        // undecodable and the call times out even though the helper answered.
+        for (const QByteArray& line : splitter_.feed(process_->readAllStandardOutput()))
+            handleLine(line);
     }
 }
 

@@ -7,10 +7,12 @@
 #include <QProcess>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <chrono>
 #include <functional>
 #include <map>
 #include <optional>
+#include <vector>
 
 // The library helper shell: one spklib-host child process spoken to over
 // stdio, one JSON request per line, one JSON reply per line (the repo's
@@ -84,6 +86,39 @@ struct SdkVersion {
 };
 SdkVersion parseSdkVersion(const QJsonObject& result);
 
+/// Reassembles stdout chunks into whole wire lines. A reply can be large and
+/// arrive in many pipe reads: a chunk can end mid-line or hold several
+/// complete ones (the Mac reference hosts this as LineSplitter). Without the
+/// carried remainder a split reply reaches the parser as fragments, is
+/// dropped as undecodable, and the waiting call times out. The buffer stays
+/// bytes on purpose: a chunk boundary can fall inside a multi-byte UTF-8
+/// character, which a QString decode would mangle.
+class LineSplitter {
+public:
+    /// Feed one read's bytes; returns every line this chunk completed.
+    /// Bytes after the last '\n' stay buffered until their line completes.
+    std::vector<QByteArray> feed(const QByteArray& chunk) {
+        buffer_ += chunk;
+        std::vector<QByteArray> lines;
+        for (;;) {
+            const qint64 index = buffer_.indexOf('\n');
+            if (index < 0) break;
+            lines.push_back(buffer_.left(index));
+            buffer_.remove(0, index + 1);
+        }
+        return lines;
+    }
+
+    /// Bytes carried across reads — a truncated tail (EOF mid-line, mostly).
+    const QByteArray& remainder() const { return buffer_; }
+
+    /// Drop carried bytes: a fresh child must not inherit the last one's tail.
+    void reset() { buffer_.clear(); }
+
+private:
+    QByteArray buffer_;
+};
+
 } // namespace protocol
 
 class LibraryHost : public QObject {
@@ -92,6 +127,11 @@ public:
     struct Options {
         QString helperPath; // spklib-host(.exe)
         QString storePath;  // --store DIR, the libraries root
+        // Extra argv after --store. Production passes nothing; the tests
+        // point helperPath at the test binary itself in a scripted fake-peer
+        // mode (silent or split-reply) to drive the timeout and reassembly
+        // paths against a real pipe.
+        QStringList helperArguments;
         std::chrono::milliseconds startTimeout{10000};
         std::chrono::milliseconds callTimeout{30000};
     };
@@ -131,6 +171,7 @@ private:
     void fail(const QString& why);
 
     std::unique_ptr<QProcess> process_;
+    protocol::LineSplitter splitter_; // stdout reassembly across pipe reads
     protocol::SdkVersion sdk_;
     Options options_;
     QString error_;
