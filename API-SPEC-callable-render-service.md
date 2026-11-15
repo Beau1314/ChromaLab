@@ -1217,8 +1217,9 @@ about where they act, and why:
   `y_white`, `y_target`, `y_reached`, `tint`, `knee_stops[3]`, `delta_stops[3]`, `lift_density[3]`}
   (present only when the session's pipeline scans the variant) and an always-present `film_seed`
   (the last film run's realisation; 0x5EED with grain off).
-- **Windows refuses the variant** (`windows_unported_error`, `capabilities.backend.unsupported_features`
-  gains `scan_hdr`): there is no Vulkan `spk_scan_hdr_expand`. The defaults stay usable there.
+- **Windows ports the variant** (phase 2 added the Vulkan `spk_scan_hdr_expand`, and the scan path
+  applies `scan_hdr` like the other platforms; `capabilities.backend.unsupported_features` stays
+  empty — see `engine/WINDOWS_FEATURE_COVERAGE.md`'s Scan HDR expand row).
 - **The medium probe ignores all four** (`medium_probe_params` resets them): the stretch and the HDR rendition are output choices over the film, so §12's medium,
   Scene Placement's window and §19.2's curve are the film's whether Enable HDR is on or not (measured
   2026-11-06 on Provia 100F before the reset: highlight boundary +2.08 EV, +2.15 with the stretch, +3.94

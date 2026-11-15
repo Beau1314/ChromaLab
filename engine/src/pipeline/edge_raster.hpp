@@ -9,9 +9,13 @@
 // which parses the CFF outlines of the bundled OTF) draws the same `Op`s
 // through one scanline rasteriser, and the Gaussian is a threaded separable
 // convolution. The two paths share the bounding-box, transform and blur-
-// kernel arithmetic, so the only intentional differences are the glyph
+// kernel arithmetic, so the intentional differences are the glyph
 // rasteriser and the convolution's summation order (documented at the
 // convolution, ~1e-7 against vImage; bit-identity was never promised).
+// A third known divergence, same spirit: when two marks' AA tails overlap at
+// gain<1, the composite keeps dst·(1−gain·cov)+gain·cov here vs CG's
+// dst·(1−cov)+gain·cov; identical on untouched background; pending a Mac
+// reference dump.
 //
 // Faces: the Apple code loads Helvetica Neue, Arial Narrow and Menlo Bold
 // from the system. Those cannot be redistributed, so every other platform
