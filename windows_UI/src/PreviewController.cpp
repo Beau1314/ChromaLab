@@ -44,8 +44,13 @@ bool samePairState(const editing::PairState& a,const editing::PairState& b) {
 // The pair's wire (PAIR-WIRING §3): the look with the pair's own rows
 // forced. The meter is off and the exposure 0 -- each picture already
 // carries its exposure in its pixels; the piece's long edge is the format;
-// each hole's date prints only when that hole's switch is on; on a film
-// edge the strip forces the engine's pairing rows and the camera's 1 mm.
+// each hole's date prints only when that hole's switch is on (a switched-off
+// hole is handed over with no text, as an empty hole is); overscan_pair
+// rides a film edge -- or a date: the dated bare pair's rows ride the
+// date's (DateBackSettings.pairRows -- without a film edge the engine is
+// told here that the frame is a pair), and on a film edge the strip forces
+// the engine's pairing rows and the camera's 1 mm. A bare pair (no film
+// edge, no date) sends neither.
 desktop::RenderSettings pairWireOf(const editing::PairState& pair) {
     auto s=pair.look.settings;
     const bool onStrip=s.overscan_active;
@@ -53,13 +58,13 @@ desktop::RenderSettings pairWireOf(const editing::PairState& pair) {
     s.auto_exposure=false;
     s.film_exposure_ev=0.0;
     s.film_format_mm=pairc::kHoleAlongMM*2.0+spacing;
-    if(onStrip) {
+    s.date_imprint_text=pair.holes[0].dated?pair.holes[0].date_text.toStdString():std::string();
+    s.date_imprint_text_b=pair.holes[1].dated?pair.holes[1].date_text.toStdString():std::string();
+    s.date_imprint_active=!s.date_imprint_text.empty()||!s.date_imprint_text_b.empty();
+    if(onStrip||s.date_imprint_active) {
         s.overscan_pair=true;
         s.overscan_format="135_half";
     }
-    s.date_imprint_text=pair.holes[0].dated?pair.holes[0].date_text.toStdString():std::string();
-    s.date_imprint_text_b=pair.holes[1].dated?pair.holes[1].date_text.toStdString():std::string();
-    s.date_imprint_active=pair.holes[0].dated||pair.holes[1].dated;
     return s;
 }
 
@@ -140,9 +145,13 @@ double meterHole(desktop::PreviewHost& host,const io::DecodedRaw& decoded,
     // The meter is a <=1024 px session; laying the meter buffer out at the
     // capped size directly keeps the compose cheap and the reading within a
     // fraction of a stop of the full-size content (solveExposure's own cap
-    // would box-downscale it anyway).
+    // would box-downscale it anyway). The frame is a SINGLE hole -- this
+    // hole's picture alone, no gap, no second hole (PAIR-WIRING §4.1): the
+    // exposure solver reads every pixel it is handed (the engine's zero-light
+    // exclusion is the scene latitude's, not the solver's), so a pair piece's
+    // unexposed film would skew the EV off the 1.x single-hole basis.
     const double cap=std::min(1.0,1024.0/std::max(1.0,std::max(placed.width(),placed.height())));
-    const auto layout=pairc::layout(placed*cap,QSizeF(0,0),spec);
+    const auto layout=pairc::holeLayout(placed*cap,spec);
     auto buffer=pairc::compose(layout,{&decoded,window,turns,0.0,true},pairc::HoleInput{});
     const spk_image input{buffer.data(),std::uint32_t(layout.pieceSize.width()),
                           std::uint32_t(layout.pieceSize.height()),3};
@@ -1258,8 +1267,12 @@ void PreviewController::setPairHole(int side,const QString& field,const QVariant
     auto& hole=next.holes[side];
     // A buffer change re-composes the piece (a new open job); a wire-only
     // row takes the reprint path of the same negative. The meter cache holds
-    // either way: none of these fields is part of a meter key.
-    bool buffer=false;
+    // either way: none of these fields is part of a meter key. The trim rows
+    // are stored and persisted but wired nowhere yet (PAIR-WIRING §12's
+    // print-layer cut is a later port), so a trim edit submits nothing: the
+    // reprint would re-send provably identical settings. When the trim
+    // wiring lands, fold these fields back into the wire path below.
+    bool buffer=false,trim=false;
     if(field==QLatin1String("scale")) {
         if(!ok||!std::isfinite(number)||number<1||number>8)return;
         hole.placement.scale=number;buffer=true;
@@ -1281,16 +1294,16 @@ void PreviewController::setPairHole(int side,const QString& field,const QVariant
         hole.date_text=value.toString();
     } else if(field==QLatin1String("trimPrintExposure")) {
         if(!ok||!std::isfinite(number)||number<-4||number>4)return;
-        hole.trim.print_exposure=number;
+        hole.trim.print_exposure=number;trim=true;
     } else if(field==QLatin1String("trimYFilterShift")) {
         if(!ok||!std::isfinite(number)||number<-1||number>1)return;
-        hole.trim.y_filter_shift=number;
+        hole.trim.y_filter_shift=number;trim=true;
     } else if(field==QLatin1String("trimMFilterShift")) {
         if(!ok||!std::isfinite(number)||number<-1||number>1)return;
-        hole.trim.m_filter_shift=number;
+        hole.trim.m_filter_shift=number;trim=true;
     } else if(field==QLatin1String("trimPreflashExposure")) {
         if(!ok||!std::isfinite(number)||number<0||number>8)return;
-        hole.trim.preflash_exposure=number;
+        hole.trim.preflash_exposure=number;trim=true;
     } else return;
     if(samePairState(next,item->pair))return;
     recordPairEdit(*item,item->pair);
@@ -1299,7 +1312,7 @@ void PreviewController::setPairHole(int side,const QString& field,const QVariant
     failed_=false;
     emit pairChanged();emit libraryChanged();emit historyChanged();emit stateChanged();
     if(buffer)submitPairOpen(active_index_);
-    else submitPairWire(active_index_);
+    else if(!trim)submitPairWire(active_index_);
 }
 void PreviewController::setPairPiece(const QString& name,const QVariant& value) {
     auto* item=activePairItem();

@@ -60,6 +60,13 @@ struct Layout {
 // 2,400 px hole.
 Layout layout(QSizeF holeA, QSizeF holeB, const PieceSpec& spec);
 
+// The meter's layout for one picture as placed (PAIR-WIRING §4.1: the meter
+// session reads THAT HOLE'S PICTURE ALONE, 1,024 px at most): the hole alone
+// is the piece -- no gap, no second hole -- sized by the same hole-aspect
+// fit, so a hole-aspect picture fills its hole exactly. The second rect is
+// left empty; compose it with an unpresent hole.
+Layout holeLayout(QSizeF hole, const PieceSpec& spec);
+
 // The piece's pixels: tightly packed RGB float32, top row first, zeros
 // everywhere but the two holes (linear ProPhoto, exactly what spk_open
 // expects of a decode). An unpresent hole or a null decode leaves its hole

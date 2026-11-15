@@ -176,6 +176,31 @@ void layout_one_sided_pair() {
     check(first.advancePx == second.advancePx, "the advance follows the present picture regardless of side");
 }
 
+void layout_single_hole_meter_frame() {
+    // PAIR-WIRING §4.1: the meter session reads THAT HOLE'S PICTURE ALONE --
+    // the hole itself is the piece: no gap, no second hole. The hole's own
+    // size follows the pair's formulas, so the meter's hole matches the
+    // pair's hole for the same picture.
+    const pairc::PieceSpec spec{};
+    const pairc::Layout one = pairc::holeLayout(QSizeF(2000, 300), spec);
+    const pairc::Layout pair = pairc::layout(QSizeF(2000, 300), QSizeF(0, 0), spec);
+    check(one.rect[0] == pair.rect[0], "the meter's hole is the pair's own hole");
+    check(one.pieceSize == QSize(225, 300), "the piece is the hole alone");
+    check(one.rect[1].isNull(), "the single-hole layout has no second hole");
+    check(one.advancePx == 0.0, "the single-hole layout has no advance");
+    // A hole-aspect picture fills its hole exactly.
+    check(pairc::holeLayout(QSizeF(750, 1000), spec).pieceSize == QSize(750, 1000),
+          "a hole-aspect picture is its own single-hole piece");
+    // Turned, the fit runs against the transposed aspect: the level fit of
+    // (2000, 300) is 225 x 300, the turned one 400 x 300.
+    const pairc::Layout turned = pairc::holeLayout(QSizeF(2000, 300), pairc::PieceSpec{1.0, true});
+    check(turned.pieceSize == QSize(400, 300), "a turned single hole runs the film down");
+    check(turned.rect[0] == QRectF(0, 0, 400, 300), "the turned hole is the fit's own shape");
+    // An empty picture still takes the nominal hole -- nothing divides by zero.
+    const pairc::Layout empty = pairc::holeLayout(QSizeF(0, 0), spec);
+    check(empty.pieceSize == QSize(1800, 2400), "an empty single hole takes the nominal hole");
+}
+
 // --- compose --------------------------------------------------------------
 
 void compose_identity_and_both_holes() {
@@ -305,6 +330,23 @@ void compose_tier_scaling() {
     }
 }
 
+void compose_single_hole_meter_frame() {
+    // PAIR-WIRING §4.1: the meter's buffer carries no unexposed film -- the
+    // single-hole piece is picture everywhere, so the solver never averages
+    // the gap or an empty hole into the reading.
+    const io::DecodedRaw even = picture(300, 400, &flat);
+    const pairc::Layout one = pairc::holeLayout(QSizeF(300, 400), pairc::PieceSpec{});
+    const auto piece = pairc::compose(one,
+                                      pairc::HoleInput{&even, QRectF(0, 0, 1, 1), 0, 0.0, true},
+                                      pairc::HoleInput{});
+    check(piece.size() == std::size_t(one.pieceSize.width()) * one.pieceSize.height() * 3,
+          "the single-hole buffer is the hole's own RGB buffer");
+    for (int y = 0; y < one.pieceSize.height(); y += 13)
+        for (int x = 0; x < one.pieceSize.width(); x += 13)
+            close(piece[(std::size_t(y) * one.pieceSize.width() + x) * 3], 0.25, 1e-6,
+                  "the meter's frame is picture to its last pixel: no gap, no empty hole");
+}
+
 // --- meter key --------------------------------------------------------------
 
 void meter_key_identity() {
@@ -404,6 +446,47 @@ void solve_exposure(const fs::path& resources) {
     check(host.current() == nullptr, "a refused meter leaves no session behind");
 }
 
+void solve_exposure_single_hole(const fs::path& resources) {
+    // PAIR-WIRING §4.1's executable heart: the meter frame is THAT HOLE'S
+    // PICTURE ALONE. The solver reads every pixel it is handed (the engine's
+    // zero-light exclusion is the scene latitude's, not the exposure
+    // solver's), so composing the hole into the pair piece -- hole + gap +
+    // an all-zero empty hole -- hands unexposed film to the solve and skews
+    // the EV off the 1.x single-hole calibration basis.
+    PreviewHost host(resources);
+    io::DecodedRaw decoded;
+    decoded.width = 750;
+    decoded.height = 1000;
+    decoded.rgb = gradient(750, 1000, 0.02, 0.05, 0.9);  // hole-aspect, dark
+    const double ev_plain = host.solveExposure(image_of(decoded.rgb, 750, 1000), meter_wire());
+    check(std::isfinite(ev_plain), "the meter returns a number");
+
+    // The single-hole frame: the same picture meters the same.
+    const pairc::Layout one = pairc::holeLayout(QSizeF(750, 1000), pairc::PieceSpec{});
+    check(one.pieceSize == QSize(750, 1000), "a hole-aspect picture is its own single-hole piece");
+    std::vector<float> buffer = pairc::compose(
+        one, pairc::HoleInput{&decoded, QRectF(0, 0, 1, 1), 0, 0.0, true}, pairc::HoleInput{});
+    const double ev_hole = host.solveExposure(
+        image_of(buffer, one.pieceSize.width(), one.pieceSize.height()), meter_wire());
+    check(std::abs(ev_hole - ev_plain) < 0.01,
+          "the single-hole meter frame reads the plain picture's EV");
+
+    // The pair piece is not the meter's basis: its unexposed film reaches
+    // the solver and moves the reading. (The one-sided pair layout is the
+    // hole plus the gap plus the empty hole's slot -- what the meter frame
+    // must not be.)
+    const pairc::Layout piece_layout = pairc::layout(QSizeF(750, 1000), QSizeF(0, 0), pairc::PieceSpec{});
+    std::vector<float> piece = pairc::compose(piece_layout,
+                                              pairc::HoleInput{&decoded, QRectF(0, 0, 1, 1), 0, 0.0, true},
+                                              pairc::HoleInput{});
+    const double ev_piece = host.solveExposure(
+        image_of(piece, piece_layout.pieceSize.width(), piece_layout.pieceSize.height()),
+        meter_wire());
+    check(std::abs(ev_piece - ev_hole) > 0.2,
+          "the pair piece's unexposed film is not the meter's calibration basis");
+    check(host.current() == nullptr, "the throwaway meter session is released");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -415,14 +498,17 @@ int main(int argc, char** argv) {
         layout_turned();
         layout_empty_pair();
         layout_one_sided_pair();
+        layout_single_hole_meter_frame();
         compose_identity_and_both_holes();
         compose_crop();
         compose_turns();
         compose_gain();
         compose_gap_and_empty_holes();
         compose_tier_scaling();
+        compose_single_hole_meter_frame();
         meter_key_identity();
         solve_exposure(resources);
+        solve_exposure_single_hole(resources);
         std::cout << "Pair piece: " << checks << " checks passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -127,6 +127,26 @@ Layout layout(QSizeF holeA, QSizeF holeB, const PieceSpec& spec) {
     return layoutForAcross(int(std::floor(a)), spec);
 }
 
+Layout holeLayout(QSizeF hole, const PieceSpec& spec) {
+    // The meter's one-hole piece: the same hole-aspect fit (the fit of a
+    // hole-aspect picture is the picture itself), floored at the nominal
+    // 2,400 px across like the pair's own empty case -- nothing divides by
+    // zero -- and no advance, no second hole. The exposure solver reads
+    // every pixel it is handed (its zero-light exclusion is the scene
+    // latitude's, not the meter's), so the unexposed film of a pair piece
+    // would skew the reading; this hole's picture alone is the 1.x
+    // calibration basis (PAIR-WIRING §4.1).
+    const QSizeF fit = holeFit(hole, spec.turned);
+    const double across = fit.isNull() || fit.isEmpty()
+                              ? 2400.0
+                              : (spec.turned ? fit.width() : fit.height());
+    Layout one = layoutForAcross(int(std::floor(across)), spec);
+    one.advancePx = 0.0;
+    one.pieceSize = one.rect[0].size().toSize();
+    one.rect[1] = QRectF(); // no second hole: the meter reads this hole alone
+    return one;
+}
+
 std::vector<float> compose(const Layout& layout, const HoleInput& first, const HoleInput& second) {
     const QSize size = layout.pieceSize;
     std::vector<float> piece(std::size_t(std::max(size.width(), 0)) * std::size_t(std::max(size.height(), 0)) * 3,

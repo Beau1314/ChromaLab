@@ -804,15 +804,34 @@ int main(int argc,char** argv) {
                       near(c.pair()["holes"].toList()[1].toMap()["x"].toDouble(),0.05),
                       "Reopening the pair restores the edited state");
                 // A hole's date is a wire row, not pixels: the reprint path
-                // of the same negative (no re-compose of the piece).
+                // of the same negative (no re-compose of the piece). The
+                // frame's settings ARE the wire on both the open and the
+                // reprint path, so the wire assertions read off them
+                // directly (PAIR-WIRING §3): the bare pair sends neither
+                // overscan_pair nor 135_half, and the dated bare pair's rows
+                // ride the date's -- overscan_pair + 135_half with no film
+                // edge (DateBackSettings.pairRows).
                 const auto pieceFrame=c.frame();
+                check(!c.frame()->settings.overscan_pair&&
+                      c.frame()->settings.overscan_format=="135",
+                      "A bare pair (no film edge, no date) sends neither overscan_pair nor 135_half");
+                c.setPairHole(1,"dated",true);
+                waitFor([&]{return !c.busy();},"hole dated switch reprint");
+                check(!c.failed(),"The hole's dated switch takes the wire path: "+c.status());
                 c.setPairHole(1,"dateText","'26 11 15");
                 waitFor([&]{return !c.busy();},"hole date reprint");
                 check(!c.failed()&&c.frame()!=nullptr&&c.frame()!=pieceFrame,
                       "The hole's date takes the wire reprint path: "+c.status());
+                check(c.frame()->settings.overscan_pair&&
+                      c.frame()->settings.overscan_format=="135_half"&&
+                      c.frame()->settings.date_imprint_active&&
+                      c.frame()->settings.date_imprint_text_b=="'26 11 15"&&
+                      c.frame()->settings.date_imprint_text.empty(),
+                      "A dated bare pair's wire carries overscan_pair, 135_half and the date rows");
                 c.undo();
                 waitFor([&]{return !c.busy();},"hole date undo");
-                check(!c.failed(),"The date edit undoes through the pair stack: "+c.status());
+                check(!c.failed()&&!c.frame()->settings.overscan_pair,
+                      "The date edit undoes through the pair stack, back to the bare pair's wire: "+c.status());
                 c.selectImage(0);idle(c,"Leave the pair for the persistence checkpoint");
             }
 
