@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLockFile>
@@ -128,6 +129,12 @@ QJsonObject stateJson(const State& state) {
         {"scene_latitude_shadow_room", s.scene_latitude_shadow_room},
         {"scene_latitude_rolloff", s.scene_latitude_rolloff},
         {"scene_latitude_max_lift", s.scene_latitude_max_lift},
+        {"scene_latitude_split", s.scene_latitude_split},
+        {"scene_latitude_b_active", s.scene_latitude_b_active},
+        {"scene_latitude_b_highlight_knee", s.scene_latitude_b_highlight_knee},
+        {"scene_latitude_b_highlight_room", s.scene_latitude_b_highlight_room},
+        {"scene_latitude_b_shadow_knee", s.scene_latitude_b_shadow_knee},
+        {"scene_latitude_b_shadow_room", s.scene_latitude_b_shadow_room},
         {"contrast_mask_active", s.contrast_mask_active},
         {"contrast_mask_highlights", s.contrast_mask_highlights},
         {"contrast_mask_shadows", s.contrast_mask_shadows},
@@ -202,6 +209,19 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
                              "scene_latitude_highlight_knee", "scene_latitude_highlight_room",
                              "scene_latitude_shadow_knee", "scene_latitude_shadow_room",
                              "scene_latitude_rolloff", "scene_latitude_max_lift"});
+    // The half-frame pair's second frame arrived with the phase-3 port (its
+    // own optional group so an old history still loads); records that carry
+    // one split/b_ key must carry all six. A photograph's own record keeps
+    // the defaults (split 0, B curve off) because only pair items ever write
+    // non-zero values into these rows.
+    const bool hasPairWire = s.contains(QLatin1String("scene_latitude_split"));
+    if (hasPairWire)
+        setting_keys.insert(setting_keys.end(),
+                            {"scene_latitude_split", "scene_latitude_b_active",
+                             "scene_latitude_b_highlight_knee",
+                             "scene_latitude_b_highlight_room",
+                             "scene_latitude_b_shadow_knee",
+                             "scene_latitude_b_shadow_room"});
     // RFC-024's mask arrived with the phase-2 port (like the DI pair, its keys
     // are optional so an old history still loads); records that carry one mask
     // key must carry all five.
@@ -283,6 +303,16 @@ State parseState(const QJsonObject& value, const Catalog* catalog) {
         out.scene_latitude_shadow_room = number(s, "scene_latitude_shadow_room", 0.0, 24.0);
         out.scene_latitude_rolloff = number(s, "scene_latitude_rolloff", 1.0, 4.0);
         out.scene_latitude_max_lift = number(s, "scene_latitude_max_lift", 0.25, 12.0);
+    }
+    if (hasPairWire) {
+        out.scene_latitude_split = number(s, "scene_latitude_split", 0.0, 1.0);
+        out.scene_latitude_b_active = boolean(s, "scene_latitude_b_active");
+        out.scene_latitude_b_highlight_knee =
+            number(s, "scene_latitude_b_highlight_knee", -24.0, 24.0);
+        out.scene_latitude_b_highlight_room =
+            number(s, "scene_latitude_b_highlight_room", 0.0, 24.0);
+        out.scene_latitude_b_shadow_knee = number(s, "scene_latitude_b_shadow_knee", -24.0, 24.0);
+        out.scene_latitude_b_shadow_room = number(s, "scene_latitude_b_shadow_room", 0.0, 24.0);
     }
     if (hasContrastMask) {
         out.contrast_mask_active = boolean(s, "contrast_mask_active");
@@ -456,7 +486,9 @@ bool recordExists(const QString& path) {
     const QFileInfo info(path);
     return info.exists() || info.isSymLink();
 }
-QJsonObject readDocument(const QString& path, QByteArray* digest = nullptr) {
+QJsonObject readDocument(const QString& path, const char* expectedFormat,
+                         std::initializer_list<const char*> documentKeys,
+                         QByteArray* digest = nullptr) {
     const QFileInfo info(path);
     require(!info.isSymLink() && info.isFile(), QStringLiteral("Saved edit path is not a regular file"));
     QFile file(path);
@@ -471,8 +503,8 @@ QJsonObject readDocument(const QString& path, QByteArray* digest = nullptr) {
     require(error.error == QJsonParseError::NoError && document.isObject(),
             QStringLiteral("Saved edits contain invalid JSON: ") + error.errorString());
     const auto result = document.object();
-    keys(result, {"format", "version", "source", "state"}, QStringLiteral("document"));
-    require(string(result, "format") == "SpektraLab.Windows.Editor",
+    keys(result, documentKeys, QStringLiteral("document"));
+    require(string(result, "format") == expectedFormat,
             QStringLiteral("Saved edits use an unsupported document format"));
     const auto version = result.value("version");
     require(version.isDouble() && version.toDouble() == 1.0,
@@ -484,6 +516,97 @@ State checkDocument(const QJsonObject& document, const Identity& source, const C
     require(stored.path == source.path, QStringLiteral("Saved edits belong to a different source; existing file was preserved"));
     require(stored == source, QStringLiteral("The source file changed since these edits were saved; existing edits were preserved"));
     return parseState(object(document, "state"), catalog);
+}
+
+// --- The pair record (v2 .spektrapair semantics: version/sources/holes/look)
+
+constexpr char kPairFormat[] = "SpektraLab.Windows.Pair";
+
+QJsonObject pairPlacementJson(const PairPlacement& placement) {
+    return {{"scale", placement.scale}, {"x", placement.x}, {"y", placement.y},
+            {"quarterTurns", double(placement.quarterTurns)}};
+}
+QJsonObject pairTrimJson(const PairTrim& trim) {
+    return {{"printExposure", trim.print_exposure}, {"yFilterShift", trim.y_filter_shift},
+            {"mFilterShift", trim.m_filter_shift},
+            {"preflashExposure", trim.preflash_exposure}};
+}
+QJsonObject pairHoleJson(const PairHoleState& hole) {
+    return {{"placement", pairPlacementJson(hole.placement)}, {"exposureEv", hole.exposure_ev},
+            {"dated", hole.dated}, {"dateText", hole.date_text},
+            {"trim", pairTrimJson(hole.trim)}};
+}
+QJsonObject pairJson(const PairState& pair) {
+    return {{"spacingMM", pair.spacing_mm}, {"turned", pair.turned},
+            {"holes", QJsonArray{pairHoleJson(pair.holes[0]), pairHoleJson(pair.holes[1])}},
+            {"look", stateJson(pair.look)}};
+}
+PairPlacement parsePairPlacement(const QJsonObject& value) {
+    keys(value, {"scale", "x", "y", "quarterTurns"}, QStringLiteral("placement"));
+    PairPlacement placement;
+    placement.scale = number(value, "scale", 1.0, 8.0);
+    placement.x = number(value, "x", -2.0, 2.0);
+    placement.y = number(value, "y", -2.0, 2.0);
+    const double turns = number(value, "quarterTurns", 0.0, 3.0);
+    require(std::floor(turns) == turns, QStringLiteral("Saved pair quarter turns must be an integer"));
+    placement.quarterTurns = int(turns);
+    return placement;
+}
+PairTrim parsePairTrim(const QJsonObject& value) {
+    keys(value, {"printExposure", "yFilterShift", "mFilterShift", "preflashExposure"},
+         QStringLiteral("trim"));
+    PairTrim trim;
+    trim.print_exposure = number(value, "printExposure", -4.0, 4.0);
+    trim.y_filter_shift = number(value, "yFilterShift", -1.0, 1.0);
+    trim.m_filter_shift = number(value, "mFilterShift", -1.0, 1.0);
+    trim.preflash_exposure = number(value, "preflashExposure", 0.0, 8.0);
+    return trim;
+}
+PairHoleState parsePairHole(const QJsonValue& value) {
+    require(value.isObject(), QStringLiteral("Saved pair hole must be an object"));
+    const auto hole = value.toObject();
+    keys(hole, {"placement", "exposureEv", "dated", "dateText", "trim"}, QStringLiteral("hole"));
+    PairHoleState result;
+    result.placement = parsePairPlacement(object(hole, "placement"));
+    result.exposure_ev = number(hole, "exposureEv", -5.0, 5.0);
+    result.dated = boolean(hole, "dated");
+    result.date_text = string(hole, "dateText");
+    result.trim = parsePairTrim(object(hole, "trim"));
+    return result;
+}
+PairState parsePair(const QJsonObject& value, const Catalog* catalog) {
+    keys(value, {"spacingMM", "turned", "holes", "look"}, QStringLiteral("pair"));
+    PairState pair;
+    pair.spacing_mm = number(value, "spacingMM", 0.0, 4.0);
+    pair.turned = boolean(value, "turned");
+    const auto holes = value.value(QLatin1String("holes"));
+    require(holes.isArray() && holes.toArray().size() == 2,
+            QStringLiteral("Saved pair must carry exactly two holes"));
+    const auto holeArray = holes.toArray();
+    pair.holes[0] = parsePairHole(holeArray.at(0));
+    pair.holes[1] = parsePairHole(holeArray.at(1));
+    pair.look = parseState(object(value, "look"), catalog);
+    return pair;
+}
+QJsonArray pairSourcesJson(const Identity& left, const Identity& right) {
+    return QJsonArray{identityJson(left), identityJson(right)};
+}
+std::pair<Identity, Identity> parsePairSources(const QJsonValue& value) {
+    require(value.isArray() && value.toArray().size() == 2,
+            QStringLiteral("Saved pair must carry exactly two sources"));
+    const auto array = value.toArray();
+    return {parseIdentity(array.at(0).toObject()), parseIdentity(array.at(1).toObject())};
+}
+PairState checkPairDocument(const QJsonObject& document, const Identity& left,
+                            const Identity& right, const Catalog* catalog) {
+    const auto stored = parsePairSources(document.value(QLatin1String("sources")));
+    require(stored.first.path == left.path,
+            QStringLiteral("Saved pair edits belong to a different first source; existing file was preserved"));
+    require(stored.second.path == right.path,
+            QStringLiteral("Saved pair edits belong to a different second source; existing file was preserved"));
+    require(stored.first == left && stored.second == right,
+            QStringLiteral("A pair source changed since these edits were saved; existing edits were preserved"));
+    return parsePair(object(document, "pair"), catalog);
 }
 } // namespace
 
@@ -507,7 +630,8 @@ LoadResult Store::load(const QUrl& source, const Catalog& catalog) const {
             return {};
         }
         QByteArray recordDigest;
-        const auto document = readDocument(path, &recordDigest);
+        const auto document = readDocument(path, "SpektraLab.Windows.Editor",
+                                           {"format", "version", "source", "state"}, &recordDigest);
         observations_.insert(key, {fingerprint(sourceId), recordDigest, {}, catalog});
         return {checkDocument(document, sourceId, &catalog), {}, false};
     } catch (const std::exception& error) {
@@ -545,7 +669,8 @@ void Store::save(const QUrl& source, const State& state) const {
     require(lock.tryLock(0), QStringLiteral("Saved edits are being written by another process; try again"));
     QByteArray previousDigest;
     if (recordExists(path)) {
-        const auto previous = readDocument(path, &previousDigest);
+        const auto previous = readDocument(path, "SpektraLab.Windows.Editor",
+                                           {"format", "version", "source", "state"}, &previousDigest);
         (void)checkDocument(previous, sourceId, nullptr);
     }
     if (observed != observations_.cend())
@@ -560,6 +685,107 @@ void Store::save(const QUrl& source, const State& state) const {
     require(file.write(bytes) == bytes.size(), QStringLiteral("Cannot write saved edits: ") + file.errorString());
     require(file.commit(), QStringLiteral("Cannot atomically save edits: ") + file.errorString());
     observations_.insert(key, {fingerprint(sourceId),
+                                QCryptographicHash::hash(bytes, QCryptographicHash::Sha256), {}, catalog});
+}
+
+// --- Pair records -------------------------------------------------------------
+
+namespace {
+// The ordered union identity of both sources: the first hole is positional
+// (PAIR-WIRING §5), so the swapped order is a different pair.
+QString pairObservationKey(const QUrl& left, const QUrl& right) {
+    return QLatin1String("pair\n") + pathIdentity(sourcePath(left)) + QLatin1Char('\n') +
+           pathIdentity(sourcePath(right));
+}
+// One digest over both sources' identity JSON, so the observation slot keeps
+// its single fingerprint field.
+QByteArray pairFingerprint(const Identity& left, const Identity& right) {
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    hash.addData(QJsonDocument(identityJson(left)).toJson(QJsonDocument::Compact));
+    hash.addData(QByteArrayLiteral("\n"));
+    hash.addData(QJsonDocument(identityJson(right)).toJson(QJsonDocument::Compact));
+    return hash.result();
+}
+} // namespace
+
+QString Store::pairFilePath(const QUrl& left, const QUrl& right) const {
+    const auto digest = QCryptographicHash::hash(
+        (pathIdentity(sourcePath(left)) + QLatin1Char('\n') + pathIdentity(sourcePath(right)))
+            .toUtf8(),
+        QCryptographicHash::Sha256).toHex();
+    return QDir(directory_).filePath(QString::fromLatin1(digest) + ".json");
+}
+
+PairLoadResult Store::loadPair(const QUrl& left, const QUrl& right, const Catalog& catalog) const {
+    QString key;
+    try {
+        key = pairObservationKey(left, right);
+        const auto path = pairFilePath(left, right);
+        const auto leftId = identity(sourcePath(left));
+        const auto rightId = identity(sourcePath(right));
+        if (!recordExists(path)) {
+            observations_.insert(key, {pairFingerprint(leftId, rightId), {}, {}, catalog});
+            return {};
+        }
+        QByteArray recordDigest;
+        const auto document =
+            readDocument(path, kPairFormat, {"format", "version", "sources", "pair"}, &recordDigest);
+        observations_.insert(key, {pairFingerprint(leftId, rightId), recordDigest, {}, catalog});
+        return {checkPairDocument(document, leftId, rightId, &catalog), {}, false};
+    } catch (const std::exception& error) {
+        const auto warning = QString::fromUtf8(error.what());
+        if (!key.isEmpty()) {
+            auto& observation = observations_[key];
+            observation.warning = warning;
+            observation.catalog = catalog;
+        }
+        return {{}, warning, true};
+    }
+}
+
+void Store::savePair(const QUrl& left, const QUrl& right, const PairState& state) const {
+    const auto key = pairObservationKey(left, right);
+    const auto path = pairFilePath(left, right);
+    const auto observed = observations_.constFind(key);
+    if (observed != observations_.cend() && !observed->warning.isEmpty()) fail(observed->warning);
+    const auto value = pairJson(state);
+    const auto catalog = observed != observations_.cend() ? observed->catalog : std::optional<Catalog>{};
+    // Root callers load with a current catalogue first. Direct save callers
+    // have no catalogue, but still receive complete shape/range validation.
+    (void)parsePair(value, catalog ? &*catalog : nullptr);
+    const auto leftId = identity(sourcePath(left));
+    const auto rightId = identity(sourcePath(right));
+    const auto bothFingerprint = pairFingerprint(leftId, rightId);
+    if (observed != observations_.cend())
+        require(observed->source == bothFingerprint,
+                QStringLiteral("A pair source changed after it was opened; edits remain unsaved"));
+    for (const auto& source : {leftId.path, rightId.path})
+        require(pathIdentity(QFileInfo(source).absolutePath()) !=
+                    pathIdentity(QFileInfo(directory_).canonicalFilePath().isEmpty()
+                        ? directory_ : QFileInfo(directory_).canonicalFilePath()),
+                QStringLiteral("Saved edit store must not be beside the source photograph"));
+    require(QDir().mkpath(directory_), QStringLiteral("Cannot create the saved edit directory"));
+    QLockFile lock(path + ".lock");
+    lock.setStaleLockTime(30000);
+    require(lock.tryLock(0), QStringLiteral("Saved edits are being written by another process; try again"));
+    QByteArray previousDigest;
+    if (recordExists(path)) {
+        const auto previous = readDocument(path, kPairFormat, {"format", "version", "sources", "pair"}, &previousDigest);
+        (void)checkPairDocument(previous, leftId, rightId, nullptr);
+    }
+    if (observed != observations_.cend())
+        require(observed->record == previousDigest,
+                QStringLiteral("Saved edits changed in another instance; restart the app and reopen the pair before saving"));
+    const auto bytes = QJsonDocument(QJsonObject{{"format", kPairFormat},
+        {"version", 1}, {"sources", pairSourcesJson(leftId, rightId)}, {"pair", value}})
+                           .toJson(QJsonDocument::Indented);
+    require(bytes.size() <= maximumDocumentBytes, QStringLiteral("Saved edit document exceeds the 64 KiB limit"));
+    QSaveFile file(path);
+    file.setDirectWriteFallback(false);
+    require(file.open(QIODevice::WriteOnly), QStringLiteral("Cannot open saved edits for atomic writing: ") + file.errorString());
+    require(file.write(bytes) == bytes.size(), QStringLiteral("Cannot write saved edits: ") + file.errorString());
+    require(file.commit(), QStringLiteral("Cannot atomically save edits: ") + file.errorString());
+    observations_.insert(key, {bothFingerprint,
                                 QCryptographicHash::hash(bytes, QCryptographicHash::Sha256), {}, catalog});
 }
 

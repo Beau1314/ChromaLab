@@ -747,6 +747,75 @@ int main(int argc,char** argv) {
                            near(c.wbTemperature(),5500)&&near(c.wbTint(),10),"Recipient can redo synchronized parameters");
             c.undo();c.selectImage(0);idle(c,"Return to first before persistence checkpoint");
 
+            // 半幅对 (Task 3.2, PAIR-WIRING §5): two photographs become one
+            // pair library item — the first compose and open, one hole's own
+            // exposure and placement (the meter cache holds across a drag,
+            // its key excluding the placement), the pair's own undo stacks,
+            // the record file and the reopen restore, and a wire-only hole
+            // edit (the date) taking the reprint path. The gate runs on real
+            // RAW fixtures; without them this whole test never runs, so the
+            // executable evidence for the record's own discipline stays in
+            // spk_qt_edit_store (task-00 §2.5's fixture-gate convention).
+            {
+                const int pairIndex=c.libraryItems().size();
+                check(c.createPair(firstUrl,secondUrl),"createPair accepts two photographs");
+                waitFor([&]{return c.activeIndex()==pairIndex&&!c.busy()&&c.frame();},"pair first compose");
+                check(!c.failed(),"Pair composes and opens: "+c.status());
+                check(!c.pair().isEmpty()&&c.pair()["holes"].toList().size()==2,
+                      "The pair property publishes two holes");
+                check(near(c.pair()["spacingMM"].toDouble(),1.0)&&!c.pair()["turned"].toBool(),
+                      "A new pair begins at the strip's spacing, level");
+                check(near(c.pair()["split"].toDouble(),0.5),"The split begins at the gap's middle");
+                // One hole's exposure re-composes the piece; the meter reads
+                // that hole alone once and caches by its placement-excluding
+                // key.
+                c.setPairHole(1,"exposureEv",0.4);
+                waitFor([&]{return !c.busy();},"hole exposure re-compose");
+                check(!c.failed(),"Per-hole exposure re-composes: "+c.status());
+                const QVariant metered=c.pair()["holes"].toList()[1].toMap()["meteredEv"];
+                check(!metered.isNull(),"The second hole publishes its meter reading");
+                // A placement drag re-composes without re-metering
+                // (PAIR-WIRING §4.2): the reading does not pump.
+                c.setPairHole(1,"x",0.05);
+                waitFor([&]{return !c.busy();},"placement drag re-compose");
+                check(!c.failed(),"A placement drag re-composes: "+c.status());
+                check(c.pair()["holes"].toList()[1].toMap()["meteredEv"]==metered,
+                      "A placement drag keeps the cached meter reading");
+                c.undo();
+                waitFor([&]{return !c.busy();},"pair undo re-compose");
+                check(near(c.pair()["holes"].toList()[1].toMap()["exposureEv"].toDouble(),0.0)&&
+                      near(c.pair()["holes"].toList()[1].toMap()["x"].toDouble(),0.0),
+                      "Pair undo restores both the exposure and the placement");
+                c.redo();
+                waitFor([&]{return !c.busy();},"pair redo re-compose");
+                check(near(c.pair()["holes"].toList()[1].toMap()["exposureEv"].toDouble(),0.4),
+                      "Pair redo restores the exposure");
+                // The record persists the pair; reopening the pair item
+                // restores it (select away, flush, select back).
+                c.flushEdits();
+                const editing::Store pairStore(editDirectory);
+                check(QFileInfo::exists(pairStore.pairFilePath(firstUrl,secondUrl)),
+                      "The pair record file exists after a flush");
+                c.selectImage(0);idle(c,"Select away from the pair");
+                c.selectImage(pairIndex);
+                waitFor([&]{return c.activeIndex()==pairIndex&&!c.busy();},"pair reopen");
+                check(!c.failed(),"Pair reopens: "+c.status());
+                check(near(c.pair()["holes"].toList()[1].toMap()["exposureEv"].toDouble(),0.4)&&
+                      near(c.pair()["holes"].toList()[1].toMap()["x"].toDouble(),0.05),
+                      "Reopening the pair restores the edited state");
+                // A hole's date is a wire row, not pixels: the reprint path
+                // of the same negative (no re-compose of the piece).
+                const auto pieceFrame=c.frame();
+                c.setPairHole(1,"dateText","'26 11 15");
+                waitFor([&]{return !c.busy();},"hole date reprint");
+                check(!c.failed()&&c.frame()!=nullptr&&c.frame()!=pieceFrame,
+                      "The hole's date takes the wire reprint path: "+c.status());
+                c.undo();
+                waitFor([&]{return !c.busy();},"hole date undo");
+                check(!c.failed(),"The date edit undoes through the pair stack: "+c.status());
+                c.selectImage(0);idle(c,"Leave the pair for the persistence checkpoint");
+            }
+
             // Leave every supported family changed, but deliberately do not
             // yield to the render/save timers. Destruction must flush wanted
             // edits rather than the older engine frame currently on screen.

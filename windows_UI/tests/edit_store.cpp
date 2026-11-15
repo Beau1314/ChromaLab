@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLockFile>
@@ -351,6 +352,229 @@ int main(int argc, char** argv) {
                 "store wrote edits beside the source image");
         check(QDir(root).entryList({"*.lock", "*.tmp"}, QDir::Files).isEmpty(),
               "store left lock or temporary files behind");
+
+        // --- Pair records (Task 3.2): an independent file keyed by the union
+        // hash of BOTH source URLs, carrying version/sources/hole states/look
+        // with the same atomicity and conflict discipline as a photo record.
+        {
+            const auto leftSource = QDir(sources).filePath(QString::fromUtf8("左 半格.ARW"));
+            const auto rightSource = QDir(sources).filePath(QString::fromUtf8("右 半格.ARW"));
+            write(leftSource, QByteArray("left half-frame negative"));
+            write(rightSource, QByteArray("right half-frame negative"));
+            const auto leftUrl = QUrl::fromLocalFile(leftSource);
+            const auto rightUrl = QUrl::fromLocalFile(rightSource);
+            // A missing record is a new pair, and a load must not create the
+            // store directory as a side effect.
+            check(!store.loadPair(leftUrl, rightUrl, catalog).state,
+                  "missing pair record loaded a state");
+            check(!store.loadPair(leftUrl, rightUrl, catalog).blocked,
+                  "missing pair record is not blocked");
+            check(!QFileInfo::exists(store.pairFilePath(leftUrl, rightUrl)),
+                  "pair load created a record file");
+            // The record file is a hash inside the store, and the union hash
+            // is ordered: the first hole is positional, so the swapped order
+            // is a different pair and never shares a file.
+            const auto pairPath = store.pairFilePath(leftUrl, rightUrl);
+            check(QFileInfo(pairPath).absolutePath() == root &&
+                      QFileInfo(pairPath).suffix() == QLatin1String("json") &&
+                      QFileInfo(pairPath).completeBaseName().size() == 64,
+                  "pair record must be a hash file inside the explicit store");
+            check(store.pairFilePath(rightUrl, leftUrl) != pairPath,
+                  "swapped pair sources shared one record file");
+            check(pairPath != path && !store.load(leftUrl, catalog).blocked,
+                  "pair records must not collide with photo records");
+
+            editing::PairState pair;
+            pair.spacing_mm = 1.5;
+            pair.turned = true;
+            pair.holes[0].placement = {1.5, 0.125, -0.0625, 1};
+            pair.holes[0].exposure_ev = -0.75;
+            pair.holes[0].dated = true;
+            pair.holes[0].date_text = QString::fromUtf8("'26 11 15");
+            pair.holes[0].trim = {0.5, -0.125, 0.25, 1.5};
+            pair.holes[1].placement = {1.0, 0.0, 0.0, 0};
+            pair.holes[1].exposure_ev = 1.25;
+            pair.holes[1].dated = false;
+            pair.holes[1].trim = {-1.0, 0.5, -0.5, 0.0};
+            pair.look.settings.film_stock = "fuji_provia_100f";
+            pair.look.settings.print_stock = "fuji_crystal";
+            pair.look.settings.print_exposure = 0.875;
+            pair.look.settings.auto_exposure = false; // the pair's own wire (§3)
+            pair.look.settings.film_format_mm = 37.5;
+            // The pair wire's second-frame rows ride the look: the split at
+            // the gap's middle and a non-default B curve must roundtrip.
+            pair.look.settings.scene_latitude_split = 0.5;
+            pair.look.settings.scene_latitude_b_active = true;
+            pair.look.settings.scene_latitude_b_highlight_knee = 1.5;
+            pair.look.settings.scene_latitude_b_highlight_room = 0.75;
+            pair.look.settings.scene_latitude_b_shadow_knee = -1.25;
+            pair.look.settings.scene_latitude_b_shadow_room = 0.25;
+            pair.look.geometry.crop = QRectF(0, 0, 1, 1);
+            namespace layer2 = spk::desktop::layer2;
+            pair.look.layer2.exposure = 0.5;
+            store.savePair(leftUrl, rightUrl, pair);
+            const auto round = store.loadPair(leftUrl, rightUrl, catalog);
+            check(round.state && *round.state == pair && round.warning.isEmpty() && !round.blocked,
+                  "pair record did not roundtrip exactly");
+            // The swapped order is a different record: no state, not blocked.
+            check(!store.loadPair(rightUrl, leftUrl, catalog).state &&
+                      !store.loadPair(rightUrl, leftUrl, catalog).blocked,
+                  "swapped sources inherited the ordered pair's record");
+            // A fresh store instance restores the saved pair (reopen path).
+            const editing::Store reopenedPair(root);
+            check(reopenedPair.loadPair(leftUrl, rightUrl, catalog).state == std::optional(pair),
+                  "a new store instance did not restore the pair record");
+
+            // The record is bound to BOTH sources with the same identity
+            // discipline as a photo record: a changed byte in either source
+            // blocks the load and refuses saves.
+            auto pairRecordBytes = read(pairPath);
+            const auto pairJson = QJsonDocument::fromJson(pairRecordBytes).object();
+            // Same name, size and timestamp, but a changed sampled byte in the
+            // LEFT source alone: the fingerprint prevents the pair from
+            // inheriting a replaced negative.
+            const auto leftOriginalTime = QFileInfo(leftSource).lastModified();
+            QByteArray replacedLeft = QByteArray("left half-frame negative");
+            replacedLeft[4] = '?';
+            write(leftSource, replacedLeft);
+            QFile leftHandle(leftSource);
+            check(leftHandle.open(QIODevice::ReadWrite), "cannot open owned source timestamp");
+            check(leftHandle.setFileTime(leftOriginalTime, QFileDevice::FileModificationTime),
+                  "cannot restore owned source timestamp");
+            leftHandle.close();
+            const auto staleLeft = store.loadPair(leftUrl, rightUrl, catalog);
+            check(!staleLeft.state && staleLeft.blocked && !staleLeft.warning.isEmpty(),
+                  "a changed left source silently kept its pair record");
+            rejects([&] { store.savePair(leftUrl, rightUrl, pair); },
+                    "save replaced a pair record after its left source changed");
+            check(read(pairPath) == pairRecordBytes,
+                  "refused pair save modified the existing record");
+            write(leftSource, QByteArray("left half-frame negative"));
+            QFile leftRestore(leftSource);
+            check(leftRestore.open(QIODevice::ReadWrite), "cannot reopen owned source timestamp");
+            check(leftRestore.setFileTime(leftOriginalTime, QFileDevice::FileModificationTime),
+                  "cannot restore owned source timestamp again");
+            leftRestore.close();
+            check(store.loadPair(leftUrl, rightUrl, catalog).state == std::optional(pair),
+                  "restoring the left source did not clear the pair warning");
+
+            auto corruptPair = [&](const std::function<void(QJsonObject&)>& change) {
+                auto document = pairJson;
+                change(document);
+                const auto bytes = QJsonDocument(document).toJson();
+                write(pairPath, bytes);
+                const auto rejected = store.loadPair(leftUrl, rightUrl, catalog);
+                check(!rejected.state && rejected.blocked && !rejected.warning.isEmpty(),
+                      "invalid pair document loaded or failed without a warning");
+                rejects([&] { store.savePair(leftUrl, rightUrl, pair); },
+                        "save replaced an incompatible pair record");
+                check(read(pairPath) == bytes, "rejected pair save changed the record");
+                write(pairPath, pairRecordBytes);
+            };
+            corruptPair([](auto& d) { d["version"] = 2; });
+            corruptPair([](auto& d) { d["format"] = "SpektraLab.Windows.Editor"; });
+            corruptPair([](auto& d) { d["futureField"] = true; });
+            corruptPair([](auto& d) { d.remove("sources"); });
+            corruptPair([](auto& d) { d["sources"] = QJsonArray{d["sources"]}; });
+            corruptPair([](auto& d) { d.remove("pair"); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) { p.remove("spacingMM"); }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) { p["holes"] = QJsonArray{}; }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) { p.remove("look"); }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) {
+                    auto holes = p["holes"].toArray();
+                    auto hole = holes[0].toObject();
+                    hole.remove("trim");
+                    holes[0] = hole;
+                    p["holes"] = holes; }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) {
+                    auto holes = p["holes"].toArray();
+                    auto hole = holes[1].toObject();
+                    mutateObject(hole, "trim", [](auto& t) { t["preflashExposure"] = "0"; });
+                    holes[1] = hole;
+                    p["holes"] = holes; }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) {
+                    auto holes = p["holes"].toArray();
+                    auto hole = holes[0].toObject();
+                    mutateObject(hole, "placement", [](auto& pl) { pl["scale"] = 0.5; });
+                    holes[0] = hole;
+                    p["holes"] = holes; }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) {
+                    auto holes = p["holes"].toArray();
+                    auto hole = holes[1].toObject();
+                    mutateObject(hole, "placement", [](auto& pl) { pl["quarterTurns"] = 4; });
+                    holes[1] = hole;
+                    p["holes"] = holes; }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) {
+                    auto holes = p["holes"].toArray();
+                    auto hole = holes[0].toObject();
+                    hole["exposureEv"] = 5.01;
+                    holes[0] = hole;
+                    p["holes"] = holes; }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) {
+                    auto holes = p["holes"].toArray();
+                    auto hole = holes[0].toObject();
+                    hole["dated"] = 1;
+                    holes[0] = hole;
+                    p["holes"] = holes; }); });
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) { p["spacingMM"] = 4.01; }); });
+            // The look block shares the photo state's strict schema, so a
+            // missing settings key is corrupt there as well.
+            corruptPair([](auto& d) {
+                mutateObject(d, "pair", [](auto& p) {
+                    mutateObject(p, "look", [](auto& l) {
+                        mutateObject(l, "settings", [](auto& f) { f.remove("print_stock"); }); }); }); });
+
+            // In-memory validation refuses an out-of-range pair before any
+            // record is touched. The reload first clears the warning the last
+            // corrupt load left on the observation, so the rejections below
+            // are the genuine range refusals.
+            check(store.loadPair(leftUrl, rightUrl, catalog).state == std::optional(pair),
+                  "reopen did not clear a resolved pair load warning");
+            auto invalidPair = [&](const std::function<void(editing::PairState&)>& change) {
+                auto candidate = pair;
+                change(candidate);
+                rejects([&] { store.savePair(leftUrl, rightUrl, candidate); },
+                        "invalid in-memory pair state was saved");
+                check(read(pairPath) == pairRecordBytes, "invalid pair state modified the record");
+            };
+            invalidPair([](auto& p) { p.spacing_mm = std::numeric_limits<double>::quiet_NaN(); });
+            invalidPair([](auto& p) { p.holes[0].placement.scale = 8.5; });
+            invalidPair([](auto& p) { p.holes[1].placement.x = -2.5; });
+            invalidPair([](auto& p) { p.holes[0].trim.preflash_exposure = -0.5; });
+            invalidPair([](auto& p) { p.holes[1].trim.y_filter_shift = 1.5; });
+            invalidPair([](auto& p) { p.look.settings.film_format_mm = 3.0; });
+
+            // The same optimistic-conflict discipline: a store that loaded
+            // before the save cannot replace the newer record.
+            editing::Store secondPairWriter(root);
+            check(secondPairWriter.loadPair(leftUrl, rightUrl, catalog).state == std::optional(pair),
+                  "second writer could not observe the saved pair");
+            store.savePair(leftUrl, rightUrl, pair); // refresh the observation digest
+            auto newer = pair;
+            newer.holes[0].exposure_ev = -1.5;
+            store.savePair(leftUrl, rightUrl, newer);
+            rejects([&] { secondPairWriter.savePair(leftUrl, rightUrl, pair); },
+                    "second pair writer replaced a record saved since its load");
+            check(store.loadPair(leftUrl, rightUrl, catalog).state == std::optional(newer),
+                  "the ordered record did not keep the newest state");
+            check(read(pairPath) != pairRecordBytes, "the newer pair record was not written");
+
+            // Photo records and pair records stay independent files.
+            check(store.load(otherUrl, catalog).state == std::optional(editing::State{}),
+                  "pair saves disturbed the photo record's store");
+            check(QDir(root).entryList({"*.lock", "*.tmp"}, QDir::Files).isEmpty(),
+                  "pair store left lock or temporary files behind");
+        }
 
         std::printf("Edit store: %d checks passed; explicit temporary files only.\n", checks);
         return 0;

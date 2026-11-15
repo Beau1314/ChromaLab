@@ -28,6 +28,7 @@ qt_add_executable(SpektraLabQt WIN32
     src/main.cpp src/PreviewController.hpp src/PreviewController.cpp
     src/FrameOutput.hpp src/FrameOutput.cpp
     src/EditStore.hpp src/EditStore.cpp
+    src/PairPiece.hpp src/PairPiece.cpp
     src/Layer2.hpp src/Layer2.cpp
     src/Histogram.hpp
     src/FrameCanvas.hpp src/FrameCanvas.cpp)
@@ -64,7 +65,7 @@ if(BUILD_TESTING)
 
     qt_add_executable(spk_qt_library_workflow_test tests/library_workflow.cpp
         src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
-        src/Layer2.cpp src/EditStore.cpp)
+        src/PairPiece.cpp src/Layer2.cpp src/EditStore.cpp)
     target_include_directories(spk_qt_library_workflow_test PRIVATE src)
     target_compile_features(spk_qt_library_workflow_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_library_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
@@ -134,7 +135,7 @@ if(BUILD_TESTING)
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
         src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
-        src/Layer2.cpp src/EditStore.cpp src/FrameCanvas.hpp src/FrameCanvas.cpp)
+        src/PairPiece.cpp src/Layer2.cpp src/EditStore.cpp src/FrameCanvas.hpp src/FrameCanvas.cpp)
     target_include_directories(spk_qt_editing_workflow_test PRIVATE src)
     target_compile_features(spk_qt_editing_workflow_test PRIVATE cxx_std_20)
     # The split-compare gate calls FrameCanvas's composite directly, which

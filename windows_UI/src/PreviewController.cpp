@@ -1,5 +1,7 @@
 #include "PreviewController.hpp"
 #include "Histogram.hpp"
+#include "PairPiece.hpp"
+#include "core/json.hpp"
 #include <QColorSpace>
 #include <QJsonDocument>
 #include <QMetaObject>
@@ -8,7 +10,9 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <utility>
 
 namespace {
 namespace desktop=spk::desktop;
@@ -16,6 +20,8 @@ namespace output=desktop::output;
 namespace editing=desktop::editing;
 namespace l2=desktop::layer2;
 namespace histogram=desktop::histogram;
+namespace pairc=desktop::pair;
+namespace io=spk::io;
 QString text(const std::string& s) { return QString::fromUtf8(s.data(),qsizetype(s.size())); }
 std::filesystem::path path(const QUrl& u) { return std::filesystem::path(u.toLocalFile().toStdWString()); }
 QVariantList list(const std::vector<desktop::Stock>& stocks) {
@@ -31,6 +37,185 @@ bool sameSettings(desktop::RenderSettings a, desktop::RenderSettings b) {
 bool sameState(const editing::State& a,const editing::State& b) {
     return sameSettings(a.settings,b.settings)&&a.mode==b.mode&&a.geometry==b.geometry&&a.layer2==b.layer2;
 }
+bool samePairState(const editing::PairState& a,const editing::PairState& b) {
+    return a==b&&sameState(a.look,b.look);
+}
+
+// The pair's wire (PAIR-WIRING §3): the look with the pair's own rows
+// forced. The meter is off and the exposure 0 -- each picture already
+// carries its exposure in its pixels; the piece's long edge is the format;
+// each hole's date prints only when that hole's switch is on; on a film
+// edge the strip forces the engine's pairing rows and the camera's 1 mm.
+desktop::RenderSettings pairWireOf(const editing::PairState& pair) {
+    auto s=pair.look.settings;
+    const bool onStrip=s.overscan_active;
+    const double spacing=onStrip?pairc::kStripAdvanceMM-pairc::kHoleAlongMM:pair.spacing_mm;
+    s.auto_exposure=false;
+    s.film_exposure_ev=0.0;
+    s.film_format_mm=pairc::kHoleAlongMM*2.0+spacing;
+    if(onStrip) {
+        s.overscan_pair=true;
+        s.overscan_format="135_half";
+    }
+    s.date_imprint_text=pair.holes[0].dated?pair.holes[0].date_text.toStdString():std::string();
+    s.date_imprint_text_b=pair.holes[1].dated?pair.holes[1].date_text.toStdString():std::string();
+    s.date_imprint_active=pair.holes[0].dated||pair.holes[1].dated;
+    return s;
+}
+
+// --- The pair's composition (PAIR-WIRING §2's order, inverted for the one
+// window+turn form HoleInput composes with) -------------------------------
+
+// The rect in the pre-turn space whose clockwise k-turn image is `r` (the
+// inverse of a quarter turn of a normalized rectangle; rotations of the
+// square commute, so placement and frame turns invert one after the other).
+QRectF invertedTurnRect(QRectF r,int k) {
+    k=((k%4)+4)%4;
+    switch(k) {
+        case 1: return QRectF(r.y(),1.0-(r.x()+r.width()),r.height(),r.width());
+        case 2: return QRectF(1.0-(r.x()+r.width()),1.0-(r.y()+r.height()),r.width(),r.height());
+        case 3: return QRectF(1.0-(r.y()+r.height()),r.x(),r.height(),r.width());
+        default: return r;
+    }
+}
+// A hole's placement window in the decoded picture's normalized space (y
+// down, applied before the turn). The placement lives in the as-seen space
+// (post frame turn, post placement turn): the largest hole-aspect rectangle
+// of the as-framed picture, zoomed about its centre and translated. The
+// window rides back through the placement turn, the frame's own turn and
+// the frame's own crop; the compose turn is the sum of both turns.
+QRectF pairPlacementWindow(const QRectF& crop,int frameTurns,
+                           const editing::PairPlacement& placement,bool turned) {
+    const double aspect=turned?pairc::kHoleAcrossMM/pairc::kHoleAlongMM
+                              :pairc::kHoleAlongMM/pairc::kHoleAcrossMM;
+    QRectF p(0,0,1,1);
+    if(aspect<1.0)p.setWidth(aspect);else p.setHeight(1.0/aspect);
+    p=QRectF((1.0-p.width())/2.0,(1.0-p.height())/2.0,p.width(),p.height());
+    const double w=p.width()*placement.scale,h=p.height()*placement.scale;
+    p=QRectF(p.x()+(p.width()-w)/2.0,p.y()+(p.height()-h)/2.0,w,h);
+    p.translate(placement.x,placement.y);
+    const QRectF rel=invertedTurnRect(invertedTurnRect(p,placement.quarterTurns),frameTurns);
+    return QRectF(crop.x()+rel.x()*crop.width(),crop.y()+rel.y()*crop.height(),
+                  rel.width()*crop.width(),rel.height()*crop.height());
+}
+
+// The meter's wire for one hole (PAIR-WIRING §4.1): the pair's own stocks,
+// the meter on, exposure 0, a plain 24 mm frame, film edge and date off.
+std::string meterWire(const desktop::RenderSettings& look,bool scanFilm) {
+    spk::Json params=spk::Json::object();
+    params.set("input_color_space",spk::Json(std::string("ProPhoto RGB")));
+    params.set("input_cctf_decoding",spk::Json(false));
+    params.set("film_stock",spk::Json(look.film_stock));
+    params.set("print_stock",spk::Json(look.print_stock));
+    params.set("scan_film",spk::Json(scanFilm));
+    params.set("auto_exposure",spk::Json(true));
+    params.set("auto_exposure_method",spk::Json(std::string("center_weighted")));
+    params.set("exposure_compensation_ev",spk::Json(0.0));
+    params.set("film_format_mm",spk::Json(24.0));
+    params.set("grain_active",spk::Json(false));
+    params.set("halation_active",spk::Json(false));
+    params.set("glare_active",spk::Json(false));
+    params.set("overscan_active",spk::Json(false));
+    params.set("date_imprint_active",spk::Json(false));
+    return params.dump();
+}
+
+// One hole's snapshot of its library frame: the decode ref (PAIR-WIRING §5
+// -- the shot stays the frame's; the pair reads it again at every open).
+struct PairSourceSnapshot {
+    QUrl url;
+    desktop::RenderSettings settings;
+    output::Geometry geometry;
+    desktop::DecodeMode mode=desktop::DecodeMode::compatible16;
+};
+using PairSources=std::array<PairSourceSnapshot,2>;
+
+// One hole's meter reading, solved on a throwaway session over the hole's
+// own placed picture alone (no gain -- the gain is what the solve answers).
+double meterHole(desktop::PreviewHost& host,const io::DecodedRaw& decoded,
+                 const QRectF& window,int turns,const pairc::PieceSpec& spec,
+                 const std::string& wire) {
+    QSizeF placed(window.width()*decoded.width,window.height()*decoded.height);
+    if(turns%2)placed.transpose();
+    // The meter is a <=1024 px session; laying the meter buffer out at the
+    // capped size directly keeps the compose cheap and the reading within a
+    // fraction of a stop of the full-size content (solveExposure's own cap
+    // would box-downscale it anyway).
+    const double cap=std::min(1.0,1024.0/std::max(1.0,std::max(placed.width(),placed.height())));
+    const auto layout=pairc::layout(placed*cap,QSizeF(0,0),spec);
+    auto buffer=pairc::compose(layout,{&decoded,window,turns,0.0,true},pairc::HoleInput{});
+    const spk_image input{buffer.data(),std::uint32_t(layout.pieceSize.width()),
+                          std::uint32_t(layout.pieceSize.height()),3};
+    return host.solveExposure(input,wire);
+}
+
+// The worker's heart: decode both present holes from their library frames,
+// meter any hole whose placement-excluding key is not cached, compose the
+// piece and hand it to the engine as one frame. Throws on failure (the job
+// reports the error; the previous frame stays).
+desktop::FramePtr pairOpenFrame(desktop::PreviewHost& host,const PairSources& sources,
+                                const editing::PairState& pair,
+                                const QHash<QString,double>& meterCache,
+                                bool filmIsPositive,
+                                std::vector<std::pair<QString,double>>* meterUpdates) {
+    const bool onStrip=pair.look.settings.overscan_active;
+    const double spacing=onStrip?pairc::kStripAdvanceMM-pairc::kHoleAlongMM:pair.spacing_mm;
+    const pairc::PieceSpec spec{spacing,pair.turned};
+    const auto wire=pairWireOf(pair);
+    const auto meter=meterWire(pair.look.settings,filmIsPositive);
+    desktop::FramePtr frame;
+    io::DecodedRaw decoded[2];
+    pairc::HoleInput holes[2];
+    QSizeF asFramed[2];
+    const int totalTurns[2]={(sources[0].geometry.quarterTurns+pair.holes[0].placement.quarterTurns)%4,
+                             (sources[1].geometry.quarterTurns+pair.holes[1].placement.quarterTurns)%4};
+    for(int side=0;side<2;++side) {
+        holes[side].present=false;
+        const auto& src=sources[side];
+        if(!src.url.isLocalFile())continue; // a missing frame: its hole is Missing (bare film)
+        const auto file=path(src.url);
+        if(!std::filesystem::is_regular_file(file))continue;
+        std::string error;
+        const bool ok=src.mode==desktop::DecodeMode::headroom
+            ?io::decode_raw_headroom(file,decoded[side],error)
+            :src.settings.wb_temperature_k!=0.0
+                ?io::decode_raw_compatible(file,{src.settings.wb_temperature_k,src.settings.wb_tint},decoded[side],error)
+                :io::decode_raw_compatible(file,decoded[side],error);
+        if(!ok)throw std::runtime_error("Pair hole decode: "+error);
+        const auto& g=src.geometry;
+        const QRectF window=pairPlacementWindow(g.crop,g.quarterTurns,pair.holes[side].placement,pair.turned);
+        const int turns=totalTurns[side];
+        const QString key=pairc::meterKey(src.url.toLocalFile(),
+                                          src.settings.wb_temperature_k==0.0
+                                              ?QStringLiteral("as_shot"):QStringLiteral("override"),
+                                          src.settings.wb_temperature_k,src.settings.wb_tint,false,
+                                          QStringLiteral("center_weighted"),g.crop,g.quarterTurns);
+        double metered=0.0;
+        const auto cached=meterCache.constFind(key);
+        if(cached!=meterCache.cend())metered=cached.value();
+        else {
+            metered=meterHole(host,decoded[side],window,turns,spec,meter);
+            if(meterUpdates) {
+                meterUpdates->emplace_back(key,metered);
+                while(meterUpdates->size()>4)meterUpdates->erase(meterUpdates->begin());
+            }
+        }
+        holes[side]={&decoded[side],window,turns,pairc::stops(metered,pair.holes[side].exposure_ev),true};
+        // As-framed size (the frame's own crop and turns, pre-transposed by
+        // the placement turn -- layout fits what the hole will see).
+        QSizeF size(g.crop.width()*decoded[side].width,g.crop.height()*decoded[side].height);
+        if(turns%2)size.transpose();
+        asFramed[side]=size;
+    }
+    const auto layout=pairc::layout(asFramed[0],asFramed[1],spec);
+    auto piece=pairc::compose(layout,holes[0],holes[1]);
+    const int metadataSide=holes[0].present?0:1;
+    frame=host.open_pair(piece.data(),std::uint32_t(layout.pieceSize.width()),
+                         std::uint32_t(layout.pieceSize.height()),
+                         path(sources[metadataSide].url),decoded[metadataSide].metadata,wire);
+    return frame;
+}
+
 QVariantList pointList(const std::vector<QPointF>& points) {
     QVariantList result;
     for(const auto& point:points)result.push_back(QVariant::fromValue(point));
@@ -175,6 +360,24 @@ void PreviewController::accept(Reply reply) {
             // previous one, so the card shows nothing until it is re-run.
             if(!latitude_.isEmpty()){latitude_.clear();emit latitudeChanged();}
             if(reply.operation=="open")active_index_=reply.library_index;
+            // The pair item remembers its last published frame (the reprint
+            // path recognises a live pair session by pointer identity) and
+            // takes on the meter readings solved on the worker for keys the
+            // cache did not hold.
+            if(reply.library_index>=0&&reply.library_index<int(library_.size())&&
+                library_[reply.library_index].is_pair) {
+                library_[reply.library_index].pair_frame=frame_;
+                if(!reply.meter_updates.empty()) {
+                    auto& cache=library_[reply.library_index].meter_cache;
+                    auto& order=library_[reply.library_index].meter_order;
+                    for(const auto& update:reply.meter_updates) {
+                        if(!cache.contains(update.first))order.append(update.first);
+                        cache.insert(update.first,update.second);
+                    }
+                    while(order.size()>8)cache.remove(order.takeFirst());
+                    emit pairChanged();
+                }
+            }
         }
         catch(const std::exception& e){failed_=true;status_=text(e.what());if(frame_)restoreSettings();}
         if(!failed_) {
@@ -277,6 +480,17 @@ void PreviewController::openRaw(const QUrl& url) {
 }
 void PreviewController::openItem(int index) {
     endEditGesture();
+    auto& mutableItem=library_.at(index);
+    if(mutableItem.is_pair) {
+        // The pair's record restores on open, but never over unsaved
+        // in-memory edits (the debounced save may not have flushed yet).
+        const auto stored=edit_store_.loadPair(mutableItem.pair_sources[0],mutableItem.pair_sources[1],catalog_);
+        mutableItem.save_blocked=stored.blocked;mutableItem.save_warning=stored.warning;
+        if(stored.state&&!mutableItem.pending_save&&!samePairState(mutableItem.pair,*stored.state))
+            mutableItem.pair=*stored.state;
+        submitPairOpen(index);
+        return;
+    }
     const auto item=library_.at(index);const auto p=path(item.url);
     const auto gen=++generation_;
     submit([p,item,gen,index](auto& host){Reply r;r.generation=gen;r.operation="open";r.library_index=index;r.geometry=item.geometry;r.layer2=item.layer2;
@@ -284,6 +498,9 @@ void PreviewController::openItem(int index) {
 }
 void PreviewController::apply() {
     if(!frame_||busy_||dialog_open_)return;
+    // A pair's look edits land on the wire of its piece: the reprint path of
+    // the live pair session (never an engine render of a RAW session).
+    if(activePairItem()){submitPairWire(active_index_);return;}
     const auto s=settings();const auto shown=frame_;const auto gen=++generation_;const auto revision=settings_revision_;
     const auto mode=decode_mode_?desktop::DecodeMode::headroom:desktop::DecodeMode::compatible16;
     // White balance is a decode-side parameter: when it moved, the update is
@@ -586,8 +803,9 @@ void PreviewController::commitLatitudeFit() {
     // host's changed-params channel sends exactly the keys that differ, so
     // writing them into the settings and re-rendering IS the ordinary
     // spk_set_params path. No valid fit, no commit (the reply carries
-    // params_delta only when the fit passed).
-    if(!settingsEditable())return;
+    // params_delta only when the fit passed). The fit lands on the first
+    // curve; a pair's fit commit waits for the per-hole region (§6.3).
+    if(!settingsEditable()||activePairItem())return;
     const auto fit=latitude_.value(QLatin1String("fit")).toMap();
     if(!fit.value(QLatin1String("valid")).toBool())return;
     const auto delta=fit.value(QLatin1String("params_delta")).toMap();
@@ -659,7 +877,10 @@ void PreviewController::requestLatitude() {
     // valid, and a render submitted after this call retires this reply
     // through the ordinary generation guard. The worker holds the host, and
     // the analysis needs its live session (an open frame with a render).
-    if(!frame_||busy_)return;
+    // A pair's reading is the piece's per-hole region (PAIR-WIRING §6.2);
+    // until the pair region arrives with the pair UI, the analysis refuses
+    // on a pair rather than read both pictures as one scene.
+    if(!frame_||busy_||activePairItem())return;
     const auto gen=generation_;
     submit([gen](desktop::PreviewHost& host){Reply r;r.generation=gen;r.operation="latitude";
         try{r.latitude_json=text(host.sceneLatitude());}
@@ -830,9 +1051,14 @@ QVariantList PreviewController::libraryItems() const {
     QVariantList result;
     for(int i=0;i<int(library_.size());++i) {
         const auto& item=library_[i];
-        result.push_back(QVariantMap{{"name",QFileInfo(item.url.toLocalFile()).fileName()},
+        // A pair row carries the two holes' names; it owns no file of its own.
+        const QString name=item.is_pair
+            ?(QFileInfo(item.pair_sources[0].toLocalFile()).fileName()+QStringLiteral(" + ")+
+              QFileInfo(item.pair_sources[1].toLocalFile()).fileName())
+            :QFileInfo(item.url.toLocalFile()).fileName();
+        result.push_back(QVariantMap{{"name",name},
             {"url",item.url},{"thumbnail",item.thumbnail},{"active",i==active_index_},
-            {"selected",item.selected},{"error",item.error}});
+            {"selected",item.selected},{"error",item.error},{"pair",item.is_pair}});
     }
     return result;
 }
@@ -897,9 +1123,11 @@ void PreviewController::selectAllPhotos(bool selected) {
     for(auto& item:library_)item.selected=selected;emit libraryChanged();
 }
 void PreviewController::syncSelectedSettings(bool includeCrop) {
-    if(!frame_||busy_||dialog_open_)return;
+    // A pair's look syncs to no photograph and no photograph's look syncs to
+    // a pair (the pair's wire rows are its own; its holes keep their frames).
+    if(!frame_||busy_||dialog_open_||activePairItem())return;
     saveActiveSettings();int count=0;
-    for(int i=0;i<int(library_.size());++i)if(i!=active_index_&&library_[i].selected){
+    for(int i=0;i<int(library_.size());++i)if(i!=active_index_&&library_[i].selected&&!library_[i].is_pair){
         auto& item=library_[i];auto next=currentState();
         if(!includeCrop)next.geometry=item.geometry;
         if(sameState(itemState(item),next))continue;
@@ -912,6 +1140,281 @@ void PreviewController::syncSelectedSettings(bool includeCrop) {
         .arg(includeCrop?QStringLiteral("（含裁切）"):QStringLiteral("（各自保留裁切）"));
     scheduleSave();emit libraryChanged();emit historyChanged();emit stateChanged();
 }
+// --- The half-frame pair: item, jobs, per-hole edits (PAIR-WIRING §5) -----
+
+PreviewController::LibraryItem* PreviewController::activePairItem() {
+    if(active_index_<0||active_index_>=int(library_.size()))return nullptr;
+    auto& item=library_[active_index_];
+    return item.is_pair?&item:nullptr;
+}
+const PreviewController::LibraryItem* PreviewController::activePairItem() const {
+    if(active_index_<0||active_index_>=int(library_.size()))return nullptr;
+    const auto& item=library_[active_index_];
+    return item.is_pair?&item:nullptr;
+}
+// The pair state's own snapshot for the record and the wire: the pair fields
+// with the item's live look carried along (the look lives in the item's
+// ordinary fields; the record's look block is this state written out).
+editing::PairState PreviewController::pairRecordState(const LibraryItem& item) {
+    auto state=item.pair;
+    state.look=itemState(item);
+    return state;
+}
+bool PreviewController::createPair(const QUrl& left,const QUrl& right) {
+    if(!ready_||busy_||dialog_open_||!left.isLocalFile()||!right.isLocalFile())return false;
+    saveActiveSettings();
+    const int leftIndex=addFile(left),rightIndex=addFile(right);
+    if(leftIndex<0||rightIndex<0)return false;
+    // A pair is never a hole of another pair, and the two holes are two
+    // photographs (PAIR-WIRING §8).
+    if(library_[leftIndex].is_pair||library_[rightIndex].is_pair||leftIndex==rightIndex)return false;
+    // An identical pair already sits in the library: choose it, don't twin it.
+    for(int i=0;i<int(library_.size());++i) {
+        const auto& item=library_[i];
+        if(item.is_pair&&item.pair_sources[0]==library_[leftIndex].url&&
+            item.pair_sources[1]==library_[rightIndex].url) {
+            if(i!=active_index_)selectImage(i);
+            return true;
+        }
+    }
+    LibraryItem item;
+    item.is_pair=true;
+    item.pair_sources[0]=library_[leftIndex].url;
+    item.pair_sources[1]=library_[rightIndex].url;
+    // The initial look: the first photo's film/paper settings with the
+    // pair's own wire rows forced (PAIR-WIRING §3's table): the meter off,
+    // exposure 0, the piece's format at the strip's 1 mm, the split at the
+    // gap's middle, the second curve at its defaults, film edge and date
+    // off -- a bare piece to begin with.
+    item.settings=library_[leftIndex].settings;
+    item.settings.auto_exposure=false;
+    item.settings.film_exposure_ev=0.0;
+    item.settings.film_format_mm=pairc::kHoleAlongMM*2.0+1.0;
+    item.settings.scene_latitude_split=0.5;
+    item.settings.scene_latitude_b_active=false;
+    item.settings.scene_latitude_b_highlight_knee=2.0;
+    item.settings.scene_latitude_b_highlight_room=0.0;
+    item.settings.scene_latitude_b_shadow_knee=-2.0;
+    item.settings.scene_latitude_b_shadow_room=0.0;
+    item.settings.overscan_active=false;
+    item.settings.overscan_pair=false;
+    item.settings.date_imprint_active=false;
+    item.layer2=library_[leftIndex].layer2;
+    item.geometry={};
+    item.mode=desktop::DecodeMode::compatible16;
+    item.pair.look=itemState(item);
+    library_.push_back(std::move(item));
+    const int index=int(library_.size())-1;
+    // It is kept when it is made (§5): the record follows the first save.
+    library_[index].pending_save=true;
+    scheduleSave();
+    emit libraryChanged();
+    submitPairOpen(index);
+    return true;
+}
+QVariantMap PreviewController::pair() const {
+    if(active_index_<0||active_index_>=int(library_.size())||!library_[active_index_].is_pair)return {};
+    const auto& item=library_[active_index_];
+    QVariantList holes;
+    for(int side=0;side<2;++side) {
+        const auto& hole=item.pair.holes[side];
+        // The hole's meter reading, when the item's cache holds its current
+        // key. The key is the source frame's own decode (placement excluded,
+        // PAIR-WIRING §4.2), computed here only to read the cache.
+        QVariant metered;
+        const auto source=std::find_if(library_.cbegin(),library_.cend(),
+            [&](const LibraryItem& candidate){return !candidate.is_pair&&candidate.url==item.pair_sources[side];});
+        if(source!=library_.cend()) {
+            const QString key=pairc::meterKey(source->url.toLocalFile(),
+                source->settings.wb_temperature_k==0.0?QStringLiteral("as_shot"):QStringLiteral("override"),
+                source->settings.wb_temperature_k,source->settings.wb_tint,false,
+                QStringLiteral("center_weighted"),source->geometry.crop,source->geometry.quarterTurns);
+            const auto cached=item.meter_cache.constFind(key);
+            if(cached!=item.meter_cache.cend())metered=QVariant(cached.value());
+        }
+        holes.push_back(QVariantMap{
+            {"scale",hole.placement.scale},{"x",hole.placement.x},{"y",hole.placement.y},
+            {"quarterTurns",hole.placement.quarterTurns},{"exposureEv",hole.exposure_ev},
+            {"dated",hole.dated},{"dateText",hole.date_text},
+            {"trim",QVariantMap{{"printExposure",hole.trim.print_exposure},
+                {"yFilterShift",hole.trim.y_filter_shift},{"mFilterShift",hole.trim.m_filter_shift},
+                {"preflashExposure",hole.trim.preflash_exposure}}},
+            {"meteredEv",metered},
+            {"sourceName",item.pair_sources[side].isEmpty()
+                ?QString():QFileInfo(item.pair_sources[side].toLocalFile()).fileName()}});
+    }
+    return {{"spacingMM",item.pair.spacing_mm},{"turned",item.pair.turned},{"holes",holes},
+        {"split",item.settings.scene_latitude_split},{"bActive",item.settings.scene_latitude_b_active},
+        {"leftUrl",item.pair_sources[0]},{"rightUrl",item.pair_sources[1]},
+        {"saved",!item.pending_save}};
+}
+void PreviewController::setPairHole(int side,const QString& field,const QVariant& value) {
+    auto* item=activePairItem();
+    if(!item||busy_||dialog_open_)return;
+    if(side<0||side>1)return;
+    bool ok=false;
+    const double number=value.toDouble(&ok);
+    editing::PairState next=item->pair;
+    auto& hole=next.holes[side];
+    // A buffer change re-composes the piece (a new open job); a wire-only
+    // row takes the reprint path of the same negative. The meter cache holds
+    // either way: none of these fields is part of a meter key.
+    bool buffer=false;
+    if(field==QLatin1String("scale")) {
+        if(!ok||!std::isfinite(number)||number<1||number>8)return;
+        hole.placement.scale=number;buffer=true;
+    } else if(field==QLatin1String("x")||field==QLatin1String("y")) {
+        if(!ok||!std::isfinite(number)||number<-2||number>2)return;
+        (field==QLatin1String("x")?hole.placement.x:hole.placement.y)=number;
+        buffer=true;
+    } else if(field==QLatin1String("quarterTurns")) {
+        bool okInt=false;const int v=value.toInt(&okInt);
+        if(!okInt||v<0||v>3)return;
+        hole.placement.quarterTurns=v;buffer=true;
+    } else if(field==QLatin1String("exposureEv")) {
+        if(!ok||!std::isfinite(number)||number<-5||number>5)return;
+        hole.exposure_ev=number;buffer=true;
+    } else if(field==QLatin1String("dated")) {
+        if(!value.canConvert<bool>())return;
+        hole.dated=value.toBool();
+    } else if(field==QLatin1String("dateText")) {
+        hole.date_text=value.toString();
+    } else if(field==QLatin1String("trimPrintExposure")) {
+        if(!ok||!std::isfinite(number)||number<-4||number>4)return;
+        hole.trim.print_exposure=number;
+    } else if(field==QLatin1String("trimYFilterShift")) {
+        if(!ok||!std::isfinite(number)||number<-1||number>1)return;
+        hole.trim.y_filter_shift=number;
+    } else if(field==QLatin1String("trimMFilterShift")) {
+        if(!ok||!std::isfinite(number)||number<-1||number>1)return;
+        hole.trim.m_filter_shift=number;
+    } else if(field==QLatin1String("trimPreflashExposure")) {
+        if(!ok||!std::isfinite(number)||number<0||number>8)return;
+        hole.trim.preflash_exposure=number;
+    } else return;
+    if(samePairState(next,item->pair))return;
+    recordPairEdit(*item,item->pair);
+    item->pair=next;item->thumbnail={};item->pending_save=true;
+    scheduleSave();
+    failed_=false;
+    emit pairChanged();emit libraryChanged();emit historyChanged();emit stateChanged();
+    if(buffer)submitPairOpen(active_index_);
+    else submitPairWire(active_index_);
+}
+void PreviewController::setPairPiece(const QString& name,const QVariant& value) {
+    auto* item=activePairItem();
+    if(!item||busy_||dialog_open_)return;
+    editing::PairState next=item->pair;
+    if(name==QLatin1String("spacingMM")) {
+        bool ok=false;const double v=value.toDouble(&ok);
+        if(!ok||!std::isfinite(v)||v<0||v>4)return;
+        next.spacing_mm=v;
+    } else if(name==QLatin1String("turned")) {
+        if(!value.canConvert<bool>())return;
+        next.turned=value.toBool();
+    } else return;
+    if(samePairState(next,item->pair))return;
+    recordPairEdit(*item,item->pair);
+    item->pair=next;item->thumbnail={};item->pending_save=true;
+    scheduleSave();
+    failed_=false;
+    emit pairChanged();emit libraryChanged();emit historyChanged();emit stateChanged();
+    submitPairOpen(active_index_);
+}
+void PreviewController::recordPairEdit(LibraryItem& item,const editing::PairState& before) {
+    // The same one-step-per-gesture discipline as the look's recordEdit;
+    // pair sliders in the pair panel will drive it through beginEditGesture.
+    if(gesture_index_!=active_index_||!gesture_recorded_) {
+        item.pair_undo.push_back(before);
+        if(item.pair_undo.size()>64)item.pair_undo.erase(item.pair_undo.begin());
+        item.pair_redo.clear();
+        if(gesture_index_==active_index_)gesture_recorded_=true;
+    }
+}
+void PreviewController::submitPairOpen(int index) {
+    const auto snapshot=library_.at(index);
+    PairSources sources;
+    for(int side=0;side<2;++side) {
+        sources[side].url=snapshot.pair_sources[side];
+        // The decode ref is the source frame's own (PAIR-WIRING §5: the shot
+        // stays the frame's; the pair reads it again at every open).
+        const auto source=std::find_if(library_.cbegin(),library_.cend(),
+            [&](const LibraryItem& candidate){return !candidate.is_pair&&candidate.url==sources[side].url;});
+        if(source!=library_.cend()) {
+            sources[side].settings=source->settings;
+            sources[side].geometry=source->geometry;
+            sources[side].mode=source->mode;
+        }
+    }
+    const bool positive=std::any_of(catalog_.films.cbegin(),catalog_.films.cend(),
+        [&](const desktop::Stock& stock){return stock.id==snapshot.settings.film_stock&&stock.is_positive;});
+    const auto pair=pairRecordState(snapshot);
+    const auto cache=snapshot.meter_cache;
+    const auto gen=++generation_;
+    submit([sources,pair,cache,positive,gen,index](desktop::PreviewHost& host) {
+        Reply r;r.generation=gen;r.operation="open";r.library_index=index;
+        r.geometry=pair.look.geometry;r.layer2=pair.look.layer2;
+        try {r.frame=pairOpenFrame(host,sources,pair,cache,positive,&r.meter_updates);}
+        catch(const std::exception& e){r.error=text(e.what());}
+        return r;
+    },QStringLiteral("正在组装半幅对…"),"open");
+}
+void PreviewController::submitPairWire(int index) {
+    const auto snapshot=library_.at(index);
+    PairSources sources;
+    for(int side=0;side<2;++side) {
+        sources[side].url=snapshot.pair_sources[side];
+        const auto source=std::find_if(library_.cbegin(),library_.cend(),
+            [&](const LibraryItem& candidate){return !candidate.is_pair&&candidate.url==sources[side].url;});
+        if(source!=library_.cend()) {
+            sources[side].settings=source->settings;
+            sources[side].geometry=source->geometry;
+            sources[side].mode=source->mode;
+        }
+    }
+    const bool positive=std::any_of(catalog_.films.cbegin(),catalog_.films.cend(),
+        [&](const desktop::Stock& stock){return stock.id==snapshot.settings.film_stock&&stock.is_positive;});
+    const auto pair=pairRecordState(snapshot);
+    const auto wire=pairWireOf(pair);
+    const auto held=snapshot.pair_frame;
+    const auto cache=snapshot.meter_cache;
+    const auto gen=++generation_;
+    submit([sources,pair,wire,held,cache,positive,gen,index](desktop::PreviewHost& host) {
+        Reply r;r.generation=gen;r.operation="render";r.library_index=index;
+        try {
+            // The date and trim rows live on the wire, not in the pixels: a
+            // live pair session reprints its kept negative. Anything else
+            // (a failed job discarded the session) falls back to the full
+            // compose+open, which lands the same wire.
+            const auto active=host.current();
+            r.frame=active&&active==held?host.render(wire)
+                :pairOpenFrame(host,sources,pair,cache,positive,&r.meter_updates);
+        }
+        catch(const std::exception& e){r.error=text(e.what());}
+        return r;
+    },QStringLiteral("正在更新半幅对…"),"render");
+}
+void PreviewController::restorePairHistory(bool redo) {
+    if(!ready_||busy_||dialog_open_)return;
+    auto* item=activePairItem();
+    if(!item)return;
+    endEditGesture();
+    auto& from=redo?item->pair_redo:item->pair_undo;
+    auto& to=redo?item->pair_undo:item->pair_redo;
+    if(from.empty())return;
+    auto target=from.back();
+    to.push_back(item->pair);if(to.size()>64)to.erase(to.begin());
+    from.pop_back();
+    // A pair edit restores the pair fields; the look keeps its own stack.
+    target.look=itemState(*item);
+    item->pair=target;
+    item->thumbnail={};item->pending_save=true;scheduleSave();
+    failed_=false;
+    status_=redo?QStringLiteral("已重做半幅对调整"):QStringLiteral("已撤销半幅对调整");
+    emit pairChanged();emit libraryChanged();emit historyChanged();emit stateChanged();
+    submitPairOpen(active_index_);
+}
+
 void PreviewController::setCropRect(const QRectF& crop) {
     auto next=geometry_;next.crop=crop;setGeometry(next,"cropRect");
 }
@@ -945,10 +1448,14 @@ editing::State PreviewController::currentState() const {
     return {settings(),decode_mode_?desktop::DecodeMode::headroom:desktop::DecodeMode::compatible16,geometry_,layer2_};
 }
 bool PreviewController::canUndo() const {
-    return settingsEditable()&&active_index_>=0&&!library_[active_index_].undo.empty();
+    if(!settingsEditable()||active_index_<0)return false;
+    const auto& item=library_[active_index_];
+    return item.is_pair?(!item.pair_undo.empty()||!item.undo.empty()):!item.undo.empty();
 }
 bool PreviewController::canRedo() const {
-    return settingsEditable()&&active_index_>=0&&!library_[active_index_].redo.empty();
+    if(!settingsEditable()||active_index_<0)return false;
+    const auto& item=library_[active_index_];
+    return item.is_pair?(!item.pair_redo.empty()||!item.redo.empty()):!item.redo.empty();
 }
 void PreviewController::recordEdit(LibraryItem& item,const editing::State& before) {
     if(gesture_index_!=active_index_||!gesture_recorded_) {
@@ -973,8 +1480,18 @@ void PreviewController::endEditGesture() {
     gesture_index_=-1;gesture_key_.clear();gesture_recorded_=false;gesture_redo_.clear();emit historyChanged();
     if(heldGeometry)schedulePreview();
 }
-void PreviewController::undo(){restoreHistory(false);}
-void PreviewController::redo(){restoreHistory(true);}
+void PreviewController::undo(){
+    // A pair item walks its own stacks first (the pair fields), then the
+    // look's; the two stacks split by concern.
+    if(active_index_>=0&&active_index_<int(library_.size())&&library_[active_index_].is_pair&&
+        !library_[active_index_].pair_undo.empty()){restorePairHistory(false);return;}
+    restoreHistory(false);
+}
+void PreviewController::redo(){
+    if(active_index_>=0&&active_index_<int(library_.size())&&library_[active_index_].is_pair&&
+        !library_[active_index_].pair_redo.empty()){restorePairHistory(true);return;}
+    restoreHistory(true);
+}
 void PreviewController::restoreHistory(bool redo) {
     if(!frame_||!settingsEditable()||active_index_<0)return;
     endEditGesture();
@@ -1014,10 +1531,15 @@ void PreviewController::scheduleSave() {
 void PreviewController::flushEdits() {
     save_timer_.stop();
     for(auto& item:library_)if(item.pending_save&&!item.save_blocked) {
-        try {edit_store_.save(item.url,itemState(item));item.pending_save=false;item.has_stored=true;item.save_warning.clear();}
+        try {
+            if(item.is_pair)edit_store_.savePair(item.pair_sources[0],item.pair_sources[1],pairRecordState(item));
+            else edit_store_.save(item.url,itemState(item));
+            item.pending_save=false;item.has_stored=true;item.save_warning.clear();
+        }
         catch(const std::exception& e){item.save_warning=text(e.what());}
     }
     emit stateChanged();
+    if(activePairItem())emit pairChanged();
 }
 QString PreviewController::persistenceWarning() const {
     QStringList warnings;
@@ -1068,7 +1590,15 @@ void PreviewController::exportBatch(const QUrl& folder,int format,int quality,in
                 names.insert(name.toCaseFolded());
                 const auto target=destination/std::filesystem::path(name.toStdWString());
                 try {
-                    if(std::filesystem::exists(target))++skipped;
+                    if(item.is_pair) {
+                        // The piece's own export path (PAIR-WIRING §6.4) is
+                        // the open frame's; the batch driver re-opens RAWs,
+                        // which a pair does not have. Refused, not skipped.
+                        ++errors;
+                        details.append(QStringLiteral("半幅对 %1：暂不支持批量导出").arg(
+                            QFileInfo(item.pair_sources[0].toLocalFile()).fileName()));
+                    }
+                    else if(std::filesystem::exists(target))++skipped;
                     else {
                         const bool useShown=held&&held->source==source&&held->decode_mode==item.mode&&sameSettings(held->settings,item.settings);
                         const auto developed=useShown?held:host.open_raw(source,item.mode,item.settings);

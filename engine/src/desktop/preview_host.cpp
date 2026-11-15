@@ -559,6 +559,44 @@ FramePtr PreviewHost::open_raw(const fs::path& source, DecodeMode mode, const Re
     return next;
 }
 
+FramePtr PreviewHost::open_pair(const float* piece, std::uint32_t width, std::uint32_t height,
+                                const fs::path& source, const io::RawMetadata& metadata,
+                                const RenderSettings& settings) {
+    const auto started = Clock::now();
+    const bool scan_film = validate_settings(settings, impl_->catalog);
+    require(piece != nullptr && width > 0 && height > 0, "The pair piece carries no pixels");
+    auto next = std::shared_ptr<Frame>(new Frame());
+    next->source = fs::absolute(source);
+    next->decode_mode = DecodeMode::compatible16;
+    next->settings = settings;
+    next->scan_film = scan_film;
+    next->metadata = metadata;
+    const spk_image input{piece, width, height, 3};
+    auto t = Clock::now();
+    const auto params = opening_params(settings, scan_film).dump();
+    SessionPtr session(spk_open(impl_->engine.get(), &input, params.c_str(), nullptr),
+                       &spk_session_release);
+    require(bool(session), "Open pair piece: " + std::string(spk_last_error(impl_->engine.get())));
+    next->timings.open_ms = elapsed(t);
+    t = Clock::now();
+    const auto status = spk_render(session.get(), "full", &next->result_);
+    require(status == SPK_OK, "Render: " + std::string(spk_last_error(impl_->engine.get())));
+    next->timings.render_ms = elapsed(t);
+    next->timings.engine_render_ms = next->result_.elapsed_ms;
+    t = Clock::now();
+    next->bgra8 = rgba16_to_bgra8(next->result_);
+    next->timings.display_ms = elapsed(t);
+    // Commit only after all allocations and GPU/CPU work succeeded. The pair
+    // has no retained RAW decode: impl_->decoded is cleared, so a failed
+    // settings operation afterwards is a clean error instead of a rebuild
+    // from an empty input (the piece must be handed over again).
+    impl_->session = std::move(session);
+    impl_->decoded = io::DecodedRaw{};
+    impl_->frame = next;
+    next->timings.total_ms = elapsed(started);
+    return next;
+}
+
 FramePtr PreviewHost::render(const RenderSettings& settings) {
     const auto started = Clock::now();
     require(bool(impl_->frame), "Open a RAW image before rendering");

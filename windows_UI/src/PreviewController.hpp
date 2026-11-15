@@ -4,6 +4,7 @@
 #include "EditStore.hpp"
 #include <QImage>
 #include <QObject>
+#include <QStringList>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
@@ -114,6 +115,11 @@ class PreviewController final : public QObject {
     Q_PROPERTY(QVariantList libraryItems READ libraryItems NOTIFY libraryChanged)
     Q_PROPERTY(int activeIndex READ activeIndex NOTIFY libraryChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY libraryChanged)
+    // The half-frame pair (PAIR-WIRING §5): the active library item's pair
+    // state and meter readings, or an empty map while the active item is a
+    // photograph. Edits go through setPairHole/setPairPiece; undo/redo ride
+    // the pair item's own stacks; persistence is the pair record file.
+    Q_PROPERTY(QVariantMap pair READ pair NOTIFY pairChanged)
     Q_PROPERTY(QImage uncroppedImage READ uncroppedImage NOTIFY frameChanged)
     Q_PROPERTY(QRectF cropRect READ cropRect WRITE setCropRect NOTIFY geometryChanged)
     Q_PROPERTY(bool batchExporting READ batchExporting NOTIFY stateChanged)
@@ -208,6 +214,7 @@ public:
     QVariantList libraryItems() const;
     int activeIndex() const { return active_index_; }
     int selectedCount() const;
+    QVariantMap pair() const;
     QImage uncroppedImage() const { return full_image_; }
     QRectF cropRect() const { return geometry_.crop; }
     int quarterTurns() const { return geometry_.quarterTurns; }
@@ -235,6 +242,30 @@ public:
     Q_INVOKABLE void setItemSelected(int index, bool selected);
     Q_INVOKABLE void selectAllPhotos(bool selected);
     Q_INVOKABLE void syncSelectedSettings(bool includeCrop=false);
+    // The half-frame pair (PAIR-WIRING §5, §8): two library items become a
+    // NEW library item whose look starts as the first photo's film/paper
+    // settings with the pair's own wire rows forced (the meter off, exposure
+    // 0, the piece's 37 mm at the strip's 1 mm spacing, the split at the
+    // gap's middle, the second curve at its defaults). The first compose and
+    // open follow on the worker. Returns false (and changes nothing) while
+    // the engine is not ready, another job is in flight, either URL is not a
+    // local file, either source is itself a pair (a pair is never a hole of
+    // another), or both URLs name the same photo already paired identically.
+    Q_INVOKABLE bool createPair(const QUrl& left, const QUrl& right);
+    // One hole's edit. side 0 = the first (left/upper) hole, 1 = the second.
+    // field: "scale" (1..8, zoom about the fit's centre), "x"/"y" (-2..2,
+    // placement translation in source fractions), "quarterTurns" (0..3),
+    // "exposureEv" (-5..5), "dated" (bool), "dateText", and the hole's own
+    // print rows "trimPrintExposure" (-4..4 stops), "trimYFilterShift" /
+    // "trimMFilterShift" (-1..1), "trimPreflashExposure" (0..8, stored only:
+    // the Windows host sends no preflash row yet). Placement and exposure
+    // changes re-compose the piece (a new open job; the meter cache holds by
+    // its placement-excluding key, so a drag never re-meters); date and trim
+    // rows are wire rows and take the reprint path of the same negative.
+    Q_INVOKABLE void setPairHole(int side, const QString& field, const QVariant& value);
+    // The piece's own fields: "spacingMM" (0..4) and "turned" (bool). Both
+    // move the holes, so both re-compose.
+    Q_INVOKABLE void setPairPiece(const QString& name, const QVariant& value);
     Q_INVOKABLE void setAdjustment(const QString& name, const QVariant& value);
     // White balance edits (each an ordinary undoable adjustment that re-decodes
     // the photo): setWb applies an explicit illuminant, applyWbPreset one of
@@ -307,6 +338,7 @@ signals:
     void latitudeChanged();
     void sourceOpened();
     void libraryChanged();
+    void pairChanged();
     void geometryChanged();
     void historyChanged();
     void initialized(bool success);
@@ -324,9 +356,15 @@ private:
         // Only the open reply carries one: it installs the opened photo's
         // stored grade before the graded publication below.
         spk::desktop::layer2::Adjustments layer2;
-        // Only the latitude reply carries one: the engine's raw JSON, parsed
-        // into the `latitude` property on accept.
-        QString latitude_json;
+    // Only the latitude reply carries one: the engine's raw JSON, parsed
+    // into the `latitude` property on accept.
+    QString latitude_json;
+    // Only a pair open carries one: meter readings solved on the worker for
+    // keys missing from the item's cache (meterKey -> meteredEV). Merged
+    // into the pair item's cache on accept; a superseded reply simply
+    // drops its readings -- the solve is deterministic, so the next compose
+    // re-derives them.
+    std::vector<std::pair<QString, double>> meter_updates;
     };
     using Job = std::function<Reply(spk::desktop::PreviewHost&)>;
     void workerLoop(std::filesystem::path resources);
@@ -389,9 +427,39 @@ private:
         std::vector<spk::desktop::editing::State> undo,redo;
         bool pending_save=false,save_blocked=false,has_stored=false;
         QString save_warning;
+        // The half-frame pair (PAIR-WIRING §5): a library item of its own
+        // that never owns its pictures. `url` stays empty -- the holes name
+        // their frames by the library's own items -- and the pair's record
+        // file is keyed by the ordered union hash of the two sources.
+        bool is_pair=false;
+        QUrl pair_sources[2];
+        spk::desktop::editing::PairState pair;
+        // The hole's meter cache (PAIR-WIRING §4.2): meteredEV per meterKey.
+        // The key excludes the placement, so a drag re-composes without
+        // re-metering; a decode/crop change makes a new key and re-meters.
+        // Bounded by meter_order's insertion order.
+        QHash<QString,double> meter_cache;
+        QStringList meter_order;
+        // The pair edits' own undo stacks (the item's own history, like the
+        // look's); the last published pair frame, for the reprint path to
+        // recognise a live pair session by pointer identity.
+        std::vector<spk::desktop::editing::PairState> pair_undo,pair_redo;
+        spk::desktop::FramePtr pair_frame;
     };
     static spk::desktop::editing::State itemState(const LibraryItem&);
     void recordEdit(LibraryItem&,const spk::desktop::editing::State& before);
+    // The pair paths: the wire and the compose live as file-local helpers in
+    // the .cpp; the controller owns the item bookkeeping, the jobs and the
+    // pair's own undo stacks.
+    LibraryItem* activePairItem();
+    const LibraryItem* activePairItem() const;
+    // The pair state with the item's live look carried along (the look lives
+    // in the item's ordinary fields; the record's look block is this state).
+    static spk::desktop::editing::PairState pairRecordState(const LibraryItem&);
+    void recordPairEdit(LibraryItem&,const spk::desktop::editing::PairState& before);
+    void submitPairOpen(int index);
+    void submitPairWire(int index);
+    void restorePairHistory(bool redo);
     std::vector<LibraryItem> library_;
     int active_index_=-1;
     std::filesystem::path resources_;

@@ -220,6 +220,22 @@ public:
     // must all succeed before replacing the previous session and frame.
     FramePtr open_raw(const std::filesystem::path& source, DecodeMode mode,
                       const RenderSettings& settings = {});
+    // The half-frame pair (PAIR-WIRING §1/§2): the host has already composed
+    // both pictures onto one piece of film -- tightly packed RGB float32,
+    // top row first, linear ProPhoto at D50, exactly what a DecodedRaw
+    // carries -- and hands the engine the whole piece like any frame. The
+    // wire is the pair's own: the meter off (each picture's exposure is
+    // already in its pixels), film_format_mm the piece's long edge. The
+    // session that replaces the previous one is the pair's, so print-side
+    // edits afterwards ride the ordinary spk_set_params/reprint path; a
+    // failed settings operation discards it (there is no retained RAW to
+    // rebuild from -- a further render fails until the piece is handed over
+    // again). `source` is the first hole's file, kept for metadata naming;
+    // `metadata` is that hole's decode metadata. Transactional like
+    // open_raw: the previous session and frame commit only on full success.
+    FramePtr open_pair(const float* piece, std::uint32_t width, std::uint32_t height,
+                       const std::filesystem::path& source, const io::RawMetadata& metadata,
+                       const RenderSettings& settings);
     // Only changed settings are sent. Print-side edits request spk_reprint;
     // the result's actual cache flag determines whether reuse occurred.
     // A failure never mutates the previously returned Frame.
