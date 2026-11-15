@@ -69,6 +69,11 @@ struct Desired {
     double maskHighlights=0,maskShadows=0,maskCore=1,maskScale=0.03;
     bool scanHdrOn=false;
     double scanHdrHeadroom=0;
+    // The date back rides the same saved settings; the checkpoint below
+    // leaves a real date on it so reopening must restore the whole group.
+    bool dateOn=false;
+    QString dateText,dateDataText,dateStyle,dateCorner;
+    double dateEv=3.5,dateSize=1.0,dateInsetX=3.0,dateInsetY=2.4;
 };
 Desired desired(const PreviewController& c) {
     return {c.filmIndex(),c.paperIndex(),c.decodeMode(),c.exposureEv(),c.adjustments(),geometry(c),
@@ -78,7 +83,12 @@ Desired desired(const PreviewController& c) {
         c.mask()["active"].toBool(),
         c.mask()["highlights"].toDouble(),c.mask()["shadows"].toDouble(),
         c.mask()["core"].toDouble(),c.mask()["scale"].toDouble(),
-        c.scanHdr()["on"].toBool(),c.scanHdr()["headroom"].toDouble()};
+        c.scanHdr()["on"].toBool(),c.scanHdr()["headroom"].toDouble(),
+        c.dateImprint()["on"].toBool(),
+        c.dateImprint()["text"].toString(),c.dateImprint()["dataText"].toString(),
+        c.dateImprint()["style"].toString(),c.dateImprint()["corner"].toString(),
+        c.dateImprint()["ev"].toDouble(),c.dateImprint()["size"].toDouble(),
+        c.dateImprint()["insetX"].toDouble(),c.dateImprint()["insetY"].toDouble()};
 }
 bool matches(const PreviewController& c,const Desired& expected) {
     return c.filmIndex()==expected.film&&c.paperIndex()==expected.paper&&c.decodeMode()==expected.decode&&
@@ -94,7 +104,16 @@ bool matches(const PreviewController& c,const Desired& expected) {
         near(c.mask()["core"].toDouble(),expected.maskCore)&&
         near(c.mask()["scale"].toDouble(),expected.maskScale)&&
         c.scanHdr()["on"].toBool()==expected.scanHdrOn&&
-        near(c.scanHdr()["headroom"].toDouble(),expected.scanHdrHeadroom);
+        near(c.scanHdr()["headroom"].toDouble(),expected.scanHdrHeadroom)&&
+        c.dateImprint()["on"].toBool()==expected.dateOn&&
+        c.dateImprint()["text"].toString()==expected.dateText&&
+        c.dateImprint()["dataText"].toString()==expected.dateDataText&&
+        c.dateImprint()["style"].toString()==expected.dateStyle&&
+        c.dateImprint()["corner"].toString()==expected.dateCorner&&
+        near(c.dateImprint()["ev"].toDouble(),expected.dateEv)&&
+        near(c.dateImprint()["size"].toDouble(),expected.dateSize)&&
+        near(c.dateImprint()["insetX"].toDouble(),expected.dateInsetX)&&
+        near(c.dateImprint()["insetY"].toDouble(),expected.dateInsetY);
 }
 bool samePixels(const QImage& left,const QImage& right) {
     if(left.isNull()||right.isNull()||left.size()!=right.size())return false;
@@ -588,13 +607,47 @@ int main(int argc,char** argv) {
                       "Enabling the date back re-renders without re-decoding");
                 check(!samePixels(c.previewImage(),paperShown),
                       "The date visibly lands on the negative");
+                const auto lcdShown=c.previewImage().copy();
                 c.setDateImprint("corner","tl");idle(c,"Date corner render");
                 check(c.dateImprint()["corner"].toString()==QLatin1String("tl"),
                       "The corner lands as an engine parameter");
-                c.setDateImprint("style","dots");idle(c,"Date style render");
+                check(!samePixels(c.previewImage(),lcdShown),
+                      "Moving the corner moves the print to the new corner");
+                const auto cornerShown=c.previewImage().copy();
+                c.setDateImprint("dataText","1/125 F2.8 A 50mm");idle(c,"Date and data co-print render");
+                check(c.dateImprint()["dataText"].toString()==QLatin1String("1/125 F2.8 A 50mm"),
+                      "The shooting data lands as an engine parameter");
+                check(!samePixels(c.previewImage(),cornerShown),
+                      "The data line joins the date in the frame");
+                c.undo();idle(c,"Data line undo re-render");
+                check(c.dateImprint()["dataText"].toString().isEmpty()&&
+                      samePixels(c.previewImage(),cornerShown),
+                      "Undo removes the data line but keeps the date");
+                c.redo();idle(c,"Data line redo re-render");
+                check(c.dateImprint()["dataText"].toString()==QLatin1String("1/125 F2.8 A 50mm")&&
+                      !samePixels(c.previewImage(),cornerShown),
+                      "Redo restores the data line");
+                c.setDateImprint("style","dots");idle(c,"Date dots face render");
                 check(c.dateImprint()["style"].toString()==QLatin1String("dots"),
                       "The style lands as an engine parameter");
-                c.setDateImprint("on",false);c.setDateImprint("text","");idle(c,"Date back off render");
+                const auto dotsShown=c.previewImage().copy();
+                check(!samePixels(c.previewImage(),cornerShown),
+                      "The dots face redraws the date as round cells");
+                c.setDateImprint("style","data");idle(c,"Date data face render");
+                check(c.dateImprint()["style"].toString()==QLatin1String("data"),
+                      "The data face lands as an engine parameter");
+                check(!samePixels(c.previewImage(),dotsShown),
+                      "The data face prints the date as filled cells");
+                c.undo();idle(c,"Data face undo re-render");
+                check(c.dateImprint()["style"].toString()==QLatin1String("dots")&&
+                      samePixels(c.previewImage(),dotsShown),
+                      "Undo restores the dots face");
+                c.redo();idle(c,"Data face redo re-render");
+                check(c.dateImprint()["style"].toString()==QLatin1String("data")&&
+                      !samePixels(c.previewImage(),dotsShown),
+                      "Redo restores the data face");
+                c.setDateImprint("on",false);c.setDateImprint("text","");c.setDateImprint("dataText","");
+                c.setDateImprint("corner","br");c.setDateImprint("style","lcd");idle(c,"Date back off render");
                 check(samePixels(c.previewImage(),paperShown),
                       "Without the date the print returns to the paper pixels byte for byte");
                 const double aspect=double(paper->width())/double(paper->height());
@@ -716,6 +769,17 @@ int main(int argc,char** argv) {
             c.setMask("shadows",0.6);
             c.setMask("core",1.4);
             c.setMask("scale",0.05);
+            // The date back rides the same record: reopening must restore the
+            // whole eleven-key group (carry-one-carry-all), data line included.
+            c.setDateImprint("on",true);
+            c.setDateImprint("text","'26 11 20");
+            c.setDateImprint("dataText","1/250 F4 ISO 100");
+            c.setDateImprint("style","dots");
+            c.setDateImprint("corner","bl");
+            c.setDateImprint("ev",4.5);
+            c.setDateImprint("size",1.5);
+            c.setDateImprint("insetX",6.0);
+            c.setDateImprint("insetY",5.0);
             c.rotateCounterClockwise();savedFirst=desired(c);
             check(c.dirty()&&!c.busy(),"Persistence checkpoint contains pending unrendered edits");
             check(c.persistenceWarning().isEmpty(),"No persistence warnings before destruction");
