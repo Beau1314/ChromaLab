@@ -109,6 +109,16 @@ if(BUILD_TESTING)
     target_link_libraries(spk_qt_pair_host_test PRIVATE spk_desktop_host)
     add_test(NAME spk_qt_pair_host COMMAND spk_qt_pair_host_test
         "$<TARGET_FILE_DIR:SpektraLabQt>/resources")
+    # The pair piece's composition core (PAIR-WIRING §2/§4): layout maths,
+    # per-hole compose and the meter key need no engine at all; the exposure
+    # solve opens its own throwaway 1024 px meter session on the bundled
+    # resources, like the pair-host test opens its synthetic pair session.
+    qt_add_executable(spk_qt_pair_piece_test tests/pair_piece.cpp src/PairPiece.cpp)
+    target_include_directories(spk_qt_pair_piece_test PRIVATE src)
+    target_compile_features(spk_qt_pair_piece_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_pair_piece_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
+    add_test(NAME spk_qt_pair_piece COMMAND spk_qt_pair_piece_test
+        "$<TARGET_FILE_DIR:SpektraLabQt>/resources")
     if(WIN32)
         # Specify each test's DLL search path: CTest on this Windows host can
         # restore the pre-launch PATH between tests. Ambient PATH alone makes
@@ -119,7 +129,7 @@ if(BUILD_TESTING)
             list(APPEND qt_test_runtime_path "PATH=path_list_prepend:${qt_test_compiler_directory}")
         endif()
         set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
-            spk_qt_wb_math spk_qt_pair_host PROPERTIES
+            spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp

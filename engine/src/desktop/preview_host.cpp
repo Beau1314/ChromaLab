@@ -419,6 +419,33 @@ SessionPtr open_session(spk_engine* engine, const io::DecodedRaw& decoded,
     require(bool(session), "Open image: " + std::string(spk_last_error(engine)));
     return session;
 }
+
+// The meter's own size cap (PAIR-WIRING §4): a picture above 1,024 px on the
+// long edge is box-downscaled before its throwaway session opens. A box keeps
+// the pixel distribution the meter reads, so the reading does not move with
+// the cap beyond sampling.
+std::vector<float> meter_scale(const spk_image& input, int width, int height) {
+    std::vector<float> out(std::size_t(width) * height * input.channels);
+    const double fx = double(input.width) / width, fy = double(input.height) / height;
+    for (int y = 0; y < height; ++y) {
+        const int y0 = std::min(int(std::floor(y * fy)), int(input.height));
+        const int y1 = std::min(std::max(int(std::floor((y + 1) * fy)), y0 + 1), int(input.height));
+        for (int x = 0; x < width; ++x) {
+            const int x0 = std::min(int(std::floor(x * fx)), int(input.width));
+            const int x1 = std::min(std::max(int(std::floor((x + 1) * fx)), x0 + 1), int(input.width));
+            double sum[4] = {0.0, 0.0, 0.0, 0.0};
+            for (int sy = y0; sy < y1; ++sy) {
+                const float* row = input.data + (std::size_t(sy) * input.width + x0) * input.channels;
+                for (int sx = x0; sx < x1; ++sx, row += input.channels)
+                    for (std::uint32_t c = 0; c < input.channels; ++c) sum[c] += row[c];
+            }
+            const double count = double((y1 - y0) * (x1 - x0));
+            float* dst = &out[(std::size_t(y) * width + x) * input.channels];
+            for (std::uint32_t c = 0; c < input.channels; ++c) dst[c] = float(sum[c] / count);
+        }
+    }
+    return out;
+}
 }  // namespace
 
 Frame::~Frame() { spk_result_free(&result_); }
@@ -600,6 +627,41 @@ std::string PreviewHost::overscanGeometry() const {
     std::string reply(json);
     spk_string_free(json);
     return reply;
+}
+
+double PreviewHost::solveExposure(const spk_image& input, const std::string& params_delta_json) const {
+    // A hole's meter (PAIR-WIRING §4): its own small session, opened and
+    // released here -- the live session, its negative and its frame are
+    // never touched, and nothing replaces impl_->frame.
+    require(input.data != nullptr && input.width > 0 && input.height > 0 &&
+                (input.channels == 3 || input.channels == 4),
+            "Exposure meter: invalid input image");
+    spk_image meter_input = input;
+    std::vector<float> downscaled;
+    constexpr double kMeterLongEdge = 1024.0;
+    const double scale = std::min(1.0, kMeterLongEdge / double(std::max(input.width, input.height)));
+    if (scale < 1.0) {
+        const auto width = std::max(1, int(std::floor(input.width * scale)));
+        const auto height = std::max(1, int(std::floor(input.height * scale)));
+        downscaled = meter_scale(input, width, height);
+        meter_input = {downscaled.data(), std::uint32_t(width), std::uint32_t(height), input.channels};
+    }
+    SessionPtr session(spk_open(impl_->engine.get(), &meter_input, params_delta_json.c_str(), nullptr),
+                       &spk_session_release);
+    require(bool(session), "Exposure meter open: " + std::string(spk_last_error(impl_->engine.get())));
+    char* json = nullptr;
+    const auto status = spk_solve(session.get(), "exposure", &json);
+    require(status == SPK_OK && json,
+            "Exposure meter solve: " + std::string(spk_last_error(impl_->engine.get())));
+    const std::string reply(json);
+    spk_string_free(json);
+    session.reset();  // the meter's session is done the moment it has read
+    Json solved;
+    std::string error;
+    require(Json::parse(reply, solved, error), "Exposure meter reply: " + error);
+    const Json ev = solved.at("solved_params").at("exposure_compensation_ev");
+    require(ev.is_number(), "Exposure meter reply carries no exposure_compensation_ev");
+    return ev.as_double();
 }
 
 void PreviewHost::export_tiff(const Frame& frame, const fs::path& destination) const {

@@ -245,6 +245,19 @@ public:
     // renders. Throws std::runtime_error on no open session or engine
     // failure, like sceneLatitude.
     std::string overscanGeometry() const;
+    // One hole's exposure reading (PAIR-WIRING §4): opens a THROWAWAY session
+    // on the supplied picture -- the live session is never touched, and no
+    // frame is kept -- under the caller's metering wire (auto exposure on,
+    // exposure_compensation_ev 0, film_format_mm 24, no film edge, no date),
+    // asks spk_solve("exposure") and answers solved_params.
+    // exposure_compensation_ev: what the meter would place the picture at.
+    // A picture above 1,024 px on the long edge is downscaled first (box
+    // average), because the meter is a 1,024 px session. `input` is borrowed
+    // for the duration of the call. The params delta is the engine's own JSON
+    // wire, validated by spk_open's schema like any other. Throws
+    // std::runtime_error on an unusable image, a refused open, or a failed
+    // solve, with spk_last_error's text.
+    double solveExposure(const spk_image& input, const std::string& params_delta_json) const;
     // Exports exactly the supplied frame, even after a newer one was opened.
     // Existing files are never overwritten. Returns only after the writer
     // has completed and closed the file; errors retain its cleanup details.
