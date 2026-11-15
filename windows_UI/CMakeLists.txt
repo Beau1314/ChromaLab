@@ -110,6 +110,16 @@ if(BUILD_TESTING)
     target_link_libraries(spk_qt_library_host_test PRIVATE Qt6::Core)
     add_test(NAME spk_qt_library_host COMMAND spk_qt_library_host_test
         "${SPKLIB_HOST_EXECUTABLE}")
+    # The sources.json registry (task 4.1): pure file I/O over QtCore —
+    # round-trip, the unreadable set-aside, the date precision, the
+    # selected-source semantics and the tree-input partition. No helper
+    # process, no engine.
+    qt_add_executable(spk_qt_sources_store_test tests/sources_store.cpp
+        src/CatalogSourcesStore.hpp src/CatalogSourcesStore.cpp)
+    target_include_directories(spk_qt_sources_store_test PRIVATE src)
+    target_compile_features(spk_qt_sources_store_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_sources_store_test PRIVATE Qt6::Core)
+    add_test(NAME spk_qt_sources_store COMMAND spk_qt_sources_store_test)
     # The Temperature/Tint math the white-balance row drives is pure engine
     # host code (engine/host/white_balance.cpp, compiled into spk_image_io
     # beside its raw_decoder caller): Robertson mapping, its inverse and the
@@ -151,7 +161,8 @@ if(BUILD_TESTING)
             list(APPEND qt_test_runtime_path "PATH=path_list_prepend:${qt_test_compiler_directory}")
         endif()
         set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
-            spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host PROPERTIES
+            spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host
+            spk_qt_sources_store PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
