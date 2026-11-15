@@ -33,6 +33,19 @@
 // The calls themselves stay single-flight by construction, so no re-entrancy
 // can reorder a page.
 //
+// NOTIFICATIONS, BY DECISION (review fix): lastError has its own errorChanged
+// NOTIFY — emitted only when the reason actually changes (a new failure, or
+// start() clearing the previous one) — instead of piggybacking on busyChanged.
+// busy is wired around the same blocking round trips with a scoped guard
+// (BusyGuard): every public operation flips busy true on entry and false on
+// exit, one window per operation even when the public calls nest
+// (start -> refresh). Because the calls are synchronous the QML thread never
+// re-enters mid-operation, so a re-evaluated binding only ever reads busy
+// after the window closes; slots connected directly (any C++ observer, or a
+// QML onErrorChanged handler reading busy) do observe busy == true inside the
+// window. Task 4.4 can bind a spinner to busy unchanged if the calls ever
+// move behind the worker queue.
+//
 // Seams, on purpose:
 //   * openInDevelop does NOT hold the PreviewController. It emits
 //     openRequested(path) and main.cpp connects that to the existing
@@ -77,7 +90,7 @@ class LibraryModel final : public QAbstractListModel {
     Q_PROPERTY(int pageSize READ pageSize WRITE setPageSize NOTIFY queryChanged)
     Q_PROPERTY(int total READ total NOTIFY rowsChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
-    Q_PROPERTY(QString lastError READ lastError NOTIFY busyChanged)
+    Q_PROPERTY(QString lastError READ lastError NOTIFY errorChanged)
 public:
     /// The engine catalog lookup (nullptr before the engine's init reply, or
     /// in tests). Everything else is an explicit path — nothing here touches
@@ -214,6 +227,10 @@ signals:
     void queryChanged();
     void rowsChanged();
     void busyChanged();
+    /// lastError's own NOTIFY: fired whenever the reported reason actually
+    /// changes, so QML observes error state after startup without depending
+    /// on a busy transition.
+    void errorChanged();
     /// openInDevelop's hand-off to the existing openRaw channel.
     void openRequested(const QUrl& path);
 
@@ -224,6 +241,18 @@ private:
         QImage thumbnail; // task 4.3 fills this; empty until then
     };
 
+    /// Scoped guard over the blocking helper round trips: the outermost
+    /// guard flips busy and notifies, the last one off flips it back.
+    /// Copy-protected; public calls nest through busyDepth_, so an operation
+    /// is one busy window, not one per wire call.
+    struct BusyGuard {
+        explicit BusyGuard(LibraryModel* model);
+        ~BusyGuard();
+        BusyGuard(const BusyGuard&) = delete;
+        BusyGuard& operator=(const BusyGuard&) = delete;
+        LibraryModel* model_;
+    };
+
     bool spawnHelper();
     void refreshSources();
     bool openSource(const QString& path);
@@ -232,6 +261,13 @@ private:
     void refreshFacets();
     QVariantMap developFor(const ImageRow& row);
     QVariantMap listQueryFor(int offset) const;
+    /// The only writer of lastError_; notifies errorChanged when the reason
+    /// actually changes (so re-reporting the same failure is silent).
+    void setError(const QString& message);
+    /// The only writer of selectedCollection_ outside buildTree's default
+    /// selection (whose closing treeChanged covers it); notifies treeChanged
+    /// so QML bindings on selectedCollectionId cannot go stale.
+    void setSelectedCollection(const QString& id);
 
     LibraryHost host_;
     LibraryHost::Options options_;
@@ -255,6 +291,7 @@ private:
     int pageSize_ = 1000;
     int total_ = 0;
     bool busy_ = false;
+    int busyDepth_ = 0; // BusyGuard nesting depth (UI thread only)
     QString lastError_;
 };
 

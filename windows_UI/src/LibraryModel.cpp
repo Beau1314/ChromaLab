@@ -46,6 +46,22 @@ LibraryModel::LibraryModel(Deps deps, QObject* parent)
 
 LibraryModel::~LibraryModel() { host_.shutdown(); }
 
+// --- the busy guard (see the header's notifications note) --------------------------
+
+LibraryModel::BusyGuard::BusyGuard(LibraryModel* model) : model_(model) {
+    if (model_->busyDepth_++ == 0) {
+        model_->busy_ = true;
+        emit model_->busyChanged();
+    }
+}
+
+LibraryModel::BusyGuard::~BusyGuard() {
+    if (--model_->busyDepth_ == 0) {
+        model_->busy_ = false;
+        emit model_->busyChanged();
+    }
+}
+
 // --- QAbstractListModel ---------------------------------------------------------
 
 int LibraryModel::rowCount(const QModelIndex& parent) const {
@@ -144,6 +160,20 @@ void LibraryModel::setPageSize(int size) {
     emit queryChanged();
 }
 
+void LibraryModel::setError(const QString& message) {
+    if (lastError_ == message) return;
+    lastError_ = message;
+    emit errorChanged();
+}
+
+void LibraryModel::setSelectedCollection(const QString& id) {
+    if (selectedCollection_ == id) return;
+    selectedCollection_ = id;
+    // selectedCollectionId's declared NOTIFY (see the review fix): selectCollection
+    // and the source switches go through here, so bindings cannot go stale.
+    emit treeChanged();
+}
+
 // --- pure helpers --------------------------------------------------------------------
 
 QVariantList LibraryModel::buildTreeRows(const std::vector<QVariantMap>& collections) {
@@ -226,24 +256,28 @@ bool LibraryModel::spawnHelper() {
 }
 
 bool LibraryModel::start() {
-    lastError_.clear();
+    const BusyGuard guard(this);
+    setError(QString());
     // A missing or refusing helper is start()'s failure and its reason is
     // the error the UI shows; the empty library state still stands.
     if (!spawnHelper()) {
-        lastError_ = host_.lastError();
+        setError(host_.lastError());
         return false;
     }
     registry_ = store_.load();
     refreshSources();
     const auto* effective = CatalogSourcesStore::effectiveSource(registry_);
     if (effective == nullptr) return true; // helper up, no source yet: the empty state
-    selectedCollection_.clear();
+    setSelectedCollection(QString());
     if (!openSource(effective->path)) return false;
     refresh();
     return true;
 }
 
-void LibraryModel::shutdown() { host_.shutdown(); }
+void LibraryModel::shutdown() {
+    const BusyGuard guard(this); // the bounded waitForFinished is blocking work
+    host_.shutdown();
+}
 
 // --- sources ---------------------------------------------------------------------------
 
@@ -257,13 +291,13 @@ void LibraryModel::refreshSources() {
 bool LibraryModel::openSource(const QString& path) {
     if (!library_.isEmpty()) {
         const auto closed = host_.libraryClose(library_);
-        if (!closed.ok) lastError_ = closed.errorMessage;
+        if (!closed.ok) setError(closed.errorMessage);
         library_.clear();
     }
     const auto opened = host_.libraryOpen(path);
     if (!opened.ok) {
-        lastError_ = opened.errorMessage.isEmpty() ? QStringLiteral("cannot open the source")
-                                                   : opened.errorMessage;
+        setError(opened.errorMessage.isEmpty() ? QStringLiteral("cannot open the source")
+                                               : opened.errorMessage);
         return false;
     }
     library_ = opened.value.library;
@@ -271,23 +305,24 @@ bool LibraryModel::openSource(const QString& path) {
 }
 
 bool LibraryModel::createCatalog(const QString& name, const QString& folder) {
+    const BusyGuard guard(this);
     const auto dir = folder.isEmpty() ? storeRoot_ : folder;
     if (name.isEmpty()) {
-        lastError_ = QStringLiteral("a catalog needs a name");
+        setError(QStringLiteral("a catalog needs a name"));
         return false;
     }
     if (!QDir().mkpath(dir)) {
-        lastError_ = QStringLiteral("cannot create the folder for the catalog");
+        setError(QStringLiteral("cannot create the folder for the catalog"));
         return false;
     }
     const auto path = QDir(dir).filePath(name + QStringLiteral(".spektralab"));
     if (QFileInfo::exists(path)) {
-        lastError_ = QStringLiteral("a library already exists at ") + path;
+        setError(QStringLiteral("a library already exists at ") + path);
         return false;
     }
     const auto created = host_.libraryCreate(path, QStringLiteral("catalog"), name);
     if (!created.ok) {
-        lastError_ = created.errorMessage;
+        setError(created.errorMessage);
         return false;
     }
     // The helper appends .spkcatalog (a directory holding Library.spkdb) to
@@ -304,30 +339,31 @@ bool LibraryModel::createCatalog(const QString& name, const QString& folder) {
     registry_.sources.push_back(source);
     registry_.selected = source.id;
     if (!store_.save(registry_)) {
-        lastError_ = QStringLiteral("cannot write the sources registry");
+        setError(QStringLiteral("cannot write the sources registry"));
         return false;
     }
     refreshSources();
-    selectedCollection_.clear();
+    setSelectedCollection(QString());
     if (!openSource(realPath)) return false;
     refresh();
     return true;
 }
 
 bool LibraryModel::createSession(const QString& name, const QString& folder) {
+    const BusyGuard guard(this);
     const auto dir = folder.isEmpty() ? storeRoot_ : folder;
     if (name.isEmpty()) {
-        lastError_ = QStringLiteral("a session needs a name");
+        setError(QStringLiteral("a session needs a name"));
         return false;
     }
     const auto path = QDir(dir).filePath(name);
     if (!QDir().mkpath(path)) {
-        lastError_ = QStringLiteral("cannot create the session folder");
+        setError(QStringLiteral("cannot create the session folder"));
         return false;
     }
     const auto created = host_.libraryCreate(path, QStringLiteral("session"), name);
     if (!created.ok) {
-        lastError_ = created.errorMessage;
+        setError(created.errorMessage);
         return false;
     }
     const auto realPath =
@@ -341,45 +377,47 @@ bool LibraryModel::createSession(const QString& name, const QString& folder) {
     registry_.sources.push_back(source);
     registry_.selected = source.id;
     if (!store_.save(registry_)) {
-        lastError_ = QStringLiteral("cannot write the sources registry");
+        setError(QStringLiteral("cannot write the sources registry"));
         return false;
     }
     refreshSources();
-    selectedCollection_.clear();
+    setSelectedCollection(QString());
     if (!openSource(realPath)) return false;
     refresh();
     return true;
 }
 
 bool LibraryModel::selectSource(const QString& id) {
+    const BusyGuard guard(this);
     const auto found = std::find_if(registry_.sources.begin(), registry_.sources.end(),
                                     [&](const CatalogSourcesStore::Source& source) {
                                         return uuidString(source.id) == id;
                                     });
     if (found == registry_.sources.end()) {
-        lastError_ = QStringLiteral("no such source in the registry");
+        setError(QStringLiteral("no such source in the registry"));
         return false;
     }
     registry_.selected = found->id;
     if (!store_.save(registry_)) {
-        lastError_ = QStringLiteral("cannot write the sources registry");
+        setError(QStringLiteral("cannot write the sources registry"));
         return false;
     }
     refreshSources();
-    selectedCollection_.clear();
+    setSelectedCollection(QString());
     if (!openSource(found->path)) return false;
     refresh();
     return true;
 }
 
 bool LibraryModel::addFolder(const QString& path) {
+    const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        lastError_ = QStringLiteral("no library is open");
+        setError(QStringLiteral("no library is open"));
         return false;
     }
     const auto added = host_.foldersAdd(library_, path, true);
     if (!added.ok) {
-        lastError_ = added.errorMessage;
+        setError(added.errorMessage);
         return false;
     }
     buildTree();
@@ -387,13 +425,14 @@ bool LibraryModel::addFolder(const QString& path) {
 }
 
 bool LibraryModel::importFiles(const QVariantList& items) {
+    const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        lastError_ = QStringLiteral("no library is open");
+        setError(QStringLiteral("no library is open"));
         return false;
     }
     const auto added = host_.imagesAdd(library_, items);
     if (!added.ok) {
-        lastError_ = added.errorMessage;
+        setError(added.errorMessage);
         return false;
     }
     refresh();
@@ -403,13 +442,14 @@ bool LibraryModel::importFiles(const QVariantList& items) {
 // --- collections -------------------------------------------------------------------------
 
 bool LibraryModel::createAlbum(const QString& name, const QString& parent) {
+    const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        lastError_ = QStringLiteral("no library is open");
+        setError(QStringLiteral("no library is open"));
         return false;
     }
     const auto created = host_.collectionCreate(library_, QStringLiteral("album"), name, parent);
     if (!created.ok) {
-        lastError_ = created.errorMessage;
+        setError(created.errorMessage);
         return false;
     }
     buildTree();
@@ -417,13 +457,14 @@ bool LibraryModel::createAlbum(const QString& name, const QString& parent) {
 }
 
 bool LibraryModel::addToCollection(const QString& collection, const QStringList& images) {
+    const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        lastError_ = QStringLiteral("no library is open");
+        setError(QStringLiteral("no library is open"));
         return false;
     }
     const auto added = host_.collectionAdd(library_, collection, images);
     if (!added.ok) {
-        lastError_ = added.errorMessage;
+        setError(added.errorMessage);
         return false;
     }
     buildTree();
@@ -431,7 +472,11 @@ bool LibraryModel::addToCollection(const QString& collection, const QStringList&
 }
 
 void LibraryModel::selectCollection(const QString& id) {
-    selectedCollection_ = id;
+    const BusyGuard guard(this);
+    // Through the setter so selectedCollectionId's NOTIFY (treeChanged) rides
+    // with the id change — the review fix: the bare member write left QML
+    // bindings stale until the next buildTree.
+    setSelectedCollection(id);
     fetchPage(0, true);
     refreshFacets();
 }
@@ -457,7 +502,7 @@ bool LibraryModel::fetchPage(int offset, bool reset) {
     query.insert(QStringLiteral("check_files"), true);
     const auto page = host_.imagesList(library_, query);
     if (!page.ok) {
-        lastError_ = page.errorMessage;
+        setError(page.errorMessage);
         return false;
     }
     std::vector<Row> fetched;
@@ -490,11 +535,13 @@ bool LibraryModel::fetchPage(int offset, bool reset) {
 }
 
 void LibraryModel::loadMore() {
+    const BusyGuard guard(this);
     if (library_.isEmpty() || rows_.size() >= total_) return;
     fetchPage(int(rows_.size()), false);
 }
 
 void LibraryModel::refresh() {
+    const BusyGuard guard(this); // nests: start and the source switches call this too
     buildTree();
     fetchPage(0, true);
     refreshFacets();
@@ -507,6 +554,8 @@ void LibraryModel::buildTree() {
         if (collections.ok) {
             tree_ = buildTreeRows(collections.value);
             // The default selection: All Images, else the first fixed row.
+            // These writes stay direct — the closing treeChanged below covers
+            // them, and the setter would only double-notify.
             const auto stillThere = std::any_of(tree_.cbegin(), tree_.cend(),
                                                 [&](const QVariant& value) {
                                                     return value.toMap().value(
@@ -528,7 +577,7 @@ void LibraryModel::buildTree() {
                 }
             }
         } else {
-            lastError_ = collections.errorMessage;
+            setError(collections.errorMessage);
         }
     }
     emit treeChanged();
@@ -547,7 +596,7 @@ void LibraryModel::refreshFacets() {
         if (counted.ok)
             facets_ = counted.value;
         else
-            lastError_ = counted.errorMessage;
+            setError(counted.errorMessage);
     }
     emit facetsChanged();
 }
@@ -564,14 +613,15 @@ QVariantMap LibraryModel::developFor(const ImageRow& row) {
 }
 
 bool LibraryModel::setRating(const QString& image, int rating) {
+    const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        lastError_ = QStringLiteral("no library is open");
+        setError(QStringLiteral("no library is open"));
         return false;
     }
     const auto reply = host_.metaSet(library_, {}, MetaValue::of(rating), MetaValue::omit(),
                                      QStringList{image});
     if (!reply.ok) {
-        lastError_ = reply.errorMessage;
+        setError(reply.errorMessage);
         return false;
     }
     for (std::size_t i = 0; i < rows_.size(); ++i) {
@@ -586,14 +636,15 @@ bool LibraryModel::setRating(const QString& image, int rating) {
 }
 
 bool LibraryModel::setColorTag(const QString& image, int colorTag) {
+    const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        lastError_ = QStringLiteral("no library is open");
+        setError(QStringLiteral("no library is open"));
         return false;
     }
     const auto reply = host_.metaSet(library_, {}, MetaValue::omit(), MetaValue::of(colorTag),
                                      QStringList{image});
     if (!reply.ok) {
-        lastError_ = reply.errorMessage;
+        setError(reply.errorMessage);
         return false;
     }
     for (std::size_t i = 0; i < rows_.size(); ++i) {

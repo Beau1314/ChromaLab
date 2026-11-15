@@ -3,7 +3,9 @@
 //
 //   pure tier (always runs)  — the tree partition, the images.list query
 //   mapping, the filter map and the EditStore develop-join naming are pure
-//   functions: assertable without a helper process.
+//   functions, and the change notifications (errorChanged, busy, the
+//   collection selection's NOTIFY) are assertable over a failed spawn:
+//   none of it needs a helper process.
 //
 //   real tier (argv[1])      — the whole model workflow against a real
 //   spklib-host: a fresh temp registry, a created catalog, thirty synthetic
@@ -282,6 +284,47 @@ void testDevelopJoinHelpers() {
           "an unknown stock id stays an empty name");
 }
 
+// --- change notifications (review fixes, hostless) ---------------------------------
+
+void testNotificationsWithoutHost() {
+    // An empty helper path makes the spawn fail fast: start() reports its
+    // reason through lastError's own errorChanged (review fix 1 — busyChanged
+    // never carried it), with busy bracketing the failed attempt; and
+    // selectCollection notifies selectedCollectionId's declared NOTIFY
+    // (review fix 2) even before any source exists. Nothing is written
+    // anywhere: the failed start() returns before the registry is read.
+    model::LibraryModel::Deps deps; // helperPath empty: the spawn fails fast
+    // The stores validate their paths up front (the edit store demands an
+    // explicit absolute directory), so hand isolated temp paths — nothing
+    // is ever written: the failed start() returns before the registry read.
+    QTemporaryDir scratch;
+    check(scratch.isValid(), "temporary scratch root unavailable");
+    deps.editDirectory = scratch.filePath(QString::fromUtf8("edits"));
+    deps.registryPath = scratch.filePath(QString::fromUtf8("sources.json"));
+    model::LibraryModel library(deps);
+    int busySignals = 0;
+    int errorSignals = 0;
+    int treeSignals = 0;
+    QObject::connect(&library, &model::LibraryModel::busyChanged,
+                     [&busySignals] { ++busySignals; });
+    QObject::connect(&library, &model::LibraryModel::errorChanged,
+                     [&errorSignals] { ++errorSignals; });
+    QObject::connect(&library, &model::LibraryModel::treeChanged,
+                     [&treeSignals] { ++treeSignals; });
+    check(!library.start(), "start fails without a helper");
+    check(errorSignals >= 1, "the failed start notifies errorChanged");
+    check(!library.lastError().isEmpty(), "the failed start carries its reason");
+    check(!library.busy(), "busy is idle again after the failed start");
+    check(busySignals >= 2, "the failed start still bracketed busy true..false");
+    treeSignals = 0;
+    library.selectCollection(QStringLiteral("X1"));
+    check(treeSignals == 1, "selectCollection notifies treeChanged");
+    check(library.selectedCollectionId() == QLatin1String("X1"), "the selection stuck");
+    treeSignals = 0;
+    library.selectCollection(QStringLiteral("X1"));
+    check(treeSignals == 0, "re-selecting the same id is no new notification");
+}
+
 // --- the real tier -----------------------------------------------------------------
 
 void testModelWorkflow(const QString& helperPath) {
@@ -519,6 +562,43 @@ void testModelWorkflow(const QString& helperPath) {
     library.selectCollection(folderRow.value(QLatin1String("id")).toString());
     check(library.total() == 30, "selecting the folder lists its images recursively");
 
+    // --- change notifications (the review fixes) -----------------------------------
+    // lastError's own NOTIFY: a failure reports through errorChanged, and
+    // re-reporting the same reason is silent.
+    int errorSignals = 0;
+    QObject::connect(&library, &model::LibraryModel::errorChanged,
+                     [&errorSignals] { ++errorSignals; });
+    check(!library.selectSource(QStringLiteral("no-such-source")),
+          "a bogus source id fails the selection");
+    check(!library.lastError().isEmpty(), "the failure carries its reason");
+    check(errorSignals == 1, "the failure notified errorChanged");
+    check(!library.selectSource(QStringLiteral("no-such-source")),
+          "the same bogus id fails again");
+    check(errorSignals == 1, "the same reason set again notifies nothing");
+
+    // busy brackets the blocking wire round trips: directly connected slots
+    // observe busy == true inside the window, idle false after it.
+    int busySignals = 0;
+    bool busyTrueSeen = false;
+    QObject::connect(&library, &model::LibraryModel::busyChanged, [&] {
+        ++busySignals;
+        if (library.busy()) busyTrueSeen = true;
+    });
+    library.refresh();
+    check(busySignals >= 2 && busyTrueSeen,
+          "a wire round trip brackets busy true..false");
+    check(!library.busy(), "busy settles idle after the operation");
+
+    // selectCollection notifies selectedCollectionId's declared NOTIFY, so
+    // QML bindings on it cannot go stale between tree rebuilds.
+    int treeSignals = 0;
+    QObject::connect(&library, &model::LibraryModel::treeChanged,
+                     [&treeSignals] { ++treeSignals; });
+    library.selectCollection(allImages.value(QLatin1String("id")).toString());
+    check(treeSignals == 1, "selectCollection notifies treeChanged");
+    library.selectCollection(allImages.value(QLatin1String("id")).toString());
+    check(treeSignals == 1, "re-selecting the same collection notifies nothing new");
+
     // --- openInDevelop -------------------------------------------------------------
     bool openSeen = false;
     QUrl openUrl;
@@ -566,6 +646,7 @@ int main(int argc, char** argv) {
         testListQuery();
         testFilterMap();
         testDevelopJoinHelpers();
+        testNotificationsWithoutHost();
         if (argc > 1 && QFileInfo(argv[1]).isFile()) {
             testModelWorkflow(QString::fromUtf8(argv[1]));
         } else {
