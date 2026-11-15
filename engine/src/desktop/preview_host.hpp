@@ -58,8 +58,7 @@ struct RenderSettings {
     // without re-decoding. The full fit travels here (not just the toggle) so
     // the latitude card's 提交拟合 can write the analysis's solved pull-backs
     // through the ordinary changed-params channel, and an on session restores
-    // as one on reopen. The half-frame pair's own fields (split/b_*) stay
-    // engine-only until the pair UI arrives.
+    // as one on reopen.
     bool scene_latitude_active = false;
     std::string scene_latitude_norm = "power";
     double scene_latitude_highlight_knee = 2.0;
@@ -68,6 +67,18 @@ struct RenderSettings {
     double scene_latitude_shadow_room = 0.0;
     double scene_latitude_rolloff = 2.0;
     double scene_latitude_max_lift = 4.0;
+    // The half-frame pair's second frame (PAIR-WIRING §3): `split` is where
+    // its curve takes over -- the gap's middle along the long edge, 0 when
+    // there is no pair -- and the b_* rows are its own resolved placement,
+    // the same rows the first frame's curve has. Engine parameters like the
+    // mapping above: they ride with every open and every diff, and the
+    // engine applies them only while a split is set.
+    double scene_latitude_split = 0.0;
+    bool scene_latitude_b_active = false;
+    double scene_latitude_b_highlight_knee = 2.0;
+    double scene_latitude_b_highlight_room = 0.0;
+    double scene_latitude_b_shadow_knee = -2.0;
+    double scene_latitude_b_shadow_room = 0.0;
     // RFC-024's virtual contrast mask (ported in phase 2, `spk_mask_reduce` /
     // `spk_mask_epilogue` on Vulkan): the print-side local contrast that lifts
     // print highlights and lowers print shadows past its identity core. Like
@@ -214,15 +225,26 @@ public:
     // A failure never mutates the previously returned Frame.
     FramePtr render(const RenderSettings& settings);
     // RFC-023's scene latitude analysis of the open session, at the engine's
-    // suggestion defaults (`request_json` NULL): the measured medium, the
-    // scene statistic, the suggested pull-backs and the solved fit. Never
+    // suggestion defaults (an empty `request_json` travels as NULL): the
+    // measured medium, the scene statistic, the suggested pull-backs and the
+    // solved fit. A non-empty request is the engine's own request JSON -- a
+    // half-frame pair's fit passes `"region": [x0, y0, x1, y1]` (PAIR-WIRING
+    // §6.2), normalised to the frame the engine was handed, so the reading
+    // measures one picture of the pair rather than both as one scene. Never
     // renders -- the session's pixels are unchanged. Windows supports this
     // analysis; only applying the fit's mapping is refused (see
     // WINDOWS_FEATURE_COVERAGE.md). Throws std::runtime_error when no session
     // is open (or a failed render discarded it) and on engine failure, with
     // spk_last_error's text. The reply is the raw JSON object with "medium",
     // "scene", "suggested" and "fit" keys.
-    std::string sceneLatitude() const;
+    std::string sceneLatitude(const std::string& request_json = "") const;
+    // Where the film's gates sit on the canvas the last render drew
+    // (`spk_overscan_geometry`): valid only with a film edge, and for a
+    // half-frame pair the reply's "gates" array holds both. The reply is the
+    // raw JSON object -- the caller parses it, keeping this host thin. Never
+    // renders. Throws std::runtime_error on no open session or engine
+    // failure, like sceneLatitude.
+    std::string overscanGeometry() const;
     // Exports exactly the supplied frame, even after a newer one was opened.
     // Existing files are never overwritten. Returns only after the writer
     // has completed and closed the file; errors retain its cleanup details.

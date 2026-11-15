@@ -111,6 +111,14 @@ bool validate_settings(const RenderSettings& settings, const Catalog& catalog) {
     // own rows (params.cpp). The stretch flag has no range of its own.
     range(settings.scan_hdr_headroom, 0.0, 16.0, "Scan HDR headroom");
     range(settings.scan_hdr_output_scale, 0.0625, 1.0, "Scan HDR output scale");
+    // The half-frame pair's second frame (params.cpp's split/b_* rows): the
+    // split is a place along the piece's long edge and the b_* knees/rooms
+    // have the ranges the first frame's curve has. b_active is a switch.
+    range(settings.scene_latitude_split, 0.0, 1.0, "Scene latitude split");
+    range(settings.scene_latitude_b_highlight_knee, -24.0, 24.0, "Scene latitude B highlight knee");
+    range(settings.scene_latitude_b_highlight_room, 0.0, 24.0, "Scene latitude B highlight room");
+    range(settings.scene_latitude_b_shadow_knee, -24.0, 24.0, "Scene latitude B shadow knee");
+    range(settings.scene_latitude_b_shadow_room, 0.0, 24.0, "Scene latitude B shadow room");
     // The film edge's numbers, ranges and choices are the engine schema's own
     // rows (params.cpp): the seeds are the RFC-032 §26.1 draw, fog/leaks are
     // EV-ish gains in [0, 4], f_number is EXIF's [0, 64] with 0 = unknown,
@@ -215,6 +223,16 @@ Json opening_params(const RenderSettings& settings, bool scan_film) {
     params.set("scene_latitude_shadow_room", Json(settings.scene_latitude_shadow_room));
     params.set("scene_latitude_rolloff", Json(settings.scene_latitude_rolloff));
     params.set("scene_latitude_max_lift", Json(settings.scene_latitude_max_lift));
+    // The half-frame pair's second frame rides with every open too: a saved
+    // split/b_* state must restore as one when the photograph is reopened.
+    // The engine applies the b_ rows only while a split is set, so carrying
+    // them is always safe.
+    params.set("scene_latitude_split", Json(settings.scene_latitude_split));
+    params.set("scene_latitude_b_active", Json(settings.scene_latitude_b_active));
+    params.set("scene_latitude_b_highlight_knee", Json(settings.scene_latitude_b_highlight_knee));
+    params.set("scene_latitude_b_highlight_room", Json(settings.scene_latitude_b_highlight_room));
+    params.set("scene_latitude_b_shadow_knee", Json(settings.scene_latitude_b_shadow_knee));
+    params.set("scene_latitude_b_shadow_room", Json(settings.scene_latitude_b_shadow_room));
     // The contrast mask's curve travels with every open too: a saved mask-on
     // session must restore as one when the photograph is reopened.
     params.set("contrast_mask_active", Json(settings.contrast_mask_active));
@@ -313,6 +331,21 @@ Json changed_params(const RenderSettings& before, const RenderSettings& after, b
         delta.set("scene_latitude_rolloff", Json(after.scene_latitude_rolloff));
     if (before.scene_latitude_max_lift != after.scene_latitude_max_lift)
         delta.set("scene_latitude_max_lift", Json(after.scene_latitude_max_lift));
+    // The half-frame pair's second frame: the same per-field diff -- the
+    // split's position, the second curve's switch and its solved knees and
+    // rooms (the fit commit writes exactly the keys the reply carries).
+    if (before.scene_latitude_split != after.scene_latitude_split)
+        delta.set("scene_latitude_split", Json(after.scene_latitude_split));
+    if (before.scene_latitude_b_active != after.scene_latitude_b_active)
+        delta.set("scene_latitude_b_active", Json(after.scene_latitude_b_active));
+    if (before.scene_latitude_b_highlight_knee != after.scene_latitude_b_highlight_knee)
+        delta.set("scene_latitude_b_highlight_knee", Json(after.scene_latitude_b_highlight_knee));
+    if (before.scene_latitude_b_highlight_room != after.scene_latitude_b_highlight_room)
+        delta.set("scene_latitude_b_highlight_room", Json(after.scene_latitude_b_highlight_room));
+    if (before.scene_latitude_b_shadow_knee != after.scene_latitude_b_shadow_knee)
+        delta.set("scene_latitude_b_shadow_knee", Json(after.scene_latitude_b_shadow_knee));
+    if (before.scene_latitude_b_shadow_room != after.scene_latitude_b_shadow_room)
+        delta.set("scene_latitude_b_shadow_room", Json(after.scene_latitude_b_shadow_room));
     // The mask's curve: the toggle alone, or the amounts with it -- the same
     // engine-parameter channel the DI and the mapping travel by.
     if (before.contrast_mask_active != after.contrast_mask_active)
@@ -542,14 +575,28 @@ FramePtr PreviewHost::render(const RenderSettings& settings) {
     return next;
 }
 
-std::string PreviewHost::sceneLatitude() const {
+std::string PreviewHost::sceneLatitude(const std::string& request_json) const {
     // A failed settings/render operation resets the session while the last
     // frame stays on screen; the analysis needs the live session itself.
     require(bool(impl_->session), "Open a RAW image before analysing scene latitude");
+    const char* request = request_json.empty() ? nullptr : request_json.c_str();
     char* json = nullptr;
-    const auto status = spk_scene_latitude(impl_->session.get(), nullptr, &json);
+    const auto status = spk_scene_latitude(impl_->session.get(), request, &json);
     require(status == SPK_OK && json,
             "Scene latitude analysis: " + std::string(spk_last_error(impl_->engine.get())));
+    std::string reply(json);
+    spk_string_free(json);
+    return reply;
+}
+
+std::string PreviewHost::overscanGeometry() const {
+    // The same live-session requirement: the gate rectangles answer for the
+    // canvas the last render drew.
+    require(bool(impl_->session), "Open a RAW image before reading overscan geometry");
+    char* json = nullptr;
+    const auto status = spk_overscan_geometry(impl_->session.get(), &json);
+    require(status == SPK_OK && json,
+            "Overscan geometry: " + std::string(spk_last_error(impl_->engine.get())));
     std::string reply(json);
     spk_string_free(json);
     return reply;

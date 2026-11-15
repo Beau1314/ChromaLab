@@ -99,6 +99,16 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/../engine/host")
     target_link_libraries(spk_qt_wb_math_test PRIVATE spk_desktop_host spk_libraw)
     add_test(NAME spk_qt_wb_math COMMAND spk_qt_wb_math_test)
+    # The pair wire's host boundary: the split/b_* settings, the no-session
+    # refusals of the two thin analysis wrappers, and a synthetic pair session
+    # whose gate geometry the engine answers with two gates. No RAW fixture --
+    # the pair's buffer is composed in the test itself and opened through the
+    # C API with the same wire open_raw sends.
+    qt_add_executable(spk_qt_pair_host_test tests/pair_host.cpp)
+    target_compile_features(spk_qt_pair_host_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_pair_host_test PRIVATE spk_desktop_host)
+    add_test(NAME spk_qt_pair_host COMMAND spk_qt_pair_host_test
+        "$<TARGET_FILE_DIR:SpektraLabQt>/resources")
     if(WIN32)
         # Specify each test's DLL search path: CTest on this Windows host can
         # restore the pre-launch PATH between tests. Ambient PATH alone makes
@@ -109,7 +119,7 @@ if(BUILD_TESTING)
             list(APPEND qt_test_runtime_path "PATH=path_list_prepend:${qt_test_compiler_directory}")
         endif()
         set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
-            spk_qt_wb_math PROPERTIES
+            spk_qt_wb_math spk_qt_pair_host PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
