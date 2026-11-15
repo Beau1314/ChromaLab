@@ -160,6 +160,22 @@ void layout_empty_pair() {
     check(empty.rect[0].size() == QSizeF(1800, 2400), "the nominal hole follows the same shape");
 }
 
+void layout_one_sided_pair() {
+    // PAIR-WIRING §5: a frame can leave its hole Missing. Swift skips the
+    // absent side and takes the min over the present ones (`across.min() ??
+    // 2400`); a missing side must not be read as a zero-across picture, or
+    // the piece collapses onto the 8 px floor.
+    const pairc::PieceSpec spec{};
+    const pairc::Layout first = pairc::layout(QSizeF(2000, 300), QSizeF(0, 0), spec);
+    const pairc::Layout second = pairc::layout(QSizeF(0, 0), QSizeF(2000, 300), spec);
+    for (const pairc::Layout* l : {&first, &second}) {
+        check(l->pieceSize == QSize(463, 300), "a one-sided pair lays out the present picture alone");
+        check(l->rect[0] == QRectF(0, 0, 225, 300), "the hole fits the present picture, not the 8 px floor");
+        check(l->rect[1] == QRectF(238, 0, 225, 300), "the missing side keeps its hole slot");
+    }
+    check(first.advancePx == second.advancePx, "the advance follows the present picture regardless of side");
+}
+
 // --- compose --------------------------------------------------------------
 
 void compose_identity_and_both_holes() {
@@ -398,6 +414,7 @@ int main(int argc, char** argv) {
         layout_piece_cap();
         layout_turned();
         layout_empty_pair();
+        layout_one_sided_pair();
         compose_identity_and_both_holes();
         compose_crop();
         compose_turns();

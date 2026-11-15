@@ -103,21 +103,23 @@ void placeHole(std::vector<float>& piece, const QSize& pieceSize, const QRectF& 
 
 Layout layout(QSizeF holeA, QSizeF holeB, const PieceSpec& spec) {
     // Each hole's extent across the film at its own fit: level that is the
-    // fit's height, turned its width. The holes take the smaller of the two,
+    // fit's height, turned its width. The holes take the smaller of the two
+    // present sides -- a missing side is skipped, not read as a zero-across
+    // picture (Swift's `across.min() ?? 2400` over the appended entries) --
     // and the piece is never longer than the longer picture -- read at the
     // camera's own 1 mm, so a hole's size does not move with the gap.
     const QSizeF sizes[2] = {holeA, holeB};
-    double across[2] = {0.0, 0.0};
     bool any = false;
+    double a = 2400.0;
     double longest = 0.0;
     for (int i = 0; i < 2; ++i) {
         const QSizeF fit = holeFit(sizes[i], spec.turned);
         if (fit.isNull() || fit.isEmpty()) continue;
-        across[i] = spec.turned ? fit.width() : fit.height();
+        const double across = spec.turned ? fit.width() : fit.height();
+        a = any ? std::min(a, across) : across;
         any = true;
         longest = std::max(longest, std::max(sizes[i].width(), sizes[i].height()));
     }
-    double a = any ? std::min(across[0], across[1]) : 2400.0;
     if (longest > 0.0) {
         const double pieceLong = (kHoleAlongMM * 2.0 + 1.0) / kHoleAcrossMM;
         a = std::min(a, longest / pieceLong);
