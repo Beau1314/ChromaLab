@@ -401,3 +401,23 @@ keys; absolute locations losing the drive letter, a location cache that
 never refetched, and a rebuilt cache whose keys were not normalized) --
 and must ride along any spklib update; a second machine needs the same
 host build.
+
+Two more boundaries, disclosed after the whole-branch review. **Importing
+into a session source deterministically fails**: the import runs on the
+import host's *second* spklib-host process, and spklib holds
+`PRAGMA locking_mode=EXCLUSIVE` on a session's database while it is open,
+so with the UI helper still holding the session `library.open` answers
+`in_use` every time -- the run reports the helper's refusal and adds
+nothing. Catalog sources are unaffected (WAL journaling). Until the
+session-import path lands (importing over the UI helper's own connection,
+or standing the UI handle down for the run), create photographs in
+catalogs and folders -- tracked follow-up. **A `.spektrapair` recipe is
+not yet a library member**: the master plan's "phase 4 writes/reads this
+shape for library members" obligation -- the Mac §5 flow that adds the
+recipe file to the library by reference as a `kind pair` row and removes
+the row after the recipe is deleted -- is not implemented; pairs exist
+inside the develop/pair flow only. Deferred, tracked follow-up. And the
+MAC-LIBRARY-UI §5 contract-table keys beyond the shipped subset are cut:
+Shift-arrow selection extension, select-none/invert, Delete (remove the
+chosen frames), Ctrl+Left/Right (previous/next picture), Ctrl+1/2/3 (the
+sidebar tabs) and the secondary-click context menu are not bound.

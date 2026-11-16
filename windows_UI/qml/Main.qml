@@ -148,13 +148,15 @@ ApplicationWindow {
         onAccepted: preview.exportBatch(selectedFolder, window.exportFormat, window.exportQuality, window.exportLongEdge)
     }
     Shortcut { sequences: [StandardKey.Open]; enabled: window.canBrowse; onActivated: openDialog.open() }
-    Shortcut { sequence: "Ctrl+E"; enabled: preview.hasFrame && !preview.busy && !window.cropMode; onActivated: window.openExport() }
-    Shortcut { sequence: "Ctrl+0"; enabled: preview.hasFrame; onActivated: canvas.resetView(true) }
-    Shortcut { sequence: "Ctrl+1"; enabled: preview.hasFrame && !window.cropMode; onActivated: canvas.resetView(false) }
+    // The develop keys stand down in 图库 (they would operate the previously
+    // opened frame invisibly behind the grid).
+    Shortcut { sequence: "Ctrl+E"; enabled: preview.hasFrame && !preview.busy && !window.cropMode && !window.libraryMode; onActivated: window.openExport() }
+    Shortcut { sequence: "Ctrl+0"; enabled: preview.hasFrame && !window.libraryMode; onActivated: canvas.resetView(true) }
+    Shortcut { sequence: "Ctrl+1"; enabled: preview.hasFrame && !window.cropMode && !window.libraryMode; onActivated: canvas.resetView(false) }
     // Split compare toggles like a view, not an edit; text fields keep V.
-    Shortcut { sequence: "V"; enabled: preview.hasFrame && !window.cropMode && !window.editingText; onActivated: preview.compareEnabled = !preview.compareEnabled }
-    Shortcut { sequence: "Ctrl+Z"; enabled: preview.settingsEditable && preview.canUndo && !window.cropMode && !window.editingText; onActivated: preview.undo() }
-    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; enabled: preview.settingsEditable && preview.canRedo && !window.cropMode && !window.editingText; onActivated: preview.redo() }
+    Shortcut { sequence: "V"; enabled: preview.hasFrame && !window.cropMode && !window.editingText && !window.libraryMode; onActivated: preview.compareEnabled = !preview.compareEnabled }
+    Shortcut { sequence: "Ctrl+Z"; enabled: preview.settingsEditable && preview.canUndo && !window.cropMode && !window.editingText && !window.libraryMode; onActivated: preview.undo() }
+    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; enabled: preview.settingsEditable && preview.canRedo && !window.cropMode && !window.editingText && !window.libraryMode; onActivated: preview.redo() }
     Shortcut { sequence: "Escape"; enabled: window.cropMode; onActivated: window.cancelCrop() }
     Shortcut { sequence: "Return"; enabled: window.cropMode; onActivated: window.finishCrop() }
     // 图库's keys (MAC-LIBRARY-UI §5): zoom steps at ×1.25 across 64..256,

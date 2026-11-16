@@ -190,8 +190,11 @@ const QString& LibraryModel::clipboardSourceName() const {
 
 QVariantList LibraryModel::clipboardGroups() const {
     // The remembered ticks, the Mac's clipboard.groups contract — kept in
-    // the process, BY DECISION (see clipboardGroupStorage()). Unknown or
-    // empty ticks fall back to "everything offered".
+    // the process, BY DECISION (see clipboardGroupStorage()). The getter
+    // returns exactly what the setter stored: an empty tick list is stored
+    // and read back empty — there is no "everything offered" fallback. The
+    // copy sheet's 复制 button is disabled at 0 ticks, and the storage's
+    // seeded full list only stands until the first setter call.
     const QStringList& remembered = clipboardGroupStorage();
     QVariantList out;
     for (const QString& id : remembered) out << id;
@@ -329,7 +332,7 @@ QStringList LibraryModel::offeredClipboardGroups() {
 bool LibraryModel::copySettings() {
     const auto uuids = selectedUuids();
     if (uuids.isEmpty()) {
-        setError(QStringLiteral("nothing is selected to copy from"));
+        setError(QStringLiteral("未选中要复制的照片"));
         return false;
     }
     const int index = rowIndexForUuid(uuids.first());
@@ -351,13 +354,13 @@ bool LibraryModel::copySettings() {
 bool LibraryModel::pasteSettings() {
     if (importBlocked()) return false;
     if (!clipboard_.has_value()) {
-        setError(QStringLiteral("nothing is copied yet"));
+        setError(QStringLiteral("尚未复制任何设置"));
         return false;
     }
     const BusyGuard guard(this);
     const auto uuids = selectedUuids();
     if (uuids.isEmpty()) {
-        setError(QStringLiteral("nothing is selected to paste to"));
+        setError(QStringLiteral("未选中要粘贴的照片"));
         return false;
     }
     const auto* catalog = catalog_provider_ ? catalog_provider_() : nullptr;
@@ -372,7 +375,7 @@ bool LibraryModel::pasteSettings() {
         if (loaded.blocked) {
             // The store refuses an unsafe replacement; that photo keeps its
             // record and the reason is reported once at the end.
-            setError(loaded.warning.isEmpty() ? QStringLiteral("a record cannot be replaced")
+            setError(loaded.warning.isEmpty() ? QStringLiteral("设置记录无法被替换")
                                               : loaded.warning);
             continue;
         }
@@ -606,7 +609,7 @@ bool LibraryModel::importBlocked() {
     // the helper pipe (see the header's BLOCKING note). True = refused,
     // with the reason in lastError.
     if (!importActive_) return false;
-    setError(QStringLiteral("an import is running — try again when it finishes"));
+    setError(QStringLiteral("正在导入，请等它结束后再试"));
     return true;
 }
 
@@ -654,7 +657,7 @@ bool LibraryModel::openSource(const QString& path) {
     }
     const auto opened = host_.libraryOpen(path);
     if (!opened.ok) {
-        setError(opened.errorMessage.isEmpty() ? QStringLiteral("cannot open the source")
+        setError(opened.errorMessage.isEmpty() ? QStringLiteral("无法打开该来源")
                                                : opened.errorMessage);
         return false;
     }
@@ -667,16 +670,16 @@ bool LibraryModel::createCatalog(const QString& name, const QString& folder) {
     const BusyGuard guard(this);
     const auto dir = folder.isEmpty() ? storeRoot_ : folder;
     if (name.isEmpty()) {
-        setError(QStringLiteral("a catalog needs a name"));
+        setError(QStringLiteral("目录需要一个名称"));
         return false;
     }
     if (!QDir().mkpath(dir)) {
-        setError(QStringLiteral("cannot create the folder for the catalog"));
+        setError(QStringLiteral("无法创建目录文件夹"));
         return false;
     }
     const auto path = QDir(dir).filePath(name + QStringLiteral(".spektralab"));
     if (QFileInfo::exists(path)) {
-        setError(QStringLiteral("a library already exists at ") + path);
+        setError(QStringLiteral("该位置已存在图库：") + path);
         return false;
     }
     const auto created = host_.libraryCreate(path, QStringLiteral("catalog"), name);
@@ -698,7 +701,7 @@ bool LibraryModel::createCatalog(const QString& name, const QString& folder) {
     registry_.sources.push_back(source);
     registry_.selected = source.id;
     if (!store_.save(registry_)) {
-        setError(QStringLiteral("cannot write the sources registry"));
+        setError(QStringLiteral("无法写入来源登记文件"));
         return false;
     }
     refreshSources();
@@ -713,12 +716,12 @@ bool LibraryModel::createSession(const QString& name, const QString& folder) {
     const BusyGuard guard(this);
     const auto dir = folder.isEmpty() ? storeRoot_ : folder;
     if (name.isEmpty()) {
-        setError(QStringLiteral("a session needs a name"));
+        setError(QStringLiteral("会话需要一个名称"));
         return false;
     }
     const auto path = QDir(dir).filePath(name);
     if (!QDir().mkpath(path)) {
-        setError(QStringLiteral("cannot create the session folder"));
+        setError(QStringLiteral("无法创建会话文件夹"));
         return false;
     }
     const auto created = host_.libraryCreate(path, QStringLiteral("session"), name);
@@ -737,7 +740,7 @@ bool LibraryModel::createSession(const QString& name, const QString& folder) {
     registry_.sources.push_back(source);
     registry_.selected = source.id;
     if (!store_.save(registry_)) {
-        setError(QStringLiteral("cannot write the sources registry"));
+        setError(QStringLiteral("无法写入来源登记文件"));
         return false;
     }
     refreshSources();
@@ -755,12 +758,12 @@ bool LibraryModel::selectSource(const QString& id) {
                                         return uuidString(source.id) == id;
                                     });
     if (found == registry_.sources.end()) {
-        setError(QStringLiteral("no such source in the registry"));
+        setError(QStringLiteral("来源登记文件中没有该来源"));
         return false;
     }
     registry_.selected = found->id;
     if (!store_.save(registry_)) {
-        setError(QStringLiteral("cannot write the sources registry"));
+        setError(QStringLiteral("无法写入来源登记文件"));
         return false;
     }
     refreshSources();
@@ -774,7 +777,7 @@ bool LibraryModel::addFolder(const QString& path) {
     if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        setError(QStringLiteral("no library is open"));
+        setError(QStringLiteral("尚未打开任何图库"));
         return false;
     }
     // folders.add IS a sync: its first walk already adds the folder's files
@@ -842,12 +845,12 @@ QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& 
     if (importActive_) {
         // Re-entry is refused: the worker owns the helper's pipe for the
         // whole run (see the header's BLOCKING note).
-        setError(QStringLiteral("an import is already running"));
+        setError(QStringLiteral("已有导入正在进行"));
         out.insert(QStringLiteral("error"), lastError_);
         return out;
     }
     if (library_.isEmpty()) {
-        setError(QStringLiteral("no library is open"));
+        setError(QStringLiteral("尚未打开任何图库"));
         out.insert(QStringLiteral("error"), lastError_);
         return out;
     }
@@ -936,7 +939,7 @@ QVariantMap LibraryModel::runImport(const QString& libraryPath, QVariantList ite
     if (library.isEmpty()) {
         out.insert(QStringLiteral("error"),
                    importHost_->lastError().isEmpty()
-                       ? QStringLiteral("cannot open the source for the import")
+                       ? QStringLiteral("无法为导入打开该来源")
                        : importHost_->lastError());
         return out;
     }
@@ -1017,7 +1020,7 @@ QVariantMap LibraryModel::synchronize() {
     const BusyGuard guard(this);
     QVariantMap out;
     if (library_.isEmpty()) {
-        setError(QStringLiteral("no library is open"));
+        setError(QStringLiteral("尚未打开任何图库"));
         out.insert(QStringLiteral("error"), lastError_);
         return out;
     }
@@ -1051,7 +1054,7 @@ bool LibraryModel::stopWatching(const QString& folder) {
     if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        setError(QStringLiteral("no library is open"));
+        setError(QStringLiteral("尚未打开任何图库"));
         return false;
     }
     // The uuid goes on the wire; a path is accepted because that is what a
@@ -1106,7 +1109,7 @@ bool LibraryModel::createAlbum(const QString& name, const QString& parent) {
     if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        setError(QStringLiteral("no library is open"));
+        setError(QStringLiteral("尚未打开任何图库"));
         return false;
     }
     const auto created = host_.collectionCreate(library_, QStringLiteral("album"), name, parent);
@@ -1122,7 +1125,7 @@ bool LibraryModel::addToCollection(const QString& collection, const QStringList&
     if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        setError(QStringLiteral("no library is open"));
+        setError(QStringLiteral("尚未打开任何图库"));
         return false;
     }
     const auto added = host_.collectionAdd(library_, collection, images);
@@ -1183,18 +1186,20 @@ bool LibraryModel::fetchPage(int offset, bool reset) {
         rows_ = std::move(fetched);
         total_ = page.value.total;
         endResetModel();
-    } else {
-        if (rows_.empty()) {
-            beginResetModel();
-            rows_ = std::move(fetched);
-            total_ = page.value.total;
-            endResetModel();
         } else {
-            beginInsertRows({}, int(rows_.size()), int(rows_.size() + fetched.size()) - 1);
-            for (auto& row : fetched) rows_.push_back(std::move(row));
-            endInsertRows();
+            if (rows_.empty()) {
+                beginResetModel();
+                rows_ = std::move(fetched);
+                total_ = page.value.total;
+                endResetModel();
+            } else if (!fetched.empty()) {
+                // An empty page must not announce a -1..-1 insert range
+                // (beginInsertRows with first > last is undefined).
+                beginInsertRows({}, int(rows_.size()), int(rows_.size() + fetched.size()) - 1);
+                for (auto& row : fetched) rows_.push_back(std::move(row));
+                endInsertRows();
+            }
         }
-    }
     // The selection survives a re-list row for row (pruned to rows that
     // still stand — the header's SELECTION note).
     pruneSelection();
@@ -1286,7 +1291,7 @@ bool LibraryModel::setRating(const QString& image, int rating) {
     if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        setError(QStringLiteral("no library is open"));
+        setError(QStringLiteral("尚未打开任何图库"));
         return false;
     }
     const auto reply = host_.metaSet(library_, {}, MetaValue::of(rating), MetaValue::omit(),
@@ -1310,7 +1315,7 @@ bool LibraryModel::setColorTag(const QString& image, int colorTag) {
     if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
-        setError(QStringLiteral("no library is open"));
+        setError(QStringLiteral("尚未打开任何图库"));
         return false;
     }
     const auto reply = host_.metaSet(library_, {}, MetaValue::omit(), MetaValue::of(colorTag),
