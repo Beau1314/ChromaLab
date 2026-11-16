@@ -1,154 +1,63 @@
-# SpektraLab
+# SpektraLab Windows 移植版
 
-**English** · [简体中文](README.zh-CN.md) · [spektralab.app](https://spektralab.app)
+> 非官方 · 个人私有复刻。基于 [JamesQiu2005/SpektraLab](https://github.com/JamesQiu2005/SpektraLab)（macOS 版，GPL-3.0-or-later）的代码与数据，遵循其许可证移植到 Windows。**本仓库为私有个人备份，不构成发布；保留原名仅适用于私有场景，若未来公开发布构建须按上游商标条款更名并更换图标。**
 
-A film-emulation darkroom for the Mac. Open a RAW, pick a film and a paper, and get a physically
-modelled print: light traced through the film's dye layers and the paper's, with grain, halation,
-DIR couplers and the enlarger's filter pack, at full resolution in about a second.
+一台 Windows 机器上的胶片模拟暗房：打开 RAW，选胶片与相纸，得到物理建模的印相——光线经 81 波长穿过胶片染料层与相纸层，带颗粒、光晕、DIR 成色剂与放大机滤镜包，全分辨率约一秒出图。
 
-**The SpektraLab engine is a C++/Metal implementation derived from
-[spektrafilm](https://github.com/andreavolpato/spektrafilm) by Andrea Volpato (GPL-3.0-or-later).**
-The film simulation, its 28 measured film and paper profiles and the print and scan model are
-spektrafilm's; SpektraLab is the engine's implementation on Metal and the Mac app built around it.
+## 已实现（相对上游 Windows 前端的增量）
 
-![SpektraLab 2's Develop page: an elk on Kodak Portra 400, printed on Kodak Portra Endura](screenshots/Screenshot_v2.png)
+上游仓库的 Windows 前端仅有基础编辑器。本移植按 macOS v2 功能逐阶段补齐：
 
-## What it does
-
-- **Spectral, not a LUT.** Light is traced through 81 wavelengths, the film's dye layers and the
-  paper's, the way a darkroom does it. Colour negative, slide, cine negative and print film, colour
-  and black-and-white papers.
-- **Physical units.** Tell it the negative is 135 or 120 and grain, halation and coupler diffusion
-  scale with the frame in micrometres.
-- **Develop and Edit.** Develop is the darkroom: the film and the paper; the decode (film
-  exposure, white balance, and a curve on the scene before it reaches the film); the format; and
-  the effects (grain, halation, scatter, glare, couplers). Edit works on the finished print:
-  brightness, contrast, tone, curves, HSL, channels, colour wheels, vibrance, saturation,
-  temperature and vignette.
-- **The film itself.** Film Edge prints the frame on its own strip (rebate, perforations, each
-  stock's edge print and frame numbers) in 135, half frame, XPan, 645 to 6×9, 6×12 and 6×17. Date
-  Back exposes a date onto the negative.
-- **Half-frame pairs.** Two frames on one frame's worth of 135, each with its own exposure, white
-  balance and print.
-- **A library.** SpektraLab catalogs and sessions, with albums, variants, ratings and colour tags;
-  an import page fed by Finder or by pictures dragged onto the window; settings copied from one
-  picture and pasted onto many.
-- **Capture One catalogs and sessions, read-only.** SpektraLab reads a Capture One catalog through a
-  snapshot copy and a session as its folders, and never writes to either: no rating, no edit, no
-  file goes back. Edits stay SpektraLab's. There is no Lightroom catalog support.
-- **The Light Table.** Developed frames lie on a light pad at their true size, measured in
-  millimetres, to be moved and turned.
-- **Export.** JPEG, HEIF and PNG at 8 bits, TIFF at 16, in sRGB, Adobe RGB, Display P3 or ProPhoto
-  RGB, with saved recipes. A batch develops each picture again from its original, one at a time.
-- **English, 简体中文, 繁體中文 and 日本語.**
-
-| RAW decode ⟷ film and paper | grain at 1:1 |
+| 阶段 | 内容 |
 |---|---|
-| ![Before and after](screenshots/natural_halation.png) | ![Grain at 1:1](screenshots/physically_accurate_grain.png) |
+| 1 编辑器完整化 | 编辑页 Layer 2 全套（曝光/对比度/亮度/高光/阴影/黑白点/饱和度/色温色调/5 通道曲线/四区色彩平衡/暗角）、分屏对比、直方图、宽容度卡片、白平衡行（温度/色调/As Shot/预设/测光） |
+| 2 引擎内核 | 解除 Windows 引擎的六个功能拒绝：Cineon DI、场景宽容度映射、对比遮罩、HDR 扫描、胶片边缘（135/半幅/XPan/645–6×17 边缘印字+齿孔）、日期背印（lcd/dots/data 三面）——11 个 Vulkan 内核 + EdgeRaster 文本层（TeX Gyre Heros）+ 线程化卷积，`capabilities.unsupported_features` 清零 |
+| 3 半幅对 | 半幅对全栈：建对、逐孔独立曝光/日期/冲印、组装冲洗、持久化 |
+| 4 图库 | 与 macOS **同库 SDK**（spklib 0.4.0 Windows 构建）：目录/会话源、收藏集/相册/评分/色彩标签/过滤、导入（去重/分块/Recent Imports）、文件夹同步（新增/移动保评分/消失隐藏）、持久缩略图库、图库页（模式行 图库·冲洗·编辑 + 侧栏三 tab + 懒加载网格 + 键盘 + 组剪贴板） |
+| 6 印相台+色彩+i18n | 印相台（A4-A6 真实毫米摆放、99 张、1:1 校样、lighttable.json 与 Mac schema 2 同构）、四色彩空间导出（sRGB/Display P3/Adobe RGB/ProPhoto，ICC 逐字节标记）、四语言（en/简中/繁中/日文，复用 Mac 的本地化目录与检查规则） |
 
-## Build
+（阶段 5 Capture One 只读集成的 wire 方法已就绪，待真实 C1 目录样例验收。）
 
-macOS 15 or later on Apple silicon, and **Xcode 27 or later** with its Metal toolchain. Xcode 26
-cannot type-check parts of the app. Since Xcode 26 the Metal compiler is a separate component:
-`xcodebuild -downloadComponent MetalToolchain`. The app is a Mac Catalyst app.
+## 构建
 
-```bash
-app/SpektraLab/tools/build_engine_mac.sh      # the SpektraLab engine for Mac Catalyst, its kernels and resources
-cd app/SpektraLab
-python3 gen_project.py                        # writes SpektraLab.xcodeproj from the source tree
-xcodebuild -project SpektraLab.xcodeproj -scheme SpektraLab -configuration Debug \
-    -destination 'platform=macOS,variant=Mac Catalyst' \
-    -derivedDataPath build/DerivedData build
-open build/DerivedData/Build/Products/Debug-maccatalyst/SpektraLab.app
+需求：Windows 10+，x64，MinGW 工具链由脚本自动获取；显卡驱动自带 Vulkan。
+
+```powershell
+# 1. Qt SDK 引导（约 278MB，pinned SHA256，含 MinGW 13.1）
+./windows_UI/setup-qt.ps1 -DependencyDirectory ../deps
+
+# 2. spklib（图库 SDK，MIT）——检出到仓库外并打上 Windows 可移植性补丁
+#    详见 docs/spklib/portability-notes.md（5 处偏差 + 构建脚本）
+#    构建脚本与补丁说明随本仓库携带：docs/spklib/
+
+# 3. 完整构建 + 测试
+./windows_UI/build.ps1 -SourceDirectory . -BuildDirectory ./build/qt -RunTests
 ```
 
-- `build_engine_mac.sh` compiles `engine/` (C++20, `-O2`, the Metal kernels with safe math for
-  macOS 15) into `build/engine-macosx/libspektralab_engine.a` and lays the baked constants, the
-  profiles and `spektralab.metallib` into `build/engine-macosx/EngineResources/`, which the app
-  copies into its bundle. Run it again after any change under `engine/`.
-- `gen_project.py` generates the project from the files on disk: run it again after adding or
-  removing a source file. Nothing else needs Python, and nothing needs Python at run time.
-- If Xcode suddenly cannot find `metal`, clean the build folder (⇧⌘K): the Metal toolchain's path
-  changed under a cached build.
+产出 `build/qt/app/` 为自包含目录（EXE + 全部 DLL + QML + 资源 + 许可证 + spklib-host.exe），
+整个文件夹可复制到任意位置日常使用，双击 `SpektraLabQt.exe` 启动。
 
-The library helper `spklib-host` is in this repository as a prebuilt, checksummed binary
-(`vendor/spklib/macos/`), and the build copies it into the app. To build it from source too, see
-[`API-SPEC-library-helper.md`](API-SPEC-library-helper.md) §7.
+**重要：构建必须在纯 ASCII 路径下进行**（MinGW 工具链对中文路径会静默出错；本机实践是建
+`D:\spk` junction 指向项目）。运行时不限。
 
-## Test
+## 使用
 
-```bash
-cd app/SpektraLab
-tools/selftest.sh                   # the model and page self-tests, compiled with swiftc
-python3 tools/localization_check.py # every sentence in four languages
-```
+- 模式行切换 图库 · 冲洗 · 编辑；图库页管目录/导入/评分标签，冲洗页选胶片相纸与效果，编辑页做后期
+- 快捷键：Ctrl+O 导入、Ctrl+E 导出、Ctrl+Z/Y 撤销重做、0-5 评分、− * + 色标、Ctrl+=/− 网格缩放、V 对比
+- 导出：TIFF16/PNG8/PNG16/JPEG8 × sRGB/Display P3/Adobe RGB/ProPhoto（ICC 标记），拒绝覆盖现有文件
+- 输入照片永不写入；编辑数据存放在应用自有目录（`AppData\Local\SpektraLab Windows\Edits` 等）
 
-The engine's parity harnesses (`engine/tests/parity_*.py`) compare it with spektrafilm's Python
-reference and need a checkout of spektrafilm on `PYTHONPATH`;
-[`docs/agents/BUILD-AND-TEST.md`](docs/agents/BUILD-AND-TEST.md) says how.
+## 已知边界（如实）
 
-## Layout
+- **HEIF 导出未含**：x265 许可（GPL-2.0-only）与本移植（GPL-3.0-or-later）不兼容，分发层面被阻塞——唯一未对齐 Mac 的导出格式
+- **Nikon HE/HE\* RAW 不支持**（LibRaw 限制）
+- **显示器 ICC 感知、软打样**未接（画布按 sRGB 标记显示）
+- 印相台的 loupe 3× 与分带全尺寸渲染梯未移植；图库的会话导入、.spektrapair 行、部分 §5 快捷键为已披露的后续项
+- 一批验收 gate（含真实 RAW 的工作流测试）需 RAW 样张执行，本机尚无样张——测试为编译级验证
+- Capture One 集成的 wire 已就绪但未经真实目录验收
 
-| | |
-|---|---|
-| `app/SpektraLab/` | the Mac app: SwiftUI, UIKit and Metal under Mac Catalyst |
-| `engine/` | the SpektraLab engine: C++20, its Metal kernels and its C ABI (`spk_*`) |
-| `engine/resources/` | baked constants, spektrafilm's 28 film and paper profiles, print LUTs |
-| `engine/resources_product/` | SpektraLab's own black-and-white films and paper, and CineStill 800T |
-| `vendor/spklib/` | the library helper, prebuilt from spklib |
-| `ARCHITECTURE.md` | how the engine fits together |
-| `AGENTS.md` | conventions and the traps that cost real time |
+## 许可
 
-## Windows and Linux
-
-This repository also contains a C++/Vulkan backend for the engine, native LibRaw decoding, RGB16
-TIFF export and Windows desktop viewers, contributed separately from the Mac app. See the
-[Windows build guide](engine/WINDOWS.md) and [feature coverage](engine/WINDOWS_FEATURE_COVERAGE.md)
-for the tested scope. The [Qt Quick frontend](windows_UI/README.md) brings the film/print editor
-layout to Windows; the [minimal Win32 viewer](engine/WINDOWS_DESKTOP.md) is also retained. The Mac
-app described above has interface and display features they do not.
-
-## Support SpektraLab
-
-SpektraLab for the Mac is free and open source, and it will stay that way. If it has earned a place
-in your work and you'd like to support where it goes next, please consider SpektraLab for iPhone and
-iPad on the App Store. Code **25OFF** takes 25% off.
-
-## Credits and licence
-
-**The SpektraLab engine is a C++/Metal implementation derived from spektrafilm by Andrea Volpato
-(GPL-3.0-or-later).** The film process model, its 28 measured colour profiles and the print LUTs
-are [spektrafilm](https://github.com/andreavolpato/spektrafilm)'s. The four black-and-white film
-profiles and the Multigrade paper profile are SpektraLab's own, built from the manufacturers'
-published data sheets (`engine/resources_product/NOTICE.md`). `license/NOTICE.md` says what was
-derived and what was changed.
-
-| | |
-|---|---|
-| the app and the engine | GPL-3.0-or-later (`license/LICENSE`) |
-| spektrafilm's film and paper profiles, the print LUTs | CC BY-SA 4.0 (`license/SPEKTRAFILM_LICENSE.txt`) |
-| metal-cpp | Apache-2.0 |
-| spklib, the library helper | MIT, shipped as a prebuilt helper binary |
-
-<!-- The spklib link below resolves only once that repository is published. -->
-Capture One catalogs are read by spklib (MIT, https://github.com/JamesQiu2005/SpektraLab_library);
-the app ships its prebuilt helper.
-
-## Trademark
-
-SpektraLab™ and the SpektraLab icon are managed by Guangzhou Songzi Intelligent
-Technology Services Co., Ltd.; trademark registration is in progress.
-
-Forks are welcome. You can study, modify, port and redistribute the code under
-its licences, which cover the code and data but not the name or the icon. Keeping
-both in a personal fork is fine. If you publish a build for other people, even a
-free one, please give it its own name and icon. You are welcome to say it is
-based on SpektraLab, as long as it is clear that your project is unofficial.
-
-We reserve the right to act against builds that pass themselves off as official
-or imply our endorsement.
-
-Capture One is a trademark of Capture One A/S. SpektraLab and spklib are not affiliated with or
-endorsed by it; they read a catalog and never write to it. SpektraLab is not affiliated with or
-endorsed by the spektrafilm project. Film and paper names are their owners' trademarks; they say
-which published data a profile was built from.
+- 代码 GPL-3.0-or-later（`license/LICENSE`）；胶片/相纸档案与印相 LUT CC BY-SA 4.0（`license/SPEKTRAFILM_LICENSE.txt`）；TeX Gyre Heros 字体 GUST Font License（`license/GUST-FONT-LICENSE.txt`）；spklib MIT（独立仓库，本仓库 `docs/spklib/` 携带其 Windows 可移植性补丁与构建脚本）
+- SpektraLab™ 名称与图标归 Guangzhou Songzi Intelligent Technology Services Co., Ltd.；本移植为**非官方个人复刻**，与上游及 spektrafilm 项目无隶属关系
+- 详细边界与验收口径见 [`windows_UI/README.md`](windows_UI/README.md)；上游原版说明见 [`README.upstream.md`](README.upstream.md)
