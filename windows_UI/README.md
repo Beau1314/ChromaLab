@@ -421,3 +421,40 @@ MAC-LIBRARY-UI §5 contract-table keys beyond the shipped subset are cut:
 Shift-arrow selection extension, select-none/invert, Delete (remove the
 chosen frames), Ctrl+Left/Right (previous/next picture), Ctrl+1/2/3 (the
 sidebar tabs) and the secondary-click context menu are not bound.
+
+## Phase 6 the localization core (task 6.0)
+
+The four languages come over from the Mac unchanged in meaning
+(`app/SpektraLab/LOCALIZATION.md`): the English literal is both the key and the
+fallback; the languages are English, Simplified Chinese, Traditional Chinese and
+Japanese; there is no follow-the-system option — the first launch derives once
+from the host languages (a Chinese with the Hant script or a TW/HK/MO region,
+or Cantonese, is Traditional; otherwise Chinese is Simplified; `ja` is Japanese;
+anything unspoken is English) and stores the choice, which then stands until the
+user changes it. `src/Localization.hpp/.cpp` holds the lookup, the switch (one
+`languageChanged`, an `epoch` that bumps with it so QML bindings re-evaluate via
+`Localization.epoch && Localization.L("…")`), the derivation and the persisted
+choice (`QSettings`, key `language`). The QML seam is the object itself,
+registered as the same-module `Localization` singleton (Theme's convention);
+C++ callers use the class or the `L(key)` method — one `L(` spelling for both,
+which is what the gate scans for. The catalog is the Mac's
+`Localizable.xcstrings`, all 1203 keys, converted by
+`tools/xcstrings_to_json.py` into `assets/localization.json` and embedded as a
+Qt resource. The Mac's marker conventions survive: `%@` and `%N$@` in keys and
+values, normalized to Qt's `%N` at lookup so `arg()` fills them and a reordered
+translation keeps its meaning; numeric formats pass through as on the Mac. Task
+6.1 migrates today's raw strings onto it; until then they stand grandfathered
+in `tools/localization_exceptions.json`.
+
+`tools/localization_check_windows.py` is the Mac's `localization_check.py`
+ported to this tree (its own `--self-test` breaks each rule once). In CTest as
+`spk_localization_check`, with the unit test as `spk_qt_localization`, it fails
+when a catalog key lacks a language; a translation's arguments or numbers are
+not its key's; a `zh-Hant` value holds a Simplified-only character or the
+reverse; a `ja` value holds Simplified Japanese does not write or an old form
+it no longer writes; a CJK literal is shown without `L(` (the baseline file
+holds today's pre-6.1 strings, each with its reason, and only ever shrinks —
+an entry that excepts nothing any more fails the check); or an `L()` key is
+not in the catalog. There is no stale rule here, unlike the Mac's: the catalog
+deliberately keeps the Mac's whole catalog, of which this frontend has
+migrated only a part so far.

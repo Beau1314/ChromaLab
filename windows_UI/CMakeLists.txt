@@ -43,6 +43,7 @@ qt_add_executable(SpektraLabQt WIN32
     # model's copy/paste and its own test.
     src/SettingsClipboard.hpp src/SettingsClipboard.cpp)
 target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
+target_include_directories(SpektraLabQt PRIVATE src)
 target_link_libraries(SpektraLabQt PRIVATE
     spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -52,7 +53,17 @@ qt_add_qml_module(SpektraLabQt URI SpektraLab VERSION 1.0
         # The library page (task 4.4): the sidebar's three tabs and the
         # lazy grid over the library rows model.
         qml/LibrarySidebar.qml qml/LibraryGridPage.qml
+    # The localization core (task 6.0): L() over the Mac's catalog, exposed
+    # to QML as the Localization singleton (same-module, no import needed —
+    # Theme sets that convention). Its sources compile here, into the module
+    # host, so the QML type registrar sees QML_SINGLETON.
+    SOURCES src/Localization.hpp src/Localization.cpp
     NO_CACHEGEN)
+# The catalog is the executable's data (task 6.0): embedded as a Qt
+# resource, so no deploy step can leave it behind. windows_UI/tools/
+# xcstrings_to_json.py regenerates it from the Mac's Localizable.xcstrings.
+qt_add_resources(SpektraLabQt "localization_catalog"
+    PREFIX "/" FILES assets/localization.json)
 set_target_properties(SpektraLabQt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/app")
 # qmlimportscanner passes the source tree through a UTF-8 response file, and
 # the Windows tool decodes it in the host code page — a non-ASCII checkout
@@ -169,6 +180,36 @@ if(BUILD_TESTING)
     target_compile_features(spk_qt_settings_clip_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_settings_clip_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_settings_clip COMMAND spk_qt_settings_clip_test)
+    # The localization core (task 6.0): the Mac catalog behind L() — the
+    # lookup, the fallback, the switch's one signal, the first launch's
+    # derive-then-persist, and the shipped asset's own script spot checks.
+    # The shipped catalog comes in as argv[1] (the source asset, the same
+    # file the app embeds); the language store is a temp INI, never the
+    # user's real setting.
+    qt_add_executable(spk_qt_localization_test tests/localization.cpp
+        src/Localization.cpp)
+    target_include_directories(spk_qt_localization_test PRIVATE src)
+    target_compile_features(spk_qt_localization_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_localization_test PRIVATE Qt6::Core Qt6::Gui Qt6::Qml)
+    # Same non-ASCII-path skip as SpektraLabQt above (qmlimportscanner and the
+    # UTF-8 response file).
+    set_property(TARGET spk_qt_localization_test PROPERTY QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+    add_test(NAME spk_qt_localization COMMAND spk_qt_localization_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/localization.json")
+    # The catalog's check gate (task 6.0): missing languages, placeholder
+    # mismatches, the Simplified/Traditional/kyūjitai script policing and the
+    # unwrapped-CJK scan over the QML and C++ sources — the Mac's
+    # tools/localization_check.py rules, ported for this frontend. The
+    # pre-6.1 Chinese literals stand in the exceptions file until task 6.1
+    # migrates them; a migrated string's stale exception fails the gate.
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME spk_localization_check COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/localization_check_windows.py"
+            "--root" "${CMAKE_CURRENT_SOURCE_DIR}")
+    else()
+        message(WARNING "Python3 not found: the spk_localization_check gate is not registered")
+    endif()
     # The Temperature/Tint math the white-balance row drives is pure engine
     # host code (engine/host/white_balance.cpp, compiled into spk_image_io
     # beside its raw_decoder caller): Robertson mapping, its inverse and the
@@ -212,7 +253,7 @@ if(BUILD_TESTING)
         set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
             spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host
             spk_qt_sources_store spk_qt_library_model spk_qt_thumbnail_store
-            spk_qt_settings_clip PROPERTIES
+            spk_qt_settings_clip spk_qt_localization PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp

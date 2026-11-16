@@ -1,6 +1,7 @@
 #include "PreviewController.hpp"
 #include "FrameCanvas.hpp"
 #include "LibraryModel.hpp"
+#include "Localization.hpp"
 #include <QCommandLineParser>
 #include <QCryptographicHash>
 #include <QDir>
@@ -371,6 +372,11 @@ int main(int argc,char** argv) {
     QGuiApplication app(argc,argv);
     app.setOrganizationName("SpektraLab");app.setApplicationName("SpektraLab Windows");
     QQuickStyle::setStyle("Basic");
+    // The localization core (task 6.0), before any QML loads: the embedded
+    // catalog behind L(), the stored language — or, on the first launch only,
+    // one derivation from the host languages, persisted from then on.
+    // Task 6.1 migrates the pages' strings onto it.
+    spk::desktop::Localization::instance().bootstrap(QLocale().uiLanguages());
     QCommandLineParser parser;parser.setApplicationDescription("SpektraLab Windows Qt Quick preview");parser.addHelpOption();
     parser.addOptions({{"resources","Engine resource directory","directory"},
                        {"open","Open a RAW file","file"},
