@@ -116,6 +116,12 @@ class LibraryModel final : public QAbstractListModel {
     Q_PROPERTY(int total READ total NOTIFY rowsChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY errorChanged)
+    // OBSERVABILITY, BY DECISION: importProgress is terminal-state observable
+    // only — the chunk loop runs synchronously on the UI thread inside
+    // BusyGuard (the header's BLOCKING note), so QML never repaints
+    // mid-import and reads the final {phase, done, total} only after
+    // importFiles returns. Live progress lands with the Task 4.4/4.5
+    // worker-queue seam (the same seam the blocking note names).
     Q_PROPERTY(QVariantMap importProgress READ importProgress NOTIFY progressChanged)
     Q_PROPERTY(QVariantList watchedFolders READ watchedFolders NOTIFY watchedFoldersChanged)
 public:

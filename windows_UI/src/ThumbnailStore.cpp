@@ -105,9 +105,12 @@ void ThumbnailStore::touchDisk(const QString& fileName) {
 void ThumbnailStore::enforceDiskBudget(const QString& keep) {
     scanDisk();
     while (diskBytes_ > options_.budgetBytes && disk_.size() > 1) {
-        // The oldest entry this session's list still knows; entries the list
-        // never heard of (a scan that found a previous session's leftovers)
-        // sit at the back and go first.
+        // The back of the list evicts first. scanDisk above registered every
+        // entry the directory holds, in mtime order (the previous session's
+        // recency, approximated), so the list is complete and the back is
+        // simply the coldest entry — usually an older session's leftover or
+        // this session's earliest insert. Only the entry just written is
+        // spared.
         QString victim;
         for (auto it = diskLru_.rbegin(); it != diskLru_.rend(); ++it) {
             if (*it == keep) continue;
@@ -238,7 +241,10 @@ QImage ThumbnailStore::get(const QString& path, int maxPixel) {
 
     const QString file = QDir(options_.directory).filePath(name);
     QDir().mkpath(options_.directory);
-    if (!image.save(file, "PNG")) return image; // memory-only if the disk refuses
+    if (!image.save(file, "PNG")) {
+        remember(image, path, maxPixel); // memory-only if the disk refuses
+        return image;
+    }
     QFileInfo info(file);
     if (disk_.contains(name)) {
         diskBytes_ -= disk_.value(name);
