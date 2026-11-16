@@ -448,11 +448,14 @@ Task 6.1 migrated every user-visible string onto it, so
 the develop window's mode row carries the language picker: each language names
 itself (English / 简体中文 / 繁體中文 / 日本語) and a choice takes effect at once
 and persists. One narrowing of the derive rules against the Mac's
-`AppLanguage.derived`: the host list is `QLocale().uiLanguages()`, whose
-subtags are matched only as written here (hans/hant/tw/hk/mo/yue) — the legacy
-Microsoft tags Windows can still emit (`zh-CHT`, `zh-CHS`) fall through the
-plain-`zh` branch and derive Simplified, so a Traditional user on such a
-system picks 繁體中文 once in the picker and the choice then stands.
+`AppLanguage.derived` (task 6.0 Minor #1): the host list is
+`QLocale().uiLanguages()`, and only the codes `en`, `ja`, `zh` and bare `yue`
+are spoken, with the subtag refinements described above — the Mac additionally
+treats the Chinese macrolanguages `wuu` (Wu) and `cmn` (Mandarin) as Chinese
+and any `yue-…` variant as Traditional, which here fall through to English,
+as do the legacy Microsoft tags (`zh-CHT`, `zh-CHS`) through the plain-`zh`
+branch; a user on such a system picks their language once in the picker and
+the choice then stands.
 
 `tools/localization_check_windows.py` is the Mac's `localization_check.py`
 ported to this tree (its own `--self-test` breaks each rule once). In CTest as
