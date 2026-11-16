@@ -326,6 +326,11 @@ Rectangle {
                         visible: sidebar.infoRow.fileName === undefined
                         Layout.fillWidth: true
                         Layout.margins: 12
+                        // Same wrap semantics as Main.qml's Note: keep the
+                        // layout's implicit width honest so the note wraps
+                        // inside the sidebar instead of stretching it.
+                        Layout.preferredWidth: 0
+                        Layout.minimumWidth: 0
                         text: Localization.epoch && Localization.L("Select a photo in the grid to see its info")
                         color: Theme.muted
                         font.pixelSize: 11

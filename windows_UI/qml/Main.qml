@@ -216,7 +216,16 @@ ApplicationWindow {
     }
 
     component Note: Text {
+        // The two constraints make the note wrap inside the rail instead of
+        // widening it: a Text's implicit (single-line) width is the layout's
+        // preferred AND minimum contribution by default, so a long note
+        // would stretch the whole right rail past the window and every
+        // fillWidth row in it with it. Preferred 0 keeps the layout's
+        // implicit width honest; minimum 0 lets the layout squeeze the note
+        // to the rail and the wrap takes over.
         Layout.fillWidth: true
+        Layout.preferredWidth: 0
+        Layout.minimumWidth: 0
         color: Theme.muted
         font.pixelSize: 10
         wrapMode: Text.WordWrap
@@ -541,75 +550,85 @@ ApplicationWindow {
         Note { text: Localization.epoch && Localization.L("The four print-trim rows are saved with the pair's record; per-hole print cropping is wired in a later task and changes no pixels today.") }
     }
 
-    RowLayout {
-        anchors.fill: parent; spacing: 1
+    // The window shell (§8): one top bar over every page — the mode row
+    // centred with the language picker at the far right — and the mode's
+    // content below. A mode press swaps the content, never the shell.
+    ColumnLayout {
+        anchors.fill: parent; spacing: 0
         Rectangle {
-            Layout.preferredWidth: Theme.leftWidth; Layout.fillHeight: true; color: Theme.card
-            ColumnLayout {
-                anchors.fill: parent; spacing: 0
-                // The mode row (§8): 图库 · 冲洗 · 编辑 leads the left column.
-                // 冲洗/编辑 show this page's rail; 图库 swaps the column to
-                // the library sidebar below.
-                Rectangle {
-                    objectName: "modeSwitch"
-                    Layout.fillWidth: true; Layout.preferredHeight: Theme.topHeight; color: Theme.card
-                    RowLayout {
-                        anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 2
-                        component ModeButton: ActionButton {
-                            required property string label
-                            required property string mode
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            implicitHeight: 25
-                            font.pixelSize: 12
-                            text: label
-                            accented: window.appMode === mode
-                            onClicked: window.appMode = mode
-                        }
-                        ModeButton { objectName: "modeLibraryButton"; label: Localization.epoch && Localization.L("Library"); mode: "library" }
-                        ModeButton { objectName: "modeDevelopButton"; label: Localization.epoch && Localization.L("Develop"); mode: "develop" }
-                        ModeButton { objectName: "modeEditButton"; label: Localization.epoch && Localization.L("Edit"); mode: "edit" }
-                        ModeButton { objectName: "modeLightTableButton"; label: Localization.epoch && Localization.L("Light Table"); mode: "lighttable" }
-                        // The language picker: each language names itself, so
-                        // the rows are the same string in all four UI
-                        // languages and deliberately bypass L(). The char
-                        // codes keep the CJK out of the source (the gate's
-                        // unwrapped-literal scan would flag plain literals;
-                        // these names are not translations).
-                        ToolButton {
-                            id: languageButton
-                            objectName: "languageButton"
-                            readonly property var rows: [
-                                { "code": "en", "name": "English" },
-                                { "code": "zh-Hans", "name": String.fromCharCode(0x7B80, 0x4F53, 0x4E2D, 0x6587) },
-                                { "code": "zh-Hant", "name": String.fromCharCode(0x7E41, 0x9AD4, 0x4E2D, 0x6587) },
-                                { "code": "ja", "name": String.fromCharCode(0x65E5, 0x672C, 0x8A9E) }
-                            ]
-                            function ownName(code) {
-                                for (var i = 0; i < rows.length; ++i)
-                                    if (rows[i].code === code) return rows[i].name
-                                return code
-                            }
-                            text: ownName(Localization.language)
-                            font.pixelSize: 11
-                            implicitHeight: 25
-                            onClicked: languageMenu.popup()
-                            Menu {
-                                id: languageMenu
-                                Repeater {
-                                    model: languageButton.rows
-                                    MenuItem {
-                                        required property var modelData
-                                        text: modelData.name
-                                        checkable: true
-                                        checked: Localization.language === modelData.code
-                                        onTriggered: Localization.language = modelData.code
-                                    }
-                                }
+            objectName: "modeSwitch"
+            Layout.fillWidth: true; Layout.preferredHeight: Theme.topHeight; color: Theme.card
+            Rectangle { width: parent.width; height: 1; color: Theme.line; opacity: 0.35; anchors.bottom: parent.bottom }
+            RowLayout {
+                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 6
+                Item { Layout.fillWidth: true }
+                RowLayout {
+                    spacing: 3
+                    component ModeButton: ActionButton {
+                        required property string label
+                        required property string mode
+                        implicitHeight: 25
+                        implicitWidth: label.length * 11 + 30
+                        font.pixelSize: 12
+                        text: label
+                        accented: window.appMode === mode
+                        onClicked: window.appMode = mode
+                    }
+                    ModeButton { objectName: "modeLibraryButton"; label: Localization.epoch && Localization.L("Library"); mode: "library" }
+                    ModeButton { objectName: "modeDevelopButton"; label: Localization.epoch && Localization.L("Develop"); mode: "develop" }
+                    ModeButton { objectName: "modeEditButton"; label: Localization.epoch && Localization.L("Edit"); mode: "edit" }
+                    ModeButton { objectName: "modeLightTableButton"; label: Localization.epoch && Localization.L("Light Table"); mode: "lighttable" }
+                }
+                Item { Layout.fillWidth: true }
+                // The language picker: each language names itself, so
+                // the rows are the same string in all four UI
+                // languages and deliberately bypass L(). The char
+                // codes keep the CJK out of the source (the gate's
+                // unwrapped-literal scan would flag plain literals;
+                // these names are not translations).
+                ToolButton {
+                    id: languageButton
+                    objectName: "languageButton"
+                    readonly property var rows: [
+                        { "code": "en", "name": "English" },
+                        { "code": "zh-Hans", "name": String.fromCharCode(0x7B80, 0x4F53, 0x4E2D, 0x6587) },
+                        { "code": "zh-Hant", "name": String.fromCharCode(0x7E41, 0x9AD4, 0x4E2D, 0x6587) },
+                        { "code": "ja", "name": String.fromCharCode(0x65E5, 0x672C, 0x8A9E) }
+                    ]
+                    function ownName(code) {
+                        for (var i = 0; i < rows.length; ++i)
+                            if (rows[i].code === code) return rows[i].name
+                        return code
+                    }
+                    text: ownName(Localization.language)
+                    font.pixelSize: 11
+                    implicitHeight: 25
+                    onClicked: languageMenu.popup()
+                    Menu {
+                        id: languageMenu
+                        Repeater {
+                            model: languageButton.rows
+                            MenuItem {
+                                required property var modelData
+                                text: modelData.name
+                                checkable: true
+                                checked: Localization.language === modelData.code
+                                onTriggered: Localization.language = modelData.code
                             }
                         }
                     }
                 }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true; Layout.fillHeight: true; spacing: 1
+            Rectangle {
+            // 印相台是满宽的整窗页（§8），它的工具行就在顶栏之下——左栏只在
+            // 图库（侧栏）与冲洗/编辑（工具栏）有意义。
+            visible: !window.lighttableMode
+            Layout.preferredWidth: Theme.leftWidth; Layout.fillHeight: true; color: Theme.card
+            ColumnLayout {
+                anchors.fill: parent; spacing: 0
                 // The develop rail: 冲洗/编辑's column content, unchanged.
                 ScrollView {
                     visible: !(window.libraryMode || window.lighttableMode)
@@ -1014,10 +1033,14 @@ ApplicationWindow {
             }
         }
         Rectangle {
-            visible: !window.lighttableMode
+            // 参数·显影前 belongs to 冲洗/编辑: the library's grid uses the
+            // full width beside the sidebar (§8 — a mode press swaps the
+            // content, and the library page has no print rows to show).
+            visible: !window.libraryMode && !window.lighttableMode
             Layout.preferredWidth: Theme.rightWidth; Layout.fillHeight: true; color: Theme.card
             ColumnLayout {
-                anchors.fill: parent; spacing: 0
+                id: railColumn
+                anchors.fill: parent; anchors.rightMargin: 12; spacing: 0
                 Text { text: Localization.epoch && Localization.L("Parameters · pre-develop"); color: Theme.text; font.pixelSize: 14; font.bold: true; Layout.leftMargin: 14; Layout.preferredHeight: Theme.topHeight; verticalAlignment: Text.AlignVCenter }
                 ScrollView {
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
@@ -1388,7 +1411,7 @@ ApplicationWindow {
                             Layer2Adjustment { label: Localization.epoch && Localization.L("Saturation"); setting: "saturation"; from: -100; to: 100; step: 1; decimals: 0 }
                             ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset colour"); enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.setLayer2Zero(["temperature", "tint", "saturation"]) }
                         }
-                        Section {
+                        Section { visible: false;
                             title: Localization.epoch && Localization.L("Curve")
                             CurveEditor {}
                         }
@@ -2040,4 +2063,5 @@ ApplicationWindow {
             }
         }
     }
+}
 }

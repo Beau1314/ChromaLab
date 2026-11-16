@@ -13,7 +13,7 @@ QtObject {
     readonly property color selection: "#f1f0eb"
     readonly property color selectionText: "#252523"
     readonly property int leftWidth: 246
-    readonly property int rightWidth: 288
+    readonly property int rightWidth: 360
     readonly property int topHeight: 38
     readonly property int stripHeight: 160
 }

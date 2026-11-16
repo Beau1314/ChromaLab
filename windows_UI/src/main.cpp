@@ -458,7 +458,7 @@ int main(int argc,char** argv) {
     // SPK_SMOKE_SNAPSHOT captures one window grab beside the runner's
     // evidence. Production never reads either variable.
     const QString smokeMode=qEnvironmentVariable("SPK_SMOKE_MODE");
-    if((smokeMode=="library"||smokeMode=="lighttable") && !engine.rootObjects().isEmpty()) {
+    if((smokeMode=="library"||smokeMode=="lighttable"||smokeMode=="develop") && !engine.rootObjects().isEmpty()) {
         QObject* window=engine.rootObjects().first();
         window->setProperty("appMode",smokeMode);
         const QString snapshot=qEnvironmentVariable("SPK_SMOKE_SNAPSHOT");
