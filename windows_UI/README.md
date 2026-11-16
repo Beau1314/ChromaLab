@@ -303,3 +303,101 @@ records stay loadable. A pair whose source file has disappeared is refused
 on single export (源照片缺失，无法导出半幅对, PAIR-WIRING §6.4) instead of
 being exported from the shown piece alone; the batch path's pair refusal
 stands.
+
+## Phase 4 the library page (图库)
+
+The library page ports the Mac app's 图库 on top of spklib -- the same
+library SDK the Mac reads: the Windows helper build is upstream spklib
+0.4.0 (abi 1, schema 3; the Mac ships 0.3.1 against the same schema 3), so
+this helper opens the same SQLite `.spkcatalog` libraries the Mac app
+reads, and the wire it speaks is the SDK protocol documented in
+`API-SPEC-library-helper.md`. The data layer (`windows_UI/src/`) is four
+pieces over that wire:
+
+- **CatalogSourcesStore** -- the kept-sources registry, the Mac
+  `sources.json` key-for-key (uppercase UUIDs, second-precision ISO-8601
+  UTC, pretty+sorted+atomic writes; an unreadable file is quarantined once
+  per content as `sources.unreadable-<time>.json` instead of being silently
+  skipped). A source is a catalog or a folder of photographs; the selected
+  source falls through exactly like the Mac's `??` chain.
+- **LibraryHost** -- one helper process, 32 typed methods, single-flight;
+  the wire payloads are built by pure protocol builders (snake_case field
+  names verbatim, Omit/Null/Number tri-state), replies come back as
+  `Reply<T>` that separates a helper error from a transport failure.
+- **LibraryModel** -- the Mac `MacLibraryData` surface: sources +
+  createCatalog/selectSource/addFolder/importFiles, the collection tree
+  (the fixed rows, the user albums, and a per-folder collection with live
+  counts), ratings and color tags written in place with facet refresh,
+  kind/raw/raster/pair/movie filters, a text filter (300 ms debounce),
+  page-wise loading (1000 rows per `loadMore`), and the develop join that
+  reads the app's own per-photo EditStore records for the develop badge and
+  the 显影 film/paper names.
+- **ThumbnailStore** -- path-keyed two-tier cache (in-memory LRU bounded by
+  the Mac's 64 MB budget; one PNG per (path, maxPixel) on disk under the
+  MacLibrary `Cache/Thumbnails` layout), a truncated write is deleted and
+  decoded again.
+
+The 图库 mode UI: a mode row (图库/冲洗/编辑) heads the left column;
+冲洗/编辑 keep the existing panels and the filmstrip, 图库 swaps in the
+library sidebar and the grid. The sidebar's three tabs are 库 (source
+picker + collection tree), 过滤 (search, and the rating / color-label /
+kind facets with cross counts) and 信息 (the selected row's details); the
+bottom status line carries busy, the last error and the live import
+progress. The grid is a lazy `GridView` (112 px cells, 64-256 px in 1.25
+steps, zoom is layout only -- a cell decodes at the store's 256 px cap
+once and rescales), each cell showing the tile, the elided file name and
+the star / color / develop badges. Keyboard: 0-5 rates the whole selection,
+`-` `*` `+` set the red/yellow/green labels, arrows move the selection,
+Return opens the photo in develop, Ctrl+A selects all, Ctrl+=/− zooms.
+Ctrl+C opens the copy sheet over **SettingsClipboard**, the Mac clipboard
+port: eight offered groups (couplers and preflash have no fields in this
+host, so they are not offered -- the Mac's own rule that a checkbox you
+cannot see is a lying checkbox), and a paste writes the checked groups'
+fields only, never placement, crop, decode mode or the layer-2 switch, and
+keeps the target's own As Shot white balance.
+
+Import and decoding run on a one-thread worker pool (the worker seam): the
+import walks the existing index, dedupes, chunks `images.add` calls and
+creates one album per import, posting a progress frame per chunk that QML
+repaints mid-import; while an import runs, every other public wire call is
+refused (the pipe is single-conversation) and clicks and keys are not
+delivered. Thumbnail decodes go through the same pool, so a scroll never
+blocks the UI thread.
+
+Acceptance on the port: CTest 35/35 (30 before phase 4; new
+`spk_qt_sources_store`, `spk_qt_library_host`, `spk_qt_library_model`,
+`spk_qt_thumbnail_store`, `spk_qt_settings_clip`; check counts at the
+closeout: sources_store 147, library_host 172, library_model 342,
+thumbnail_store 68, settings_clip 41 -- the helper-gated suites run
+against the real spklib-host binary). The engine was untouched by this
+phase (all 21 changed files are under `windows_UI/`), and the closeout
+reran the phase 2/3 gates unchanged: `overscan_checks.py` 145 PASS / 0
+FAIL, byte-identical to the phase 3 log, the 45 built `.spv` files sha1-
+equal to the ASCII parity copy, `windows_features.py` success, and the
+offscreen smokes (冲洗 default, 图库 with and without the helper beside
+the app) all at zero stderr bytes.
+
+Honest boundaries. RAW thumbnails are a deterministic placeholder tile, by
+decision: the only RAW decode paths in reach do a full develop
+(`spk_image_io`'s raw entry points), exactly what a thumbnail must never
+do, so real RAW tiles arrive with real RAW usage through a future
+decode path. Library paste writes **records**: a photograph currently open
+in the editor does not see the paste until the controller re-saves it, and
+the unified browser (one model for open photographs) is recorded future
+work -- the filmstrip stays shared between 冲洗/编辑 for the same reason,
+and the right-hand parameter column still shows in 图库 mode. The
+helper's `capture_one.*` wire methods (probe/link/copy/update) are present
+in the SDK but untyped in LibraryHost and unsmoked -- there is no Capture
+One on this machine. Import progress has no cancel (the Mac's stopAsked is
+not ported), the 图库 page's import / new-folder buttons and the sidebar
+"+" menu are future work, and the date/camera/lens facet rows are cut (the
+helper's facets carry them; the UI ships the rating/color/kind contract).
+The clipboard group memory is in-process, not persisted (the persistent
+layer belongs to the settings page). The helper is a local checkout build
+of upstream spklib main (`f4aced8`, version 0.4.0) carrying five Windows
+portability deviations recorded in that checkout's `portability-notes.md`
+-- entries 4-5 landed during this phase (sync_tree's mixed-separator path
+keys; absolute locations losing the drive letter, a location cache that
+never refetched, and a rebuilt cache whose keys were not normalized) --
+and must ride along any spklib update; a second machine needs the same
+host build.
