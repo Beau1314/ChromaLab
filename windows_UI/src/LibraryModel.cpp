@@ -2,7 +2,6 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
-#include <QDeadlineTimer>
 #include <QDir>
 #include <QEventLoop>
 #include <QFileInfo>
@@ -46,6 +45,23 @@ QStringList stringListOf(const QVariantList& values) {
     out.reserve(int(values.size()));
     for (const QVariant& value : values) out << value.toString();
     return out;
+}
+
+/// The remembered clipboard group ticks — the ONE storage behind both
+/// clipboardGroups() and setClipboardGroups() (review fix: they used to hold
+/// two unrelated statics, so the setter's ticks never reached the getter or
+/// the copy). Process-wide BY DECISION: a settings-page persistence tier
+/// (and where it lives) is that page's business, and no library model may
+/// write the user's real config from a test run. UI-thread only (the
+/// property's own thread). The first read seeds "everything offered".
+QStringList& clipboardGroupStorage() {
+    static QStringList remembered;
+    static bool loaded = false;
+    if (!loaded) {
+        loaded = true;
+        remembered = clip::groupIds(clip::defaultSelection());
+    }
+    return remembered;
 }
 
 } // namespace
@@ -174,16 +190,9 @@ const QString& LibraryModel::clipboardSourceName() const {
 
 QVariantList LibraryModel::clipboardGroups() const {
     // The remembered ticks, the Mac's clipboard.groups contract — kept in
-    // the process, BY DECISION: a settings-page persistence tier (and
-    // where it lives) is that page's business, and no library model may
-    // write the user's real config from a test run. Unknown or empty
-    // ticks fall back to "everything offered".
-    static QStringList remembered;
-    static bool loaded = false;
-    if (!loaded) {
-        loaded = true;
-        remembered = clip::groupIds(clip::defaultSelection());
-    }
+    // the process, BY DECISION (see clipboardGroupStorage()). Unknown or
+    // empty ticks fall back to "everything offered".
+    const QStringList& remembered = clipboardGroupStorage();
     QVariantList out;
     for (const QString& id : remembered) out << id;
     return out;
@@ -198,14 +207,9 @@ void LibraryModel::setClipboardGroups(const QVariantList& ids) {
         const QString id = clip::groupId(group);
         if (parsed.contains(id)) kept << id;
     }
-    static QStringList* remembered = nullptr; // the process's last ticked set
-    static QStringList storage;
-    if (remembered == nullptr) {
-        storage = clip::groupIds(clip::defaultSelection());
-        remembered = &storage;
-    }
-    if (kept == *remembered) return;
-    *remembered = kept;
+    QStringList& remembered = clipboardGroupStorage();
+    if (kept == remembered) return;
+    remembered = kept;
     emit clipboardGroupsChanged();
 }
 
@@ -395,10 +399,6 @@ bool LibraryModel::pasteSettings() {
 void LibraryModel::postProgressFromWorker(const QString& phase, int done, int total) {
     QMetaObject::invokeMethod(this, [this, phase, done, total] { setProgress(phase, done, total); },
                               Qt::QueuedConnection);
-}
-
-void LibraryModel::postErrorFromWorker(const QString& message) {
-    QMetaObject::invokeMethod(this, [this, message] { setError(message); }, Qt::QueuedConnection);
 }
 
 QImage LibraryModel::getThumbnail(const QString& path, int maxPixel) {
@@ -869,8 +869,17 @@ QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& 
         result = runImport(libraryPath, items, mode, chunkSize);
         QMetaObject::invokeMethod(this, [&done] { done = true; }, Qt::QueuedConnection);
     });
-    QDeadlineTimer spin(600000); // a pathological import still ends the wait
-    while (!done && !spin.hasExpired())
+    // NO DEADLINE VALVE HERE (review fix — the 600 s valve was removed): the
+    // valve's expiry returned while the worker lambda still held &result and
+    // &done — stack locals of THIS frame — so the worker's landing wrote
+    // freed memory; importActive_ also dropped false under a still-running
+    // import, letting public wire calls interleave with the worker's helper
+    // pipe (exactly what importBlocked() refuses), and the returned map (no
+    // error key) read as a successful 0-added import. None of that is worth
+    // a deadline: every call the worker makes is itself timeout-bounded
+    // (LibraryHost's wire round trips), so the run always converges and the
+    // pump has no other exit than done.
+    while (!done)
         QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 30);
     importActive_ = false;
     const QString error = result.value(QLatin1String("error")).toString();

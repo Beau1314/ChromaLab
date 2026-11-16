@@ -1162,6 +1162,146 @@ void testClipboardWorkflow(const QString& helperPath) {
                 "the wire, refusals all held\n");
 }
 
+// The copy sheet's ticks must reach the copy (review fix — clipboardGroups()
+// and setClipboardGroups() used to hold two unrelated statics, so the
+// setter's ticks never reached the getter, the memory or the copy): a
+// SUBSET of the offered groups ticked on one model is remembered (read
+// back exactly, and read by a fresh model of the same process) and is
+// exactly the copied clip's groups. copySettings() exposes its groups only
+// through the clip's appliedTo (pasteSettings), so the pin is behavioral:
+// the three ticked groups' fields take the source's values while every
+// unticked group's field provably stays the target's own.
+void testClipboardSubsetTicks(const QString& helperPath) {
+    QTemporaryDir root;
+    check(root.isValid(), "the subset-tick workflow's temp root is valid");
+    const auto store = root.filePath(QStringLiteral("store"));
+    const auto edits = root.filePath(QStringLiteral("edits"));
+    const auto photos = root.filePath(QStringLiteral("photos"));
+    check(QDir().mkpath(photos), "the photos folder is made");
+    const QByteArray png = onePixelPng();
+    for (int i = 0; i < 2; ++i)
+        writeFile(QDir(photos).filePath(QStringLiteral("tick-%1.png").arg(i, 2, 10, QChar('0'))),
+                  png);
+
+    const spk::desktop::Catalog catalog{
+        {{"test_film_a", "Test Film A", false}, {"test_film_b", "Test Film B", true}},
+        {{"test_paper_a", "Test Paper A", false}, {"test_paper_b", "Test Paper B", false}}};
+    model::LibraryModel::Deps deps;
+    deps.helper.helperPath = helperPath;
+    deps.helper.storePath = store;
+    deps.registryPath = root.filePath(QStringLiteral("sources.json"));
+    deps.editDirectory = edits;
+    deps.thumbnailDirectory = root.filePath(QStringLiteral("thumbs"));
+    deps.catalog = [&catalog] { return &catalog; };
+    model::LibraryModel library(deps);
+    check(library.start(), (std::string("start: ") + library.lastError().toStdString()).c_str());
+    check(library.createCatalog(QStringLiteral("ticks")),
+          (std::string("createCatalog: ") + library.lastError().toStdString()).c_str());
+    QVariantList items;
+    for (int i = 0; i < 2; ++i)
+        items << QDir(photos).filePath(QStringLiteral("tick-%1.png").arg(i, 2, 10, QChar('0')));
+    check(library.importFiles(items).value(QLatin1String("added")).toInt() == 2,
+          "two photos imported for the subset-tick workflow");
+
+    // The source record carries every group's fields; the target's own
+    // record carries distinct values in every group that must NOT travel.
+    const QString pathA = QDir(photos).filePath(QStringLiteral("tick-00.png"));
+    const QString pathB = QDir(photos).filePath(QStringLiteral("tick-01.png"));
+    editing::Store records(edits);
+    editing::State from;
+    from.settings.film_stock = "test_film_b";
+    from.settings.print_stock = "test_paper_a";
+    from.settings.di_active = true;
+    from.settings.print_exposure = 1.2;
+    from.settings.y_filter_shift = 0.05;
+    from.settings.m_filter_shift = -0.02;
+    from.settings.wb_temperature_k = 6500.0; // non-As Shot: decode would write if ticked
+    from.settings.wb_tint = 10.0;
+    from.settings.film_exposure_ev = 0.3;
+    from.settings.film_format_mm = 56.0;
+    from.settings.grain_amount = 1.4;
+    from.layer2.temperature = 0.4;
+    from.layer2.tint = 0.2;
+    from.layer2.saturation = 0.15;
+    records.save(QUrl::fromLocalFile(pathA), from);
+    editing::State target;
+    target.settings.film_stock = "test_film_a";
+    target.settings.print_stock = "test_paper_b";
+    target.settings.auto_exposure = true;
+    target.settings.film_exposure_ev = 0.9;
+    target.settings.film_format_mm = 24.0;
+    target.settings.grain_amount = 0.2;
+    target.settings.halation_amount = 0.4;
+    target.settings.wb_temperature_k = 4800.0;
+    target.settings.wb_tint = -7.0;
+    target.layer2.exposure = -0.4;
+    target.layer2.curves.rgb.points = {QPointF(0, 0), QPointF(0.5, 0.2), QPointF(1, 1)};
+    records.save(QUrl::fromLocalFile(pathB), target);
+    library.refresh();
+
+    // Exactly 3 of the 8 offered groups ticked, remembered as exactly that
+    // subset, and a fresh model of the same process reads the memory too
+    // (the Mac's rememberedKey contract, review-fix tier).
+    const QVariantList subset{QStringLiteral("filmAndPaper"), QStringLiteral("enlarger"),
+                              QStringLiteral("colour")};
+    int groupSignals = 0;
+    QObject::connect(&library, &model::LibraryModel::clipboardGroupsChanged,
+                     [&groupSignals] { ++groupSignals; });
+    library.setClipboardGroups(subset);
+    check(groupSignals == 1, "a changed tick set notified clipboardGroupsChanged");
+    check(library.clipboardGroups() == subset,
+          "the ticks are remembered as exactly the ticked subset");
+    library.setClipboardGroups(subset);
+    check(groupSignals == 1, "re-ticking the same subset notifies nothing new");
+    library.setClipboardGroups(QVariantList{QStringLiteral("filmAndPaper"),
+                                            QStringLiteral("enlarger"),
+                                            QStringLiteral("colour"),
+                                            QStringLiteral("no-such-group")});
+    check(groupSignals == 1 && library.clipboardGroups() == subset,
+          "an unknown id is dropped and the memory stays the subset");
+    model::LibraryModel::Deps freshDeps = deps;
+    freshDeps.registryPath = root.filePath(QStringLiteral("fresh-sources.json"));
+    freshDeps.editDirectory = root.filePath(QStringLiteral("fresh-edits"));
+    model::LibraryModel freshModel(freshDeps);
+    check(freshModel.clipboardGroups() == subset,
+          "a fresh model of the same process reads the remembered ticks");
+
+    // The copy carries exactly the ticked subset: the three groups' fields
+    // travel, the five unticked groups' fields stay the target's own.
+    library.selectOnly(0);
+    check(library.copySettings(), (std::string("copySettings: ") +
+                                   library.lastError().toStdString()).c_str());
+    library.selectOnly(1);
+    check(library.pasteSettings(), (std::string("pasteSettings: ") +
+                                    library.lastError().toStdString()).c_str());
+    const auto reloaded = records.load(QUrl::fromLocalFile(pathB), catalog);
+    check(reloaded.state.has_value(), "the paste wrote the target a record");
+    const editing::State& b = *reloaded.state;
+    check(b.settings.film_stock == from.settings.film_stock &&
+              b.settings.print_stock == from.settings.print_stock && b.settings.di_active,
+          "the ticked filmAndPaper group traveled");
+    check(b.settings.print_exposure == from.settings.print_exposure &&
+              b.settings.y_filter_shift == from.settings.y_filter_shift &&
+              b.settings.m_filter_shift == from.settings.m_filter_shift,
+          "the ticked enlarger group traveled");
+    check(b.layer2.temperature == from.layer2.temperature &&
+              b.layer2.tint == from.layer2.tint &&
+              b.layer2.saturation == from.layer2.saturation,
+          "the ticked colour group traveled");
+    check(b.settings.auto_exposure && b.settings.film_exposure_ev == 0.9,
+          "the unticked filmExposure group stayed the target's own");
+    check(b.settings.film_format_mm == 24.0 && b.settings.grain_amount == 0.2 &&
+              b.settings.halation_amount == 0.4,
+          "the unticked format group stayed the target's own");
+    check(b.settings.wb_temperature_k == 4800.0 && b.settings.wb_tint == -7.0,
+          "the unticked decode group stayed the target's own white balance");
+    check(b.layer2.exposure == -0.4 && b.layer2.curves == target.layer2.curves,
+          "the unticked light and curve groups stayed the target's own");
+
+    std::printf("clipboard subset ticks: 3-of-8 remembered exactly (fresh model reads them), "
+                "the copy carries exactly the ticked groups, unticked fields stay all held\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1177,6 +1317,7 @@ int main(int argc, char** argv) {
             testModelWorkflow(QString::fromUtf8(argv[1]));
             testImportSyncWorkflow(QString::fromUtf8(argv[1]));
             testClipboardWorkflow(QString::fromUtf8(argv[1]));
+            testClipboardSubsetTicks(QString::fromUtf8(argv[1]));
         } else {
             std::printf("model workflow skipped: no spklib-host given "
                         "(pure tier still verified)\n");

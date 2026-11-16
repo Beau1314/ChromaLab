@@ -39,15 +39,19 @@
 //     marshalled back onto the UI thread, so the grid never blocks on a
 //     scroll.
 //   * IMPORT: the chunk loop runs on the same pool. importFiles() keeps its
-//     synchronous signature by pumping a bounded event loop
+//     synchronous signature by pumping an event loop
 //     (ExcludeUserInputEvents — clicks and keys are not delivered while the
 //     import runs) until the worker finishes, so the returned result map is
 //     complete AND importProgress is live: each chunk posts a progress
-//     frame onto the UI thread, and QML repaints it mid-import. Revising
-//     the 4.2 decision cost this one rule: while importActive_, every other
-//     public wire call is refused with lastError set ("an import is
-//     running") — the LibraryHost pipe is single-conversation and must not
-//     interleave.
+//     frame onto the UI thread, and QML repaints it mid-import. The pump
+//     has NO deadline valve, BY REVIEW: every helper call the worker makes
+//     is itself timeout-bounded, so the run always converges — and a valve
+//     that expired would return while the worker lambda still held
+//     references into the returned frame (a dangling write) with
+//     importActive_ already false under a live import. Revising the 4.2
+//     decision cost this one rule: while importActive_, every other public
+//     wire call is refused with lastError set ("an import is running") —
+//     the LibraryHost pipe is single-conversation and must not interleave.
 // The helper calls themselves stay single-flight by construction, so no
 // re-entrancy can reorder a page.
 //
@@ -444,9 +448,10 @@ private:
     /// The import's chunk loop, run on workerPool_'s thread: the duplicate
     /// plan (the caller hands the pre-validated items), the chunks through
     /// imagesAdd, the one Recent Imports album. Every observable it would
-    /// touch (progress_, lastError_) is marshalled onto the UI thread with
-    /// postProgressFromWorker/postErrorFromWorker; the returned map is the
-    /// importFiles result, posted once at the end.
+    /// touch (progress_) is marshalled onto the UI thread with
+    /// postProgressFromWorker; a failure rides the returned map's `error`
+    /// key, which importFiles surfaces through the UI thread's setError.
+    /// The returned map is the importFiles result, taken at the end.
     ///
     /// The import talks to the helper through ITS OWN LibraryHost
     /// (importHost_, created and used only on the worker thread): a QProcess
@@ -457,10 +462,10 @@ private:
     /// while the worker holds the pipe.
     QVariantMap runImport(const QString& libraryPath, QVariantList items, const QString& mode,
                           int chunkSize);
-    /// Worker-side progress/error marshals: queued onto the UI thread, the
-    /// only writer of the two properties.
+    /// Worker-side progress marshal: queued onto the UI thread, the only
+    /// writer of progress_. (The failure reason rides the returned map's
+    /// `error` key — importFiles sets lastError on the UI thread.)
     void postProgressFromWorker(const QString& phase, int done, int total);
-    void postErrorFromWorker(const QString& message);
     /// The UI-thread landing of one pool decode: fills the row's thumbnail,
     /// notifies dataChanged(ThumbnailRole), releases the pending key.
     void thumbnailDecoded(const QString& path, int maxPixel, const QImage& image);
