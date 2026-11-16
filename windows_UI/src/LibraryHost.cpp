@@ -108,8 +108,15 @@ QJsonObject imagesTrashParams(const QStringList& images, TrashFlag trashed) {
     return params;
 }
 
+/// `images.add`: an item is a path string or a {path, metadata} object
+/// (metadata exactly as the app's decoder read it); `recent_import_at` rides
+/// only when given; `recent_import` rides only as an explicit false — the
+/// helper's default is true (every add makes its Recent Imports album), and a
+/// chunked import's later chunks pass the first chunk's album as `collection`
+/// while refusing a second one (the Mac's importChunk, one import one album).
 QJsonObject imagesAddParams(const QVariantList& items, const QString& mode,
-                            const QString& collection, const QString& recentImportAt) {
+                            const QString& collection, const QString& recentImportAt,
+                            bool recentImport) {
     QJsonObject params;
     QJsonArray wireItems;
     for (const QVariant& item : items) {
@@ -120,6 +127,7 @@ QJsonObject imagesAddParams(const QVariantList& items, const QString& mode,
     params.insert(QLatin1String("mode"), mode.isEmpty() ? QLatin1String("reference") : mode);
     if (!collection.isEmpty()) params.insert(QLatin1String("collection"), collection);
     if (!recentImportAt.isEmpty()) params.insert(QLatin1String("recent_import_at"), recentImportAt);
+    if (!recentImport) params.insert(QLatin1String("recent_import"), false);
     return params;
 }
 
@@ -523,8 +531,9 @@ Reply<bool> LibraryHost::metaSet(const QString& library, const QStringList& vari
 
 Reply<AddResult> LibraryHost::imagesAdd(const QString& library, const QVariantList& items,
                                         const QString& mode, const QString& collection,
-                                        const QString& recentImportAt) {
-    QJsonObject params = protocol::imagesAddParams(items, mode, collection, recentImportAt);
+                                        const QString& recentImportAt, bool recentImport) {
+    QJsonObject params =
+        protocol::imagesAddParams(items, mode, collection, recentImportAt, recentImport);
     params.insert(QLatin1String("library"), library);
     return callTyped<AddResult>(QStringLiteral("images.add"), params, protocol::parseAddResult);
 }
@@ -643,6 +652,32 @@ Reply<bool> LibraryHost::foldersRemove(const QString& library, const QString& fo
                            [](const QJsonObject& result) {
                                return result.value(QLatin1String("removed")).toBool();
                            });
+}
+
+Reply<std::vector<QVariantMap>> LibraryHost::locationsList(const QString& library) {
+    QJsonObject params;
+    params.insert(QLatin1String("library"), library);
+    return callTyped<std::vector<QVariantMap>>(
+        QStringLiteral("locations.list"), params, [](const QJsonObject& result) {
+            std::vector<QVariantMap> rows;
+            const QJsonArray locations = result.value(QLatin1String("locations")).toArray();
+            for (const QJsonValue& entry : locations)
+                if (entry.isObject()) rows.push_back(entry.toObject().toVariantMap());
+            return rows;
+        });
+}
+
+Reply<QVariantMap> LibraryHost::relinkLocation(const QString& library, const QString& location,
+                                               const QString& path) {
+    // `path` rides as a string, or as an explicit JSON null (mark missing) —
+    // the key itself must be present either way.
+    QJsonObject params;
+    params.insert(QLatin1String("library"), library);
+    params.insert(QLatin1String("location"), location);
+    if (path.isEmpty()) params.insert(QLatin1String("path"), QJsonValue::Null);
+    else params.insert(QLatin1String("path"), path);
+    return callTyped<QVariantMap>(QStringLiteral("location.relink"), params,
+                                  [](const QJsonObject& result) { return result.toVariantMap(); });
 }
 
 Reply<QVariantMap> LibraryHost::sessionFolders(const QString& library) {

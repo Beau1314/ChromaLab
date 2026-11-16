@@ -324,6 +324,17 @@ void testParamBuilders() {
                   .value(QLatin1String("recent_import_at"))
                   .toString() == QLatin1String("2026-11-05T04:39:00Z"),
           "an explicit import time rides as recent_import_at");
+    // recent_import rides only as an explicit false: the helper's default
+    // makes every add its own Recent Imports album, and a chunked import's
+    // later chunks must join the first chunk's album instead of making
+    // another one.
+    check(!protocol::imagesAddParams({}, QStringLiteral("reference"), {}, QString())
+                   .contains(QLatin1String("recent_import")),
+          "the default add sends no recent_import key at all");
+    check(protocol::imagesAddParams({}, QStringLiteral("reference"), {}, QString(), false)
+                  .value(QLatin1String("recent_import"))
+                  .toBool(false) == false,
+          "a later chunk's recent_import=false rides as an explicit false");
 
     const QJsonObject album = protocol::collectionCreateParams(
         QStringLiteral("album"), QStringLiteral("New Album"), QStringLiteral("P1"),

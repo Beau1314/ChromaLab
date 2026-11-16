@@ -185,9 +185,12 @@ QJsonObject imagesTrashParams(const QStringList& images, TrashFlag trashed);
 
 /// `images.add`: an item is a path string or a {path, metadata} object
 /// (metadata exactly as the app's decoder read it); `recent_import_at` rides
-/// only when given.
+/// only when given; `recent_import` rides only as an explicit false (the
+/// helper's default makes every add its own Recent Imports album; a chunked
+/// import's later chunks must not).
 QJsonObject imagesAddParams(const QVariantList& items, const QString& mode,
-                            const QString& collection, const QString& recentImportAt);
+                            const QString& collection, const QString& recentImportAt,
+                            bool recentImport = true);
 
 /// `collection.create`: parent and criteria ride only when given.
 QJsonObject collectionCreateParams(const QString& kind, const QString& name,
@@ -413,11 +416,14 @@ public:
                         const QStringList& images = {});
     /// images.add: an item is a path string or {path, metadata};
     /// `recentImportAt` (a UTC ISO 8601 stamp) backdates the import's album
-    /// — the 1.x-sidecar adoption path.
+    /// — the 1.x-sidecar adoption path; `recentImport=false` refuses the
+    /// Recent Imports album for this call (a chunked import's later chunks,
+    /// whose images ride the first chunk's album via `collection`).
     Reply<AddResult> imagesAdd(const QString& library, const QVariantList& items,
                                const QString& mode = QLatin1String("reference"),
                                const QString& collection = {},
-                               const QString& recentImportAt = {});
+                               const QString& recentImportAt = {},
+                               bool recentImport = true);
     Reply<bool> imagesTrash(const QString& library, const QStringList& images, TrashFlag trashed = {});
     Reply<RemoveResult> imagesRemove(const QString& library, const QStringList& images);
 
@@ -435,6 +441,14 @@ public:
     Reply<std::vector<QVariantMap>> foldersList(const QString& library);
     Reply<QVariantMap> foldersSync(const QString& library, const QString& folder = {});
     Reply<bool> foldersRemove(const QString& library, const QString& folder);
+
+    /// locations.list: the library's file locations with their online state —
+    /// folders with `online` / a copy's missing origin ride here.
+    Reply<std::vector<QVariantMap>> locationsList(const QString& library);
+    /// location.relink: point a location at a new path (or null to mark it
+    /// missing); a moved prefix applies to every folder under it.
+    Reply<QVariantMap> relinkLocation(const QString& library, const QString& location,
+                                      const QString& path);
 
     Reply<QVariantMap> sessionFolders(const QString& library);
     Reply<QVariantMap> sessionScan(const QString& library);

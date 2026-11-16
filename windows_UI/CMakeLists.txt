@@ -33,10 +33,12 @@ qt_add_executable(SpektraLabQt WIN32
     src/Histogram.hpp
     src/FrameCanvas.hpp src/FrameCanvas.cpp
     # The library window's data layer (task 4.2): the helper shell, the
-    # sources registry and the row/collection/facet model over them.
+    # sources registry and the row/collection/facet model over them. Task 4.3
+    # adds the import pipeline, the folder sync and the thumbnail store.
     src/LibraryHost.hpp src/LibraryHost.cpp
     src/CatalogSourcesStore.hpp src/CatalogSourcesStore.cpp
-    src/LibraryModel.hpp src/LibraryModel.cpp)
+    src/LibraryModel.hpp src/LibraryModel.cpp
+    src/ThumbnailStore.hpp src/ThumbnailStore.cpp)
 target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
 target_link_libraries(SpektraLabQt PRIVATE
     spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
@@ -134,12 +136,22 @@ if(BUILD_TESTING)
     # spklib-host is handed over as argv[1].
     qt_add_executable(spk_qt_library_model_test tests/library_model.cpp
         src/LibraryModel.cpp src/CatalogSourcesStore.cpp src/LibraryHost.cpp
-        src/EditStore.cpp src/Layer2.cpp)
+        src/EditStore.cpp src/Layer2.cpp src/ThumbnailStore.cpp)
     target_include_directories(spk_qt_library_model_test PRIVATE src)
     target_compile_features(spk_qt_library_model_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_library_model_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_library_model COMMAND spk_qt_library_model_test
         "${SPKLIB_HOST_EXECUTABLE}")
+    # The persistent thumbnail store (task 4.3): paint-decode-persist over
+    # QtCore/QtGui — no helper process, no GPU, no engine. RAW is the
+    # documented placeholder cut (the header records the judgment); its
+    # decode paths belong to a future engine seam, not this file.
+    qt_add_executable(spk_qt_thumbnail_store_test tests/thumbnail_store.cpp
+        src/ThumbnailStore.cpp src/CatalogSourcesStore.cpp)
+    target_include_directories(spk_qt_thumbnail_store_test PRIVATE src)
+    target_compile_features(spk_qt_thumbnail_store_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_thumbnail_store_test PRIVATE Qt6::Core Qt6::Gui)
+    add_test(NAME spk_qt_thumbnail_store COMMAND spk_qt_thumbnail_store_test)
     # The Temperature/Tint math the white-balance row drives is pure engine
     # host code (engine/host/white_balance.cpp, compiled into spk_image_io
     # beside its raw_decoder caller): Robertson mapping, its inverse and the
@@ -182,7 +194,7 @@ if(BUILD_TESTING)
         endif()
         set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
             spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host
-            spk_qt_sources_store spk_qt_library_model PROPERTIES
+            spk_qt_sources_store spk_qt_library_model spk_qt_thumbnail_store PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp

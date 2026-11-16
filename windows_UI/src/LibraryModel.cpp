@@ -30,17 +30,29 @@ QVariantMap sourceRow(const CatalogSourcesStore::Source& source, const std::opti
     return map;
 }
 
+/// An item's path, whether it came as a string or as a {path, metadata} map.
+QString itemPath(const QVariant& item) {
+    if (item.typeId() == QMetaType::QString) return item.toString();
+    return item.toMap().value(QStringLiteral("path")).toString();
+}
+
 } // namespace
 
 LibraryModel::LibraryModel(Deps deps, QObject* parent)
     : QAbstractListModel(parent),
       store_(deps.registryPath),
       edit_store_(deps.editDirectory),
+      thumbnails_([&] {
+          spk::desktop::ThumbnailStore::Options options;
+          options.directory = deps.thumbnailDirectory;
+          return options;
+      }()),
       catalog_provider_(std::move(deps.catalog)) {
     storeRoot_ = deps.helper.storePath;
     if (storeRoot_.isEmpty()) storeRoot_ = CatalogSourcesStore::macLibraryRoot();
     deps.helper.storePath = storeRoot_;
     options_ = deps.helper;
+    importChunkSize_ = deps.importChunkSize > 0 ? deps.importChunkSize : 200;
     spawnHelper();
 }
 
@@ -221,6 +233,34 @@ QVariantMap LibraryModel::filterMap(const QString& text, const QVariantList& rat
     if (!colorTags.isEmpty()) filter.insert(QStringLiteral("color_tags"), colorTags);
     if (!kinds.isEmpty()) filter.insert(QStringLiteral("kinds"), kinds);
     return filter;
+}
+
+// --- the import dedupe vocabulary (see the header's IMPORT note) ---------------------
+
+QString LibraryModel::importPathKey(const QString& path) {
+    // Separators in, one spelling out; case folded where the filesystem
+    // itself is case-blind (Windows), kept where it is not.
+    QString key = QDir::fromNativeSeparators(QDir::cleanPath(path));
+#ifdef Q_OS_WIN
+    return key.toCaseFolded();
+#else
+    return key;
+#endif
+}
+
+QString LibraryModel::importNameSizeKey(const QString& fileName, qlonglong size) {
+    // The Mac's MacImportExisting.nameAndSize: one compound key, with a
+    // separator no file name can carry (precomposed canonical mapping on the
+    // Mac; QString NFC-ish comparison is close enough for a dedupe hint and
+    // the helper re-checks every survivor by exact path anyway).
+    return fileName.toCaseFolded() + QChar(u'\x1F') + QString::number(size);
+}
+
+bool LibraryModel::importDuplicate(const QString& path, const QString& fileName, qlonglong size,
+                                   const QSet<QString>& paths, const QSet<QString>& namesAndSizes) {
+    if (paths.contains(importPathKey(path))) return true;
+    if (size < 0) return false;
+    return namesAndSizes.contains(importNameSizeKey(fileName, size));
 }
 
 QString LibraryModel::stockLabel(const spk::desktop::Catalog* catalog, const std::string& id) {
@@ -415,28 +455,250 @@ bool LibraryModel::addFolder(const QString& path) {
         setError(QStringLiteral("no library is open"));
         return false;
     }
+    // folders.add IS a sync: its first walk already adds the folder's files
+    // by reference, so the grid and the facets follow like after synchronize.
     const auto added = host_.foldersAdd(library_, path, true);
     if (!added.ok) {
         setError(added.errorMessage);
         return false;
     }
-    buildTree();
+    refresh();
+    refreshWatchedFolders();
     return true;
 }
 
-bool LibraryModel::importFiles(const QVariantList& items) {
+bool LibraryModel::buildExistingIndex(QSet<QString>& paths, QSet<QString>& namesAndSizes) {
+    // The Mac's existingFiles(in:): every file the library holds, trashed
+    // included (the helper's own duplicate check counts a trashed file as
+    // there), full rows for file_size, paged.
+    int offset = 0;
+    for (;;) {
+        QVariantMap query;
+        query.insert(QStringLiteral("full"), true);
+        query.insert(QStringLiteral("include_trashed"), true);
+        query.insert(QStringLiteral("sort"), QStringLiteral("added"));
+        query.insert(QStringLiteral("limit"), 5000);
+        query.insert(QStringLiteral("offset"), offset);
+        const auto page = host_.imagesList(library_, query);
+        if (!page.ok) {
+            setError(page.errorMessage);
+            return false;
+        }
+        for (const auto& image : page.value.images) {
+            paths.insert(importPathKey(image.path()));
+            const QVariant size = image.map.value(QLatin1String("file_size"));
+            if (size.isValid()) {
+                bool ok = false;
+                const qlonglong bytes = size.toLongLong(&ok);
+                if (ok && bytes >= 0)
+                    namesAndSizes.insert(importNameSizeKey(image.fileName(), bytes));
+            }
+        }
+        if (page.value.images.empty()) break;
+        offset += int(page.value.images.size());
+        if (page.value.total >= 0 && offset >= page.value.total) break;
+    }
+    return true;
+}
+
+void LibraryModel::setProgress(const QString& phase, int done, int total) {
+    QVariantMap frame;
+    frame.insert(QStringLiteral("phase"), phase);
+    frame.insert(QStringLiteral("done"), done);
+    frame.insert(QStringLiteral("total"), total);
+    if (progress_ == frame) return;
+    progress_ = frame;
+    emit progressChanged();
+}
+
+QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& mode) {
+    const BusyGuard guard(this);
+    QVariantMap out;
+    out.insert(QStringLiteral("added"), 0);
+    out.insert(QStringLiteral("existing"), 0);
+    out.insert(QStringLiteral("duplicates"), 0);
+    out.insert(QStringLiteral("failed"), 0);
+    out.insert(QStringLiteral("chunks"), 0);
+    if (library_.isEmpty()) {
+        setError(QStringLiteral("no library is open"));
+        out.insert(QStringLiteral("error"), lastError_);
+        return out;
+    }
+    // 1. Duplicate exclusion, before anything is sent (the Mac's Exclude
+    //    Duplicates): an exact path the library holds, or the same name and
+    //    size at any path.
+    QSet<QString> knownPaths;
+    QSet<QString> knownNameSizes;
+    if (!buildExistingIndex(knownPaths, knownNameSizes)) {
+        out.insert(QStringLiteral("error"), lastError_);
+        return out;
+    }
+    QVariantList planned;
+    int duplicates = 0;
+    for (const QVariant& item : items) {
+        const QString path = itemPath(item);
+        if (path.isEmpty()) continue;
+        const QFileInfo info(path);
+        if (importDuplicate(path, info.fileName(), info.size(), knownPaths, knownNameSizes)) {
+            ++duplicates;
+            continue;
+        }
+        planned << item;
+    }
+    out.insert(QStringLiteral("duplicates"), duplicates);
+    if (planned.isEmpty()) return out; // an honest no-op: nothing added, no chunk, no album
+
+    // 2. The run, in chunks (the Mac MacImportSession::run): the first chunk
+    //    that adds anything makes the import's one Recent Imports album; the
+    //    others go INTO it (`collection`) with recent_import false.
+    const QString effectiveMode = mode.isEmpty() ? QStringLiteral("reference") : mode;
+    const int total = int(planned.size());
+    QString album;
+    int done = 0;
+    int added = 0;
+    int existing = 0;
+    int failed = 0;
+    int chunks = 0;
+    setProgress(QStringLiteral("adding"), 0, total);
+    for (int start = 0; start < total; start += importChunkSize_) {
+        QVariantList chunk;
+        chunk.reserve(importChunkSize_);
+        for (int i = start; i < qMin(start + importChunkSize_, total); ++i) chunk << planned.at(i);
+        const auto result =
+            host_.imagesAdd(library_, chunk, effectiveMode, album,
+                            /*recentImportAt*/ QString(),
+                            /*recentImport*/ album.isEmpty());
+        if (!result.ok) {
+            setError(result.errorMessage);
+            out.insert(QStringLiteral("error"), result.errorMessage);
+            out.insert(QStringLiteral("added"), added);
+            out.insert(QStringLiteral("existing"), existing);
+            out.insert(QStringLiteral("failed"), failed);
+            out.insert(QStringLiteral("chunks"), chunks);
+            out.insert(QStringLiteral("album"), album);
+            return out;
+        }
+        ++chunks;
+        added += result.value.added > 0 ? result.value.added : 0;
+        for (const auto& row : result.value.rows) {
+            if (!row.error.isEmpty()) ++failed;
+            if (row.existing) ++existing;
+        }
+        if (album.isEmpty()) album = result.value.recentImport;
+        done += int(chunk.size());
+        setProgress(QStringLiteral("adding"), done, total);
+    }
+    setProgress(QStringLiteral("finishing"), done, total);
+    // 3. The grid follows the import (the Mac's showImport re-lists too).
+    refresh();
+    out.insert(QStringLiteral("added"), added);
+    out.insert(QStringLiteral("existing"), existing);
+    out.insert(QStringLiteral("failed"), failed);
+    out.insert(QStringLiteral("chunks"), chunks);
+    out.insert(QStringLiteral("album"), album);
+    return out;
+}
+
+QVariantMap LibraryModel::synchronize() {
+    const BusyGuard guard(this);
+    QVariantMap out;
+    if (library_.isEmpty()) {
+        setError(QStringLiteral("no library is open"));
+        out.insert(QStringLiteral("error"), lastError_);
+        return out;
+    }
+    // The classification is the helper's (folders.sync): new files added by
+    // reference, a move (same name and size as exactly one file that went)
+    // keeps its row, gone files hidden with their rows kept, a folder that is
+    // not there offline and untouched.
+    const auto report = host_.foldersSync(library_);
+    if (!report.ok) {
+        setError(report.errorMessage);
+        out.insert(QStringLiteral("error"), report.errorMessage);
+        return out;
+    }
+    out.insert(QStringLiteral("added"), report.value.value(QLatin1String("added")).toInt());
+    out.insert(QStringLiteral("moved"), report.value.value(QLatin1String("moved")).toInt());
+    out.insert(QStringLiteral("removed"), report.value.value(QLatin1String("removed")).toInt());
+    out.insert(QStringLiteral("restored"), report.value.value(QLatin1String("restored")).toInt());
+    bool offline = false;
+    const auto folders = report.value.value(QLatin1String("folders")).toList();
+    for (const QVariant& folder : folders)
+        if (folder.toMap().value(QLatin1String("offline")).toBool()) offline = true;
+    const auto session = report.value.value(QLatin1String("session"));
+    if (session.isValid() && session.toMap().value(QLatin1String("offline")).toBool()) offline = true;
+    out.insert(QStringLiteral("offline"), offline);
+    refresh();
+    refreshWatchedFolders();
+    return out;
+}
+
+bool LibraryModel::stopWatching(const QString& folder) {
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
         setError(QStringLiteral("no library is open"));
         return false;
     }
-    const auto added = host_.imagesAdd(library_, items);
-    if (!added.ok) {
-        setError(added.errorMessage);
+    // The uuid goes on the wire; a path is accepted because that is what a
+    // user means — resolve it through the watched list.
+    QString id = folder;
+    if (id.size() != 36) {
+        const auto watched = host_.foldersList(library_);
+        if (watched.ok) {
+            const QString wanted = QDir::fromNativeSeparators(QDir::cleanPath(folder));
+            for (const auto& row : watched.value) {
+                if (QDir::fromNativeSeparators(
+                        QDir::cleanPath(row.value(QLatin1String("path")).toString()))
+                        .compare(wanted, Qt::CaseInsensitive) == 0) {
+                    id = row.value(QLatin1String("folder")).toString();
+                    break;
+                }
+            }
+        }
+    }
+    const auto removed = host_.foldersRemove(library_, id);
+    if (!removed.ok) {
+        setError(removed.errorMessage);
         return false;
     }
-    refresh();
+    // Its images stay: a re-list, not a removal.
+    buildTree();
+    refreshWatchedFolders();
     return true;
+}
+
+QImage LibraryModel::getThumbnail(const QString& path, int maxPixel) {
+    if (path.isEmpty()) return {};
+    const QImage image = thumbnails_.get(path, maxPixel);
+    for (std::size_t i = 0; i < rows_.size(); ++i) {
+        if (rows_[i].row.path() != path) continue;
+        if (rows_[i].thumbnail.size() == image.size() && !image.isNull() &&
+            rows_[i].thumbnail.cacheKey() == image.cacheKey())
+            continue;
+        rows_[i].thumbnail = image;
+        const QModelIndex changed = createIndex(int(i), 0);
+        emit dataChanged(changed, changed, {ThumbnailRole});
+        break;
+    }
+    return image;
+}
+
+void LibraryModel::refreshWatchedFolders() {
+    watchedFolders_.clear();
+    if (!library_.isEmpty()) {
+        const auto watched = host_.foldersList(library_);
+        if (!watched.ok) {
+            setError(watched.errorMessage);
+        } else {
+            for (const auto& row : watched.value) {
+                QVariantMap map = row;
+                // The tree's id for this folder is its uuid.
+                map.insert(QStringLiteral("id"), row.value(QLatin1String("folder")).toString());
+                watchedFolders_ << map;
+            }
+        }
+    }
+    emit watchedFoldersChanged();
 }
 
 // --- collections -------------------------------------------------------------------------

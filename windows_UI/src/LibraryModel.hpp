@@ -3,9 +3,11 @@
 #include "CatalogSourcesStore.hpp"
 #include "EditStore.hpp"
 #include "LibraryHost.hpp"
+#include "ThumbnailStore.hpp"
 
 #include <QAbstractListModel>
 #include <QImage>
+#include <QSet>
 #include <QString>
 #include <QUrl>
 #include <QVariantList>
@@ -68,9 +70,32 @@
 //
 // Rows carry fileName/kind/rating/colorTag/capturedLocal/exists/trashed/
 // variantCount/primaryVariant/editRevision, a develop map (film/paper names
-// + state) joined from the EditStore by path, and an empty QImage thumbnail
-// role held for task 4.3's ThumbnailStore — the grid shows placeholders
-// until that lands. `exists` rides because the base query sets check_files.
+// + state) joined from the EditStore by path, and a QImage thumbnail role the
+// grid asks for per row through getThumbnail() (task 4.4's delegates decide
+// when; the store caches, so an ask is cheap and repeatable). `exists` rides
+// because the base query sets check_files.
+//
+// IMPORT (task 4.3), the Mac MacImportSession's run over this model's wire:
+// importFiles(items) excludes duplicates first (the Mac's Exclude Duplicates:
+// an exact path the library already holds, or the same file name and size at
+// any path — the same photograph twice never enters twice), then sends the
+// rest in chunks of Deps::importChunkSize (200 in production, the Mac's
+// chunkSize). The helper's images.add makes the import's one Recent Imports
+// album on the first chunk that adds anything; later chunks ride INTO that
+// album (`collection`) with `recent_import: false`, so one import is one
+// album however many chunks it takes. The result map carries {added, existing,
+// duplicates, failed, chunks, album, error}; importProgress carries
+// {phase, done, total} as it runs.
+//
+// FOLDER SYNC (task 4.3), MAC-LIBRARY-DATA §1's kept-in-step contract, whose
+// classification the helper's folders.sync owns: a NEW file is added by
+// reference; a MOVED file (a new file whose name and size match exactly one
+// file that went) keeps its row — rating, colour tag, albums and edit ride
+// with it; a GONE file is hidden, its row kept until the file comes back;
+// a folder that is NOT THERE (a disk away) is offline and nothing in it
+// changes. synchronize() runs that over every watched folder and returns the
+// counts; watchedFolders lists them with their online state; stopWatching()
+// leaves the watched list without removing images.
 namespace spk::desktop::library {
 
 class LibraryModel final : public QAbstractListModel {
@@ -91,6 +116,8 @@ class LibraryModel final : public QAbstractListModel {
     Q_PROPERTY(int total READ total NOTIFY rowsChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY errorChanged)
+    Q_PROPERTY(QVariantMap importProgress READ importProgress NOTIFY progressChanged)
+    Q_PROPERTY(QVariantList watchedFolders READ watchedFolders NOTIFY watchedFoldersChanged)
 public:
     /// The engine catalog lookup (nullptr before the engine's init reply, or
     /// in tests). Everything else is an explicit path — nothing here touches
@@ -101,6 +128,9 @@ public:
                                            // storePath defaults to macLibraryRoot())
         QString registryPath;              // sources.json
         QString editDirectory;             // the per-photo edit records directory
+        QString thumbnailDirectory;        // the thumbnail cache; empty = the
+                                           // MacLibrary layout's Cache/Thumbnails
+        int importChunkSize = 200;         // files per images.add (the Mac's chunkSize)
         CatalogProvider catalog;
     };
 
@@ -145,6 +175,8 @@ public:
     int total() const { return total_; }
     bool busy() const { return busy_; }
     const QString& lastError() const { return lastError_; }
+    QVariantMap importProgress() const { return progress_; }
+    QVariantList watchedFolders() const { return watchedFolders_; }
 
     void setSort(const QString& sort);
     void setDescending(bool descending);
@@ -173,9 +205,27 @@ public:
     Q_INVOKABLE bool selectSource(const QString& id);
     /// Watch a folder on the open library (folders.add) and re-list the tree.
     Q_INVOKABLE bool addFolder(const QString& path);
-    /// images.add in reference mode, then a full re-list. Items ride through
-    /// verbatim: path strings or {path, metadata} maps.
-    Q_INVOKABLE bool importFiles(const QVariantList& items);
+    /// The import (see the header's IMPORT note): duplicate exclusion, chunks
+    /// of importChunkSize through images.add, one Recent Imports album, the
+    /// progress property along the way, then a full re-list. `items` are path
+    /// strings or {path, metadata} maps; `mode` is the helper's ("reference",
+    /// or "copy" into the library's own storage). Returns {added, existing,
+    /// duplicates, failed, chunks, album, error} — album is the Recent
+    /// Imports album's uuid when anything was added, error the failure reason.
+    Q_INVOKABLE QVariantMap importFiles(const QVariantList& items,
+                                        const QString& mode = {});
+    /// folders.sync over every watched folder, then a full re-list (see the
+    /// header's FOLDER SYNC note). Returns {added, moved, removed, restored,
+    /// offline}; offline is true when any watched folder was not there.
+    Q_INVOKABLE QVariantMap synchronize();
+    /// Stop watching a folder (its uuid, or its path as watchedFolders shows
+    /// it). Its images stay, as referenced images no sync looks after.
+    Q_INVOKABLE bool stopWatching(const QString& folder);
+    /// The row's picture for the grid, through the ThumbnailStore: decodes
+    /// (or serves from cache), fills that row's thumbnail role and notifies
+    /// dataChanged(ThumbnailRole), and returns the image. The grid calls it
+    /// per delegate; an empty result leaves the placeholder in charge.
+    Q_INVOKABLE QImage getThumbnail(const QString& path, int maxPixel = 256);
 
     // --- collections -------------------------------------------------------------------
     Q_INVOKABLE bool createAlbum(const QString& name, const QString& parent = {});
@@ -220,6 +270,17 @@ public:
                                     const spk::desktop::Catalog* catalog);
     static QString stockLabel(const spk::desktop::Catalog* catalog, const std::string& id);
 
+    // --- the import dedupe vocabulary (pure; the Mac's MacImportExisting) ---
+    /// One path's key in the import's existing index: separators normalised,
+    /// case folded on Windows (the same file said two ways is one photograph).
+    static QString importPathKey(const QString& path);
+    /// The name+size compound key: "the same photograph" by content size.
+    static QString importNameSizeKey(const QString& fileName, qlonglong size);
+    /// The Mac's MacImportExisting.holds: an exact path the library holds, or
+    /// the same name AND size at any path. An unknown size (-1) never matches.
+    static bool importDuplicate(const QString& path, const QString& fileName, qlonglong size,
+                                const QSet<QString>& paths, const QSet<QString>& namesAndSizes);
+
 signals:
     void sourcesChanged();
     void treeChanged();
@@ -227,6 +288,8 @@ signals:
     void queryChanged();
     void rowsChanged();
     void busyChanged();
+    void progressChanged();
+    void watchedFoldersChanged();
     /// lastError's own NOTIFY: fired whenever the reported reason actually
     /// changes, so QML observes error state after startup without depending
     /// on a busy transition.
@@ -238,7 +301,7 @@ private:
     struct Row {
         ImageRow row;
         QVariantMap develop;
-        QImage thumbnail; // task 4.3 fills this; empty until then
+        QImage thumbnail; // filled by getThumbnail (task 4.3), empty until asked
     };
 
     /// Scoped guard over the blocking helper round trips: the outermost
@@ -259,8 +322,15 @@ private:
     void buildTree();
     bool fetchPage(int offset, bool reset);
     void refreshFacets();
+    void refreshWatchedFolders();
     QVariantMap developFor(const ImageRow& row);
     QVariantMap listQueryFor(int offset) const;
+    /// The import's existing index: every file the library holds, trashed
+    /// ones included, as path keys and name+size keys (the Mac's
+    /// existingFiles — full rows, paged).
+    bool buildExistingIndex(QSet<QString>& paths, QSet<QString>& namesAndSizes);
+    /// The only writer of progress_; notifies progressChanged.
+    void setProgress(const QString& phase, int done, int total);
     /// The only writer of lastError_; notifies errorChanged when the reason
     /// actually changes (so re-reporting the same failure is silent).
     void setError(const QString& message);
@@ -273,6 +343,7 @@ private:
     LibraryHost::Options options_;
     CatalogSourcesStore store_;
     editing::Store edit_store_;
+    spk::desktop::ThumbnailStore thumbnails_;
     CatalogProvider catalog_provider_;
     CatalogSourcesStore::Registry registry_;
     QString library_; // the helper handle
@@ -281,6 +352,7 @@ private:
     QVariantList tree_;
     std::vector<Row> rows_;
     QVariantMap facets_;
+    QVariantList watchedFolders_;
     QString selectedCollection_;
     QString sort_ = QStringLiteral("captured");
     bool descending_ = false;
@@ -289,10 +361,12 @@ private:
     QVariantList colorTagFilter_;
     QVariantList kindFilter_;
     int pageSize_ = 1000;
+    int importChunkSize_ = 200;
     int total_ = 0;
     bool busy_ = false;
     int busyDepth_ = 0; // BusyGuard nesting depth (UI thread only)
     QString lastError_;
+    QVariantMap progress_;
 };
 
 } // namespace spk::desktop::library

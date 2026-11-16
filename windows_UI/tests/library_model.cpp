@@ -27,6 +27,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSet>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QVariantMap>
@@ -355,6 +356,7 @@ void testModelWorkflow(const QString& helperPath) {
     deps.helper.storePath = store;
     deps.registryPath = root.filePath(QString::fromUtf8("sources.json"));
     deps.editDirectory = edits;
+    deps.thumbnailDirectory = root.filePath(QString::fromUtf8("thumbs"));
     deps.catalog = [&catalog] { return &catalog; };
     model::LibraryModel library(deps);
 
@@ -407,9 +409,12 @@ void testModelWorkflow(const QString& helperPath) {
                           i % 2 == 0 ? QLatin1String("2024-03-08T10:00:00")
                                      : QLatin1String("2025-01-02T09:30:00")}}}};
     }
-    const bool imported = library.importFiles(items);
-    check(imported, (std::string("importFiles: ") +
-                     library.lastError().toStdString()).c_str());
+    const auto imported = library.importFiles(items);
+    check(imported.value(QLatin1String("error")).toString().isEmpty(),
+          (std::string("importFiles: ") +
+           library.lastError().toStdString()).c_str());
+    check(imported.value(QLatin1String("added")).toInt() == 30,
+          "the import result counts thirty added");
     check(library.total() == 30 && library.rowCount() == 30,
           "thirty imports list as thirty rows");
     check(uuidOf(library, 0).size() == 36, "rows carry helper image uuids");
@@ -424,7 +429,30 @@ void testModelWorkflow(const QString& helperPath) {
     const auto exists = cell(library, 0, model::LibraryModel::ExistsRole);
     check(exists.isValid() && exists.toBool(), "rows carry check_files' exists");
     check(cell(library, 0, model::LibraryModel::ThumbnailRole).value<QImage>().isNull(),
-          "the thumbnail role is present for task 4.3 and empty for now");
+          "the thumbnail role starts empty — the grid asks per row (task 4.4)");
+    // The row thumbnail wiring: getThumbnail decodes through the store, fills
+    // the row's thumbnail role (dataChanged on ThumbnailRole) and repeats
+    // cheaply from the cache.
+    const auto rowPath = pathOf(library, 0);
+    int thumbnailUpdates = 0;
+    QObject::connect(&library, &QAbstractItemModel::dataChanged,
+                     [&thumbnailUpdates](const QModelIndex&, const QModelIndex&,
+                                         const QList<int>& roles) {
+                         if (roles.contains(model::LibraryModel::ThumbnailRole))
+                             ++thumbnailUpdates;
+                     });
+    const auto thumb = library.getThumbnail(rowPath, 32);
+    check(!thumb.isNull(), "getThumbnail decodes the row's PNG through the store");
+    check(cell(library, 0, model::LibraryModel::ThumbnailRole).value<QImage>().size() ==
+              thumb.size(),
+          "the row's thumbnail role carries the decoded picture");
+    check(thumbnailUpdates == 1, "the filled thumbnail notified dataChanged(ThumbnailRole) once");
+    const auto thumbAgain = library.getThumbnail(rowPath, 32);
+    check(!thumbAgain.isNull() && thumbAgain.size() == thumb.size(),
+          "a repeat getThumbnail serves the cache");
+    check(cell(library, 0, model::LibraryModel::ThumbnailRole).value<QImage>().size() ==
+              thumb.size(),
+          "the row still carries the thumbnail after the cached call");
 
     const auto facets = library.facets();
     check(facets.value(QLatin1String("total")).toInt() == 30, "facets carry the total");
@@ -637,6 +665,290 @@ void testModelWorkflow(const QString& helperPath) {
                 "filters, EditStore join, album, folder, openInDevelop, source switch all held\n");
 }
 
+// --- the import dedupe vocabulary (pure, hostless) ---------------------------------
+
+void testImportDedupeKeys() {
+    // Paths: same file said three ways collapses onto one key (case and
+    // separators are the same path on Windows; the helper's lookup compares
+    // in Unicode normalisation, the app's index in the OS's own fold).
+    const auto a = model::LibraryModel::importPathKey(QStringLiteral("D:/Photos/a.png"));
+    check(a == model::LibraryModel::importPathKey(QStringLiteral("D:\\Photos\\a.png")),
+          "separator spelling does not change a path key");
+    check(a == model::LibraryModel::importPathKey(QStringLiteral("d:/photos/A.PNG")),
+          "Windows path comparison folds case");
+    check(a != model::LibraryModel::importPathKey(QStringLiteral("D:/Photos/b.png")),
+          "different files keep different keys");
+    // Name+size: the Mac's MacImportExisting.nameAndSize — one compound key.
+    check(model::LibraryModel::importNameSizeKey(QStringLiteral("a.png"), 123) ==
+              model::LibraryModel::importNameSizeKey(QStringLiteral("a.png"), 123),
+          "name+size keys are stable");
+    check(model::LibraryModel::importNameSizeKey(QStringLiteral("a.png"), 123) !=
+              model::LibraryModel::importNameSizeKey(QStringLiteral("a.png"), 124),
+          "a size difference is a different photograph");
+    check(model::LibraryModel::importNameSizeKey(QStringLiteral("a.png"), 123) !=
+              model::LibraryModel::importNameSizeKey(QStringLiteral("b.png"), 123),
+          "a name difference is a different photograph");
+    // holds(): exact path OR name+size — the Mac's MacImportExisting.holds.
+    QSet<QString> paths{model::LibraryModel::importPathKey(QStringLiteral("D:/Photos/a.png"))};
+    QSet<QString> nameSizes{model::LibraryModel::importNameSizeKey(QStringLiteral("a.png"), 123)};
+    check(model::LibraryModel::importDuplicate(
+              QStringLiteral("D:/photos/../Photos/a.png"), QStringLiteral("a.png"), 123, paths,
+              nameSizes),
+          "an exact path (said differently) is a duplicate");
+    check(model::LibraryModel::importDuplicate(
+              QStringLiteral("D:/Elsewhere/a.png"), QStringLiteral("a.png"), 123, paths, nameSizes),
+          "the same name and size at a new path is a duplicate");
+    check(model::LibraryModel::importDuplicate(
+              QStringLiteral("D:/Elsewhere/a.png"), QStringLiteral("a.png"), 124, paths, nameSizes) ==
+              false,
+          "the same name at a different size is not");
+    check(model::LibraryModel::importDuplicate(
+              QStringLiteral("D:/Elsewhere/b.png"), QStringLiteral("b.png"), 123, paths,
+              nameSizes) == false,
+          "a different name at the same size is not");
+    check(model::LibraryModel::importDuplicate(QStringLiteral("D:/Elsewhere/b.png"),
+                                               QStringLiteral("b.png"), -1, {}, {}) == false,
+          "no index at all: nothing is a duplicate");
+}
+
+// --- the chunked import and the folder sync (real tier) ------------------------------
+//
+// One fresh catalog with its own model (importChunkSize 3 so chunking is
+// observable without 200 fixtures), then:
+//   import — 10 PNGs in 4 chunks, one Recent Imports album, progress property;
+//   dedupe — the same ten again (path), one same-name-same-size copy (name+size);
+//   sync   — a watched folder: new / move-keeps-rating / gone-hides / the
+//            folder gone is offline and untouched / back is restored.
+void testImportSyncWorkflow(const QString& helperPath) {
+    QTemporaryDir root;
+    check(root.isValid(), "temporary root unavailable");
+    const auto store = root.filePath(QStringLiteral("library-store"));
+    const auto photos = root.filePath(QStringLiteral("photos"));
+    const auto watch = root.filePath(QStringLiteral("watch"));
+    const auto edits = root.filePath(QString::fromUtf8("edits"));
+    check(QDir().mkpath(photos), "the photos folder is made");
+    const QByteArray png = onePixelPng();
+
+    const spk::desktop::Catalog catalog{{}, {}};
+    model::LibraryModel::Deps deps;
+    deps.helper.helperPath = helperPath;
+    deps.helper.storePath = store;
+    deps.registryPath = root.filePath(QString::fromUtf8("sources.json"));
+    deps.editDirectory = edits;
+    deps.thumbnailDirectory = root.filePath(QString::fromUtf8("thumbs"));
+    deps.importChunkSize = 3; // observable chunking
+    deps.catalog = [&catalog] { return &catalog; };
+    model::LibraryModel library(deps);
+    check(library.start(), (std::string("start: ") + library.lastError().toStdString()).c_str());
+    check(library.createCatalog(QStringLiteral("import-sync")),
+          (std::string("createCatalog: ") + library.lastError().toStdString()).c_str());
+
+    // --- the chunked import ---------------------------------------------------
+    QVariantList items;
+    for (int i = 0; i < 10; ++i) {
+        const auto name = QStringLiteral("photo-%1.png").arg(i, 2, 10, QChar('0'));
+        writeFile(QDir(photos).filePath(name), png);
+        items << QDir(photos).filePath(name); // plain path strings, as a drop gives them
+    }
+    int progressFrames = 0;
+    QObject::connect(&library, &model::LibraryModel::progressChanged,
+                     [&progressFrames] { ++progressFrames; });
+    const auto result = library.importFiles(items);
+    check(result.value(QLatin1String("error")).toString().isEmpty(),
+          (std::string("importFiles: ") + library.lastError().toStdString()).c_str());
+    check(result.value(QLatin1String("added")).toInt() == 10, "ten files added");
+    check(result.value(QLatin1String("duplicates")).toInt() == 0, "nothing excluded first time");
+    check(result.value(QLatin1String("chunks")).toInt() == 4,
+          "ten files at chunk size 3 rode in four chunks");
+    const auto album = result.value(QLatin1String("album")).toString();
+    check(album.size() == 36, "the import's Recent Imports album uuid came back");
+    const auto progress = library.importProgress();
+    check(progress.value(QLatin1String("phase")).toString() == QLatin1String("finishing") &&
+              progress.value(QLatin1String("done")).toInt() == 10 &&
+              progress.value(QLatin1String("total")).toInt() == 10,
+          "the progress property ended at done==total, phase finishing");
+    check(progressFrames >= 1, "the progress property notified");
+    check(library.total() == 10, "the grid lists the ten imports");
+    // Exactly ONE album under Recent Imports: the later chunks joined the
+    // first chunk's album, they did not each make their own.
+    int albums = 0;
+    for (const auto& value : library.collectionsTree())
+        if (value.toMap().value(QLatin1String("kind")).toString() == QLatin1String("album"))
+            ++albums;
+    check(albums == 1, "four chunks made one album, not four");
+    check(library.addToCollection(album, QStringList{uuidOf(library, 0)}), "the album takes images");
+    check(library.selectSource(library.selectedSourceId()), "the source stays selected");
+
+    // --- the dedupe (path, then name+size) --------------------------------------
+    const auto again = library.importFiles(items);
+    check(again.value(QLatin1String("error")).toString().isEmpty(), "the re-import ran");
+    check(again.value(QLatin1String("added")).toInt() == 0 &&
+              again.value(QLatin1String("duplicates")).toInt() == 10 &&
+              again.value(QLatin1String("chunks")).toInt() == 0 &&
+              again.value(QLatin1String("album")).toString().isEmpty(),
+          "the same ten paths are all duplicates: nothing added, no chunk, no album");
+    check(library.total() == 10, "the grid did not grow");
+    // A copy under a new path with the same name and size is a duplicate too
+    // (the Mac's Exclude Duplicates), so a re-imported card never doubles.
+    const auto sub = root.filePath(QStringLiteral("card-copy"));
+    check(QDir().mkpath(sub), "the copy folder is made");
+    const auto sameBytes = QDir(sub).filePath(QStringLiteral("photo-00.png"));
+    writeFile(sameBytes, png); // same content, same size, different path
+    const auto third = library.importFiles(QVariantList{sameBytes});
+    check(third.value(QLatin1String("duplicates")).toInt() == 1 &&
+              third.value(QLatin1String("added")).toInt() == 0,
+          "a same-name-same-size copy at a new path is a duplicate");
+    albums = 0;
+    for (const auto& value : library.collectionsTree())
+        if (value.toMap().value(QLatin1String("kind")).toString() == QLatin1String("album"))
+            ++albums;
+    check(albums == 1, "a fully-duplicated import made no new album");
+    // An import with nothing to add still returns honestly.
+    const auto empty = library.importFiles({});
+    check(empty.value(QLatin1String("added")).toInt() == 0 &&
+              empty.value(QLatin1String("error")).toString().isEmpty(),
+          "an empty import list is an honest no-op");
+
+    // --- the watched folder and its sync ----------------------------------------
+    check(QDir().mkpath(watch), "the watched folder is made");
+    const auto watchA = QDir(watch).filePath(QStringLiteral("watch-a.png"));
+    const auto watchB = QDir(watch).filePath(QStringLiteral("watch-b.png"));
+    const auto watchC = QDir(watch).filePath(QStringLiteral("watch-c.png"));
+    writeFile(watchA, png);
+    writeFile(watchB, png);
+    writeFile(watchC, png);
+    check(library.addFolder(watch), (std::string("addFolder: ") +
+                                     library.lastError().toStdString()).c_str());
+    check(library.total() == 13, "the folder's three files joined by reference on add");
+    const auto watched = library.watchedFolders();
+    check(watched.size() == 1, "the watched folder is listed once");
+    const auto watchedRow = watched.front().toMap();
+    // The helper spells paths natively (std::filesystem's backslashes on
+    // Windows); the comparison normalizes both sides.
+    check(QDir::fromNativeSeparators(
+              watchedRow.value(QLatin1String("path")).toString()) ==
+              QDir::cleanPath(watch) &&
+              watchedRow.value(QLatin1String("id")).toString().size() == 36 &&
+              watchedRow.value(QLatin1String("online")).toBool(),
+          "the watched folder row carries its path, id and online state");
+    // A five-star rating on one watched row: the move below must keep it.
+    QString ratedUuid;
+    for (int i = 0; i < library.rowCount(); ++i)
+        if (QDir::fromNativeSeparators(pathOf(library, i)) == QDir::cleanPath(watchA))
+            ratedUuid = uuidOf(library, i);
+    check(!ratedUuid.isEmpty(), "the watched row to rate was found");
+    check(library.setRating(ratedUuid, 5), "the watched row was rated");
+
+    // A NEW file: added by reference, counted.
+    const auto watchNew = QDir(watch).filePath(QStringLiteral("watch-new.png"));
+    writeFile(watchNew, png);
+    auto report = library.synchronize();
+    check(report.value(QLatin1String("error")).toString().isEmpty(),
+          (std::string("synchronize: ") + library.lastError().toStdString()).c_str());
+    check(report.value(QLatin1String("added")).toInt() == 1 &&
+              report.value(QLatin1String("moved")).toInt() == 0 &&
+              report.value(QLatin1String("removed")).toInt() == 0 &&
+              report.value(QLatin1String("restored")).toInt() == 0 &&
+              !report.value(QLatin1String("offline")).toBool(),
+          "the sync counted one new file and nothing else");
+    check(library.total() == 14, "the grid shows the new file");
+
+    // A MOVE: watch-a to a subfolder, same name, same size — exactly one
+    // candidate that went. The row follows: the five-star rating stays.
+    const auto movedDir = QDir(watch).filePath(QStringLiteral("moved"));
+    check(QDir().mkpath(movedDir), "the move destination folder is made");
+    const auto watchMoved = QDir(movedDir).filePath(QStringLiteral("watch-a.png"));
+    check(QFile::rename(watchA, watchMoved), "the fixture file was moved");
+    report = library.synchronize();
+    check(report.value(QLatin1String("moved")).toInt() == 1 &&
+              report.value(QLatin1String("added")).toInt() == 0 &&
+              report.value(QLatin1String("removed")).toInt() == 0,
+          "the sync classified the rename as a move");
+    check(library.total() == 14, "a move does not change the grid's size");
+    QString movedUuid;
+    for (int i = 0; i < library.rowCount(); ++i)
+        if (QDir::fromNativeSeparators(pathOf(library, i)) == QDir::cleanPath(watchMoved))
+            movedUuid = uuidOf(library, i);
+    check(!movedUuid.isEmpty(), "the moved file's row is listed at its new path");
+    check(movedUuid == ratedUuid, "the move kept the row (same uuid)");
+    int ratedSeen = 0;
+    for (int i = 0; i < library.rowCount(); ++i) {
+        const auto map = library.index(i, 0).data(model::LibraryModel::UuidRole);
+        if (map.toString() == ratedUuid &&
+            cell(library, i, model::LibraryModel::RatingRole).toInt() == 5)
+            ++ratedSeen;
+    }
+    check(ratedSeen == 1, "the moved row kept its five-star rating");
+
+    // GONE: a deleted file is hidden, not forgotten.
+    check(QFile::remove(watchB), "the fixture file was deleted");
+    report = library.synchronize();
+    check(report.value(QLatin1String("removed")).toInt() == 1 &&
+              report.value(QLatin1String("added")).toInt() == 0,
+          "the sync classified the deletion as gone");
+    check(library.total() == 13, "the gone file's row is hidden from the grid");
+    // The row is kept: the file back again brings the row back (restored).
+    writeFile(watchB, png);
+    report = library.synchronize();
+    check(report.value(QLatin1String("restored")).toInt() == 1,
+          "the sync restored the row when the file came back");
+    check(library.total() == 14, "the restored row is listed again");
+    ratedSeen = 0;
+    for (int i = 0; i < library.rowCount(); ++i)
+        if (uuidOf(library, i) == ratedUuid &&
+            cell(library, i, model::LibraryModel::RatingRole).toInt() == 5)
+            ++ratedSeen;
+    check(ratedSeen == 1, "the rated row survived the gone-and-back round trip");
+
+    // OFFLINE: a folder that is not there is a disk away, never a deletion.
+    check(QDir(watch).removeRecursively(), "the watched folder was removed");
+    report = library.synchronize();
+    check(report.value(QLatin1String("offline")).toBool(),
+          "the sync reports the offline folder");
+    check(report.value(QLatin1String("removed")).toInt() == 0 &&
+              report.value(QLatin1String("added")).toInt() == 0 &&
+              report.value(QLatin1String("moved")).toInt() == 0,
+          "nothing in an offline folder is marked");
+    check(library.total() == 14, "the offline folder's rows stay listed");
+    check(!library.watchedFolders().front().toMap().value(QLatin1String("online")).toBool(),
+          "the watched folder row reads offline");
+    // The disk comes back: everything is restored.
+    check(QDir().mkpath(movedDir), "the watched folder is made again");
+    writeFile(watchMoved, png);
+    writeFile(watchB, png);
+    writeFile(watchC, png);
+    writeFile(watchNew, png);
+    report = library.synchronize();
+    // Nothing was marked while the folder was away (the offline contract),
+    // so the returning disk restores nothing — it re-sees four unchanged
+    // files and the grid never blinked.
+    check(!report.value(QLatin1String("offline")).toBool() &&
+              report.value(QLatin1String("restored")).toInt() == 0 &&
+              report.value(QLatin1String("added")).toInt() == 0 &&
+              report.value(QLatin1String("removed")).toInt() == 0 &&
+              report.value(QLatin1String("moved")).toInt() == 0,
+          "the coming disk re-sees all four files and marks nothing");
+    check(library.total() == 14, "the grid is whole again after the disk came back");
+    check(library.watchedFolders().front().toMap().value(QLatin1String("online")).toBool(),
+          "the watched folder row reads online again");
+
+    // stopWatching: the folder leaves the watched list, its images stay.
+    const auto folderId = library.watchedFolders().front().toMap()
+                              .value(QLatin1String("id"))
+                              .toString();
+    check(library.stopWatching(folderId), (std::string("stopWatching: ") +
+                                           library.lastError().toStdString()).c_str());
+    check(library.watchedFolders().isEmpty(), "the watched list is empty after stopWatching");
+    check(library.total() == 14, "stopWatching removed no images");
+    check(!library.stopWatching(QStringLiteral("no-such-folder")),
+          "an unknown folder fails the stop");
+    check(!library.lastError().isEmpty(), "the failed stop carries its reason");
+
+    std::printf("import/sync workflow: chunked import (4 chunks, one album), dedupe (path, "
+                "name+size), progress, folder sync (new/move-keeps-rating/gone-hides/offline/"
+                "restored), stopWatching all held\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -646,9 +958,11 @@ int main(int argc, char** argv) {
         testListQuery();
         testFilterMap();
         testDevelopJoinHelpers();
+        testImportDedupeKeys();
         testNotificationsWithoutHost();
         if (argc > 1 && QFileInfo(argv[1]).isFile()) {
             testModelWorkflow(QString::fromUtf8(argv[1]));
+            testImportSyncWorkflow(QString::fromUtf8(argv[1]));
         } else {
             std::printf("model workflow skipped: no spklib-host given "
                         "(pure tier still verified)\n");
