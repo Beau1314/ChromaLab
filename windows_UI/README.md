@@ -499,3 +499,44 @@ macOS ImageIO does not treat as the Mac's HEVC-based HEIC — no Mac parity to
 test against. If HEIF lands later, it goes through the same
 `formatAvailable` gate the other formats use, so a machine that gains a
 working codec needs no further code change.
+
+## Phase 6 the light table (印相台, task 6.4)
+
+The light table is a full-window page over the develop flow's true
+millimetres. The model is a statement-for-statement port of the Mac's
+`LightTableModel.swift`: an A4/A5/A6 pad whose world is millimetres with the
+origin at the centre of the lit area, at most 99 films, zoom 1–8 that widens
+only while Actual Size needs it, 4° snapping (7° with touch, 15° with Shift),
+the viewport `s = sFit × zoom`, and a 1:1 that reads the screen's physical
+millimetres (`QScreen::physicalDotsPerInch`, the EDID-derived analogue of the
+Mac's `CGDisplayScreenSize`) with the Mac's validity guards — no physical size,
+no 1:1. `lighttable.json` beside the app's data keeps the Mac's schema-2 shape
+(`{schemaVersion, portrait, paper, places:[{frame,on,x,y,rot,z}]}`), written
+debounced and atomically, corrupt files set aside, **frame sizes never
+stored** — they are re-read from the library at every open, so a format change
+shows up. Admission follows the Mac's rule: developed frames, frames with a
+film edge on, and half-frame pairs qualify; a frame without a size record is
+never guessed onto the table. Films arrive from the grid's context menu
+(放到印相台) and the mode row's 印相台 button; the page offers tidy/random/
+scatter layouts, rotate, take-off, and hit-testing moves. Frame pixels come
+from the develop flow's own caches and the thumbnail store; the Mac's banded
+`.spkfull` ladder and the 3× loupe are not ported. With no RAW fixtures on
+this machine the model arithmetic is held by the 722-check `spk_qt_lighttable`
+suite and the page wiring is code-review evidence; real-RAW interaction runs
+land when fixtures do.
+
+## Phase 6 boundaries (closeout)
+
+- **i18n**: four languages over the Mac's catalog (1485 keys after the
+  Windows additions); the C++ status seam re-translates at the next update of
+  a status line, not live mid-sentence; `ja` has not had a native-speaker
+  pass; the derive rules cover the tags `QLocale().uiLanguages()` produces on
+  Windows and deliberately narrow on `wuu`/`cmn`/`yue-*` (documented).
+- **Colour**: the four-space export is graded in working space, transformed
+  on the full print before geometry, and ICC-tagged; acceptance is the
+  double-precision numeric gate against an independent transcription (no
+  lcms2 on Windows — the Mac validated against it at MAE 0.6 %); the default
+  sRGB export skips the CAM16 step where the Mac runs it for every space.
+- **HEIF**: deferred (see above) — the only remaining Mac-parity export gap.
+- **Light table**: no RAW-fixture interaction runs (model arithmetic pinned by
+  tests); loupe and the banded full-render ladder are future work.
