@@ -1,7 +1,10 @@
 #include "LibraryModel.hpp"
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDeadlineTimer>
 #include <QDir>
+#include <QEventLoop>
 #include <QFileInfo>
 #include <QUuid>
 
@@ -36,6 +39,15 @@ QString itemPath(const QVariant& item) {
     return item.toMap().value(QStringLiteral("path")).toString();
 }
 
+/// A QVariantList of ids as a QStringList (the clipboard group ids ride
+/// QML boundaries as variants).
+QStringList stringListOf(const QVariantList& values) {
+    QStringList out;
+    out.reserve(int(values.size()));
+    for (const QVariant& value : values) out << value.toString();
+    return out;
+}
+
 } // namespace
 
 LibraryModel::LibraryModel(Deps deps, QObject* parent)
@@ -53,10 +65,27 @@ LibraryModel::LibraryModel(Deps deps, QObject* parent)
     deps.helper.storePath = storeRoot_;
     options_ = deps.helper;
     importChunkSize_ = deps.importChunkSize > 0 ? deps.importChunkSize : 200;
+    // The worker seam (task 4.4): exactly one worker — the thumbnail store
+    // keeps its single-owner-thread contract with this thread, and the
+    // import's chunk loop serialises on it too (thumbnail decodes asked
+    // mid-import simply queue behind it).
+    workerPool_.setMaxThreadCount(1);
     spawnHelper();
 }
 
-LibraryModel::~LibraryModel() { host_.shutdown(); }
+LibraryModel::~LibraryModel() {
+    // No job may outlive the state it touches. The import host (if one was
+    // ever made) lives on the worker thread and is destroyed there: the
+    // delete rides one final job behind anything still running.
+    if (importHost_ != nullptr) {
+        workerPool_.start([this] {
+            delete importHost_;
+            importHost_ = nullptr;
+        });
+    }
+    workerPool_.waitForDone();
+    host_.shutdown();
+}
 
 // --- the busy guard (see the header's notifications note) --------------------------
 
@@ -101,6 +130,8 @@ QVariant LibraryModel::data(const QModelIndex& index, int role) const {
     case VariantCountRole: return row.row.variantCount();
     case PrimaryVariantRole: return row.row.primaryVariant();
     case EditRevisionRole: return row.row.primaryEditRevision();
+    case SelectedRole: return selected_.contains(row.row.uuid());
+    case HasThumbnailRole: return !row.thumbnail.isNull();
     default: return {};
     }
 }
@@ -114,7 +145,9 @@ QHash<int, QByteArray> LibraryModel::roleNames() const {
             {DevelopRole, "develop"},   {ThumbnailRole, "thumbnail"},
             {VariantCountRole, "variantCount"},
             {PrimaryVariantRole, "primaryVariant"},
-            {EditRevisionRole, "editRevision"}};
+            {EditRevisionRole, "editRevision"},
+            {SelectedRole, "selected"},
+            {HasThumbnailRole, "hasThumbnail"}};
 }
 
 // --- properties -------------------------------------------------------------------
@@ -128,6 +161,279 @@ QVariantMap LibraryModel::selectedSource() const {
     for (const auto& value : sources_)
         if (value.toMap().value(QStringLiteral("id")).toString() == id) return value.toMap();
     return {};
+}
+
+// --- the grid selection and the settings clipboard ----------------------------------
+
+int LibraryModel::selectedCount() const { return int(selected_.size()); }
+
+const QString& LibraryModel::clipboardSourceName() const {
+    static const QString empty;
+    return clipboard_.has_value() ? clipboard_->sourceName : empty;
+}
+
+QVariantList LibraryModel::clipboardGroups() const {
+    // The remembered ticks, the Mac's clipboard.groups contract — kept in
+    // the process, BY DECISION: a settings-page persistence tier (and
+    // where it lives) is that page's business, and no library model may
+    // write the user's real config from a test run. Unknown or empty
+    // ticks fall back to "everything offered".
+    static QStringList remembered;
+    static bool loaded = false;
+    if (!loaded) {
+        loaded = true;
+        remembered = clip::groupIds(clip::defaultSelection());
+    }
+    QVariantList out;
+    for (const QString& id : remembered) out << id;
+    return out;
+}
+
+void LibraryModel::setClipboardGroups(const QVariantList& ids) {
+    QStringList parsed;
+    for (const QVariant& id : ids) parsed << id.toString();
+    // Only the offered groups' ids are kept, in the sheet's order.
+    QStringList kept;
+    for (const auto& group : clip::offeredGroups()) {
+        const QString id = clip::groupId(group);
+        if (parsed.contains(id)) kept << id;
+    }
+    static QStringList* remembered = nullptr; // the process's last ticked set
+    static QStringList storage;
+    if (remembered == nullptr) {
+        storage = clip::groupIds(clip::defaultSelection());
+        remembered = &storage;
+    }
+    if (kept == *remembered) return;
+    *remembered = kept;
+    emit clipboardGroupsChanged();
+}
+
+int LibraryModel::rowIndexForUuid(const QString& uuid) const {
+    for (std::size_t i = 0; i < rows_.size(); ++i)
+        if (rows_[i].row.uuid() == uuid) return int(i);
+    return -1;
+}
+
+int LibraryModel::rowIndexForPath(const QString& path) const {
+    for (std::size_t i = 0; i < rows_.size(); ++i)
+        if (rows_[i].row.path() == path) return int(i);
+    return -1;
+}
+
+void LibraryModel::notifySelectionChanged() {
+    if (!rows_.empty()) {
+        const QModelIndex first = createIndex(0, 0);
+        const QModelIndex last = createIndex(int(rows_.size()) - 1, 0);
+        // SelectedRole rides with every repaint: the grid rebinds the
+        // outline on the whole visible window anyway.
+        emit dataChanged(first, last, {SelectedRole});
+    }
+    emit selectionChanged();
+}
+
+void LibraryModel::selectOnly(int row) {
+    if (row < 0 || row >= int(rows_.size())) return;
+    const bool changed = selected_.size() != 1 || !selected_.contains(rows_[std::size_t(row)].row.uuid());
+    selectionAnchor_ = row;
+    if (!changed) return;
+    selected_.clear();
+    selected_.insert(rows_[std::size_t(row)].row.uuid());
+    notifySelectionChanged();
+}
+
+void LibraryModel::toggleSelected(int row) {
+    if (row < 0 || row >= int(rows_.size())) return;
+    const QString uuid = rows_[std::size_t(row)].row.uuid();
+    if (selected_.remove(uuid)) {
+        const QModelIndex changed = createIndex(row, 0);
+        emit dataChanged(changed, changed, {SelectedRole});
+        emit selectionChanged();
+        return;
+    }
+    selected_.insert(uuid);
+    const QModelIndex changed = createIndex(row, 0);
+    emit dataChanged(changed, changed, {SelectedRole});
+    emit selectionChanged();
+}
+
+void LibraryModel::selectRange(int row) {
+    if (row < 0 || row >= int(rows_.size())) return selectOnly(row);
+    if (selectionAnchor_ < 0 || selectionAnchor_ >= int(rows_.size())) return selectOnly(row);
+    const int from = qMin(selectionAnchor_, row);
+    const int to = qMax(selectionAnchor_, row);
+    selected_.clear();
+    for (int i = from; i <= to; ++i) selected_.insert(rows_[std::size_t(i)].row.uuid());
+    notifySelectionChanged();
+}
+
+void LibraryModel::clearSelection() {
+    if (selected_.isEmpty()) return;
+    selected_.clear();
+    notifySelectionChanged();
+}
+
+void LibraryModel::selectAllRows() {
+    if (rows_.empty()) return;
+    selected_.clear();
+    for (const Row& row : rows_) selected_.insert(row.row.uuid());
+    notifySelectionChanged();
+}
+
+QStringList LibraryModel::selectedUuids() const {
+    // Row order: the library's order is the selection's meaning.
+    QStringList out;
+    for (const Row& row : rows_)
+        if (selected_.contains(row.row.uuid())) out << row.row.uuid();
+    return out;
+}
+
+void LibraryModel::pruneSelection() {
+    QSet<QString> alive;
+    for (const Row& row : rows_)
+        if (selected_.contains(row.row.uuid())) alive.insert(row.row.uuid());
+    if (alive.size() == selected_.size()) return;
+    selected_ = std::move(alive);
+    emit selectionChanged();
+}
+
+QVariantMap LibraryModel::rowInfo(const QString& image) const {
+    const int index = rowIndexForUuid(image);
+    if (index < 0) return {};
+    const Row& row = rows_[std::size_t(index)];
+    QVariantMap out;
+    out.insert(QStringLiteral("uuid"), row.row.uuid());
+    out.insert(QStringLiteral("path"), row.row.path());
+    out.insert(QStringLiteral("fileName"), row.row.fileName());
+    out.insert(QStringLiteral("kind"), row.row.kind());
+    out.insert(QStringLiteral("rating"), row.row.rating());
+    out.insert(QStringLiteral("colorTag"), row.row.colorTag());
+    out.insert(QStringLiteral("capturedLocal"), row.row.capturedLocal());
+    out.insert(QStringLiteral("develop"), row.develop);
+    return out;
+}
+
+QString LibraryModel::uuidAt(int row) const {
+    if (row < 0 || row >= int(rows_.size())) return {};
+    return rows_[std::size_t(row)].row.uuid();
+}
+
+QStringList LibraryModel::offeredClipboardGroups() {
+    return clip::groupIds(clip::defaultSelection());
+}
+
+bool LibraryModel::copySettings() {
+    const auto uuids = selectedUuids();
+    if (uuids.isEmpty()) {
+        setError(QStringLiteral("nothing is selected to copy from"));
+        return false;
+    }
+    const int index = rowIndexForUuid(uuids.first());
+    if (index < 0) return false;
+    const Row& row = rows_[std::size_t(index)];
+    const auto* catalog = catalog_provider_ ? catalog_provider_() : nullptr;
+    static const spk::desktop::Catalog emptyCatalog;
+    const auto loaded = edit_store_.load(QUrl::fromLocalFile(row.row.path()),
+                                         catalog ? *catalog : emptyCatalog);
+    clip::Clip taken;
+    taken.groups = clip::groupSetFromIds(stringListOf(clipboardGroups()));
+    taken.settings = loaded.state.value_or(editing::State{});
+    taken.sourceName = row.row.fileName();
+    clipboard_ = std::move(taken);
+    emit clipboardChanged();
+    return true;
+}
+
+bool LibraryModel::pasteSettings() {
+    if (importBlocked()) return false;
+    if (!clipboard_.has_value()) {
+        setError(QStringLiteral("nothing is copied yet"));
+        return false;
+    }
+    const BusyGuard guard(this);
+    const auto uuids = selectedUuids();
+    if (uuids.isEmpty()) {
+        setError(QStringLiteral("nothing is selected to paste to"));
+        return false;
+    }
+    const auto* catalog = catalog_provider_ ? catalog_provider_() : nullptr;
+    static const spk::desktop::Catalog emptyCatalog;
+    int written = 0;
+    for (const QString& uuid : uuids) {
+        const int index = rowIndexForUuid(uuid);
+        if (index < 0) continue;
+        const Row& row = rows_[std::size_t(index)];
+        const QUrl source = QUrl::fromLocalFile(row.row.path());
+        const auto loaded = edit_store_.load(source, catalog ? *catalog : emptyCatalog);
+        if (loaded.blocked) {
+            // The store refuses an unsafe replacement; that photo keeps its
+            // record and the reason is reported once at the end.
+            setError(loaded.warning.isEmpty() ? QStringLiteral("a record cannot be replaced")
+                                              : loaded.warning);
+            continue;
+        }
+        editing::State next = clipboard_->appliedTo(loaded.state.value_or(editing::State{}));
+        if (loaded.state.has_value() && next == *loaded.state) continue;
+        try {
+            edit_store_.save(source, next);
+        } catch (const std::exception& e) {
+            setError(QString::fromUtf8(e.what()));
+            continue;
+        }
+        ++written;
+        // The develop badge follows the record it was joined from.
+        rows_[std::size_t(index)].develop = developFor(rows_[std::size_t(index)].row);
+        const QModelIndex changed = createIndex(index, 0);
+        emit dataChanged(changed, changed, {DevelopRole});
+    }
+    if (written > 0) refreshFacets(); // the edited facet follows the records
+    return written > 0;
+}
+
+// --- the worker seam (task 4.4; see the header's BLOCKING note) ---------------------
+
+void LibraryModel::postProgressFromWorker(const QString& phase, int done, int total) {
+    QMetaObject::invokeMethod(this, [this, phase, done, total] { setProgress(phase, done, total); },
+                              Qt::QueuedConnection);
+}
+
+void LibraryModel::postErrorFromWorker(const QString& message) {
+    QMetaObject::invokeMethod(this, [this, message] { setError(message); }, Qt::QueuedConnection);
+}
+
+QImage LibraryModel::getThumbnail(const QString& path, int maxPixel) {
+    if (path.isEmpty() || maxPixel <= 0) return {};
+    // The row's tile serves at once, whatever size it was decoded at — the
+    // grid asks one size per session, and the delegate scales what it gets
+    // (the store never upscales, so a small source decodes small).
+    const int index = rowIndexForPath(path);
+    if (index >= 0 && !rows_[std::size_t(index)].thumbnail.isNull())
+        return rows_[std::size_t(index)].thumbnail;
+    const QString key = path + QLatin1Char('@') + QString::number(maxPixel);
+    if (pendingThumbnails_.contains(key)) return {};
+    pendingThumbnails_.insert(key);
+    // The pool's one thread is the store's owner; the picture returns as a
+    // dataChanged(ThumbnailRole) on the UI thread.
+    workerPool_.start([this, path, maxPixel] {
+        const QImage image = thumbnails_.get(path, maxPixel);
+        QMetaObject::invokeMethod(this,
+                                  [this, path, maxPixel, image] {
+                                      thumbnailDecoded(path, maxPixel, image);
+                                  },
+                                  Qt::QueuedConnection);
+    });
+    return {};
+}
+
+void LibraryModel::thumbnailDecoded(const QString& path, int maxPixel, const QImage& image) {
+    pendingThumbnails_.remove(path + QLatin1Char('@') + QString::number(maxPixel));
+    const int index = rowIndexForPath(path);
+    if (index < 0) return; // the row scrolled off a re-list; the cache keeps the tile
+    Row& row = rows_[std::size_t(index)];
+    if (!image.isNull() && row.thumbnail.cacheKey() == image.cacheKey()) return;
+    row.thumbnail = image;
+    const QModelIndex changed = createIndex(index, 0);
+    emit dataChanged(changed, changed, {ThumbnailRole});
 }
 
 void LibraryModel::setSort(const QString& sort) {
@@ -295,7 +601,17 @@ bool LibraryModel::spawnHelper() {
     return !failure.has_value();
 }
 
+bool LibraryModel::importBlocked() {
+    // The public wire calls' shared refusal while a worker import holds
+    // the helper pipe (see the header's BLOCKING note). True = refused,
+    // with the reason in lastError.
+    if (!importActive_) return false;
+    setError(QStringLiteral("an import is running — try again when it finishes"));
+    return true;
+}
+
 bool LibraryModel::start() {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     setError(QString());
     // A missing or refusing helper is start()'s failure and its reason is
@@ -315,6 +631,7 @@ bool LibraryModel::start() {
 }
 
 void LibraryModel::shutdown() {
+    if (importBlocked()) return;
     const BusyGuard guard(this); // the bounded waitForFinished is blocking work
     host_.shutdown();
 }
@@ -329,6 +646,7 @@ void LibraryModel::refreshSources() {
 }
 
 bool LibraryModel::openSource(const QString& path) {
+    sourcePath_ = path;
     if (!library_.isEmpty()) {
         const auto closed = host_.libraryClose(library_);
         if (!closed.ok) setError(closed.errorMessage);
@@ -345,6 +663,7 @@ bool LibraryModel::openSource(const QString& path) {
 }
 
 bool LibraryModel::createCatalog(const QString& name, const QString& folder) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     const auto dir = folder.isEmpty() ? storeRoot_ : folder;
     if (name.isEmpty()) {
@@ -390,6 +709,7 @@ bool LibraryModel::createCatalog(const QString& name, const QString& folder) {
 }
 
 bool LibraryModel::createSession(const QString& name, const QString& folder) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     const auto dir = folder.isEmpty() ? storeRoot_ : folder;
     if (name.isEmpty()) {
@@ -428,6 +748,7 @@ bool LibraryModel::createSession(const QString& name, const QString& folder) {
 }
 
 bool LibraryModel::selectSource(const QString& id) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     const auto found = std::find_if(registry_.sources.begin(), registry_.sources.end(),
                                     [&](const CatalogSourcesStore::Source& source) {
@@ -450,6 +771,7 @@ bool LibraryModel::selectSource(const QString& id) {
 }
 
 bool LibraryModel::addFolder(const QString& path) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
         setError(QStringLiteral("no library is open"));
@@ -467,10 +789,12 @@ bool LibraryModel::addFolder(const QString& path) {
     return true;
 }
 
-bool LibraryModel::buildExistingIndex(QSet<QString>& paths, QSet<QString>& namesAndSizes) {
-    // The Mac's existingFiles(in:): every file the library holds, trashed
-    // included (the helper's own duplicate check counts a trashed file as
-    // there), full rows for file_size, paged.
+QString LibraryModel::buildExistingIndex(LibraryHost& host, const QString& library,
+                                         QSet<QString>& paths, QSet<QString>& namesAndSizes) {
+    // Runs on the worker thread inside runImport now (task 4.4) over the
+    // import host: no property writes here — the failure reason returns to
+    // the caller, which surfaces it through the UI thread
+    // (importFiles's post-spin setError). Empty string = success.
     int offset = 0;
     for (;;) {
         QVariantMap query;
@@ -479,11 +803,8 @@ bool LibraryModel::buildExistingIndex(QSet<QString>& paths, QSet<QString>& names
         query.insert(QStringLiteral("sort"), QStringLiteral("added"));
         query.insert(QStringLiteral("limit"), 5000);
         query.insert(QStringLiteral("offset"), offset);
-        const auto page = host_.imagesList(library_, query);
-        if (!page.ok) {
-            setError(page.errorMessage);
-            return false;
-        }
+        const auto page = host.imagesList(library, query);
+        if (!page.ok) return page.errorMessage;
         for (const auto& image : page.value.images) {
             paths.insert(importPathKey(image.path()));
             const QVariant size = image.map.value(QLatin1String("file_size"));
@@ -498,7 +819,7 @@ bool LibraryModel::buildExistingIndex(QSet<QString>& paths, QSet<QString>& names
         offset += int(page.value.images.size());
         if (page.value.total >= 0 && offset >= page.value.total) break;
     }
-    return true;
+    return {};
 }
 
 void LibraryModel::setProgress(const QString& phase, int done, int total) {
@@ -512,16 +833,102 @@ void LibraryModel::setProgress(const QString& phase, int done, int total) {
 }
 
 QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& mode) {
-    const BusyGuard guard(this);
     QVariantMap out;
     out.insert(QStringLiteral("added"), 0);
     out.insert(QStringLiteral("existing"), 0);
     out.insert(QStringLiteral("duplicates"), 0);
     out.insert(QStringLiteral("failed"), 0);
     out.insert(QStringLiteral("chunks"), 0);
+    if (importActive_) {
+        // Re-entry is refused: the worker owns the helper's pipe for the
+        // whole run (see the header's BLOCKING note).
+        setError(QStringLiteral("an import is already running"));
+        out.insert(QStringLiteral("error"), lastError_);
+        return out;
+    }
     if (library_.isEmpty()) {
         setError(QStringLiteral("no library is open"));
         out.insert(QStringLiteral("error"), lastError_);
+        return out;
+    }
+    // The whole run moves to the worker pool (task 4.4): duplicate
+    // exclusion, the chunk loop, the one Recent Imports album. This frame
+    // stays on the UI thread holding the BusyGuard and pumping a bounded
+    // event loop — user input excluded, so clicks and keys are not
+    // delivered while the run holds the pipe; progress frames and the
+    // completion are queued onto this thread and land inside the pump, so
+    // QML repaints importProgress live. The synchronous result contract is
+    // kept: runImport fills the map before the pump's exit condition.
+    const BusyGuard guard(this);
+    importActive_ = true;
+    QVariantMap result;
+    bool done = false;
+    const QString libraryPath = sourcePath_;
+    const int chunkSize = importChunkSize_;
+    workerPool_.start([this, libraryPath, items, mode, chunkSize, &result, &done] {
+        result = runImport(libraryPath, items, mode, chunkSize);
+        QMetaObject::invokeMethod(this, [&done] { done = true; }, Qt::QueuedConnection);
+    });
+    QDeadlineTimer spin(600000); // a pathological import still ends the wait
+    while (!done && !spin.hasExpired())
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 30);
+    importActive_ = false;
+    const QString error = result.value(QLatin1String("error")).toString();
+    if (!error.isEmpty())
+        setError(error); // the worker's reasons surface through the UI thread
+    // 3. The grid follows the import (the Mac's showImport re-lists too).
+    if (error.isEmpty()) refresh();
+    return result;
+}
+
+QVariantMap LibraryModel::runImport(const QString& libraryPath, QVariantList items,
+                                    const QString& mode, int chunkSize) {
+    // WORKER THREAD (workerPool_'s single thread). Touches only the import
+    // host and locals; every observable (progress, error) is posted to the
+    // UI thread. `items` and `mode` are by-value copies — the caller's
+    // frame stays alive for the pump, but nothing here reads its members.
+    //
+    // The import's own helper process (see the header note on runImport):
+    // a QProcess is waited on from its own thread only, so this job speaks
+    // to a host created on this thread. The two processes never overlap —
+    // the UI wire is gated off for the whole run.
+    if (importHost_ == nullptr) importHost_ = new LibraryHost(nullptr);
+    if (!importHost_->isRunning()) {
+        const auto failure = importHost_->start(options_);
+        if (failure.has_value()) {
+            QVariantMap out;
+            out.insert(QStringLiteral("added"), 0);
+            out.insert(QStringLiteral("existing"), 0);
+            out.insert(QStringLiteral("duplicates"), 0);
+            out.insert(QStringLiteral("failed"), 0);
+            out.insert(QStringLiteral("chunks"), 0);
+            out.insert(QStringLiteral("error"), *failure);
+            return out;
+        }
+    }
+    QString library;
+    if (!importLibrary_.isEmpty()) {
+        importHost_->libraryClose(importLibrary_); // the previous run's handle
+        importLibrary_.clear();
+    }
+    if (!libraryPath.isEmpty()) {
+        const auto opened = importHost_->libraryOpen(libraryPath);
+        if (opened.ok) {
+            library = opened.value.library;
+            importLibrary_ = library;
+        }
+    }
+    QVariantMap out;
+    out.insert(QStringLiteral("added"), 0);
+    out.insert(QStringLiteral("existing"), 0);
+    out.insert(QStringLiteral("duplicates"), 0);
+    out.insert(QStringLiteral("failed"), 0);
+    out.insert(QStringLiteral("chunks"), 0);
+    if (library.isEmpty()) {
+        out.insert(QStringLiteral("error"),
+                   importHost_->lastError().isEmpty()
+                       ? QStringLiteral("cannot open the source for the import")
+                       : importHost_->lastError());
         return out;
     }
     // 1. Duplicate exclusion, before anything is sent (the Mac's Exclude
@@ -529,8 +936,9 @@ QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& 
     //    size at any path.
     QSet<QString> knownPaths;
     QSet<QString> knownNameSizes;
-    if (!buildExistingIndex(knownPaths, knownNameSizes)) {
-        out.insert(QStringLiteral("error"), lastError_);
+    const QString indexError = buildExistingIndex(*importHost_, library, knownPaths, knownNameSizes);
+    if (!indexError.isEmpty()) {
+        out.insert(QStringLiteral("error"), indexError); // surfaced by importFiles
         return out;
     }
     QVariantList planned;
@@ -559,17 +967,15 @@ QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& 
     int existing = 0;
     int failed = 0;
     int chunks = 0;
-    setProgress(QStringLiteral("adding"), 0, total);
-    for (int start = 0; start < total; start += importChunkSize_) {
+    postProgressFromWorker(QStringLiteral("adding"), 0, total);
+    for (int start = 0; start < total; start += chunkSize) {
         QVariantList chunk;
-        chunk.reserve(importChunkSize_);
-        for (int i = start; i < qMin(start + importChunkSize_, total); ++i) chunk << planned.at(i);
-        const auto result =
-            host_.imagesAdd(library_, chunk, effectiveMode, album,
-                            /*recentImportAt*/ QString(),
-                            /*recentImport*/ album.isEmpty());
+        chunk.reserve(chunkSize);
+        for (int i = start; i < qMin(start + chunkSize, total); ++i) chunk << planned.at(i);
+        const auto result = importHost_->imagesAdd(library, chunk, effectiveMode, album,
+                                                   /*recentImportAt*/ QString(),
+                                                   /*recentImport*/ album.isEmpty());
         if (!result.ok) {
-            setError(result.errorMessage);
             out.insert(QStringLiteral("error"), result.errorMessage);
             out.insert(QStringLiteral("added"), added);
             out.insert(QStringLiteral("existing"), existing);
@@ -586,11 +992,9 @@ QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& 
         }
         if (album.isEmpty()) album = result.value.recentImport;
         done += int(chunk.size());
-        setProgress(QStringLiteral("adding"), done, total);
+        postProgressFromWorker(QStringLiteral("adding"), done, total);
     }
-    setProgress(QStringLiteral("finishing"), done, total);
-    // 3. The grid follows the import (the Mac's showImport re-lists too).
-    refresh();
+    postProgressFromWorker(QStringLiteral("finishing"), done, total);
     out.insert(QStringLiteral("added"), added);
     out.insert(QStringLiteral("existing"), existing);
     out.insert(QStringLiteral("failed"), failed);
@@ -600,6 +1004,7 @@ QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& 
 }
 
 QVariantMap LibraryModel::synchronize() {
+    if (importBlocked()) return { {QStringLiteral("error"), lastError_} };
     const BusyGuard guard(this);
     QVariantMap out;
     if (library_.isEmpty()) {
@@ -634,6 +1039,7 @@ QVariantMap LibraryModel::synchronize() {
 }
 
 bool LibraryModel::stopWatching(const QString& folder) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
         setError(QStringLiteral("no library is open"));
@@ -667,22 +1073,6 @@ bool LibraryModel::stopWatching(const QString& folder) {
     return true;
 }
 
-QImage LibraryModel::getThumbnail(const QString& path, int maxPixel) {
-    if (path.isEmpty()) return {};
-    const QImage image = thumbnails_.get(path, maxPixel);
-    for (std::size_t i = 0; i < rows_.size(); ++i) {
-        if (rows_[i].row.path() != path) continue;
-        if (rows_[i].thumbnail.size() == image.size() && !image.isNull() &&
-            rows_[i].thumbnail.cacheKey() == image.cacheKey())
-            continue;
-        rows_[i].thumbnail = image;
-        const QModelIndex changed = createIndex(int(i), 0);
-        emit dataChanged(changed, changed, {ThumbnailRole});
-        break;
-    }
-    return image;
-}
-
 void LibraryModel::refreshWatchedFolders() {
     watchedFolders_.clear();
     if (!library_.isEmpty()) {
@@ -704,6 +1094,7 @@ void LibraryModel::refreshWatchedFolders() {
 // --- collections -------------------------------------------------------------------------
 
 bool LibraryModel::createAlbum(const QString& name, const QString& parent) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
         setError(QStringLiteral("no library is open"));
@@ -719,6 +1110,7 @@ bool LibraryModel::createAlbum(const QString& name, const QString& parent) {
 }
 
 bool LibraryModel::addToCollection(const QString& collection, const QStringList& images) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
         setError(QStringLiteral("no library is open"));
@@ -734,6 +1126,7 @@ bool LibraryModel::addToCollection(const QString& collection, const QStringList&
 }
 
 void LibraryModel::selectCollection(const QString& id) {
+    if (importBlocked()) return;
     const BusyGuard guard(this);
     // Through the setter so selectedCollectionId's NOTIFY (treeChanged) rides
     // with the id change — the review fix: the bare member write left QML
@@ -757,6 +1150,7 @@ bool LibraryModel::fetchPage(int offset, bool reset) {
         rows_.clear();
         total_ = 0;
         endResetModel();
+        pruneSelection();
         emit rowsChanged();
         return true;
     }
@@ -792,17 +1186,22 @@ bool LibraryModel::fetchPage(int offset, bool reset) {
             endInsertRows();
         }
     }
+    // The selection survives a re-list row for row (pruned to rows that
+    // still stand — the header's SELECTION note).
+    pruneSelection();
     emit rowsChanged();
     return true;
 }
 
 void LibraryModel::loadMore() {
+    if (importBlocked()) return;
     const BusyGuard guard(this);
     if (library_.isEmpty() || rows_.size() >= total_) return;
     fetchPage(int(rows_.size()), false);
 }
 
 void LibraryModel::refresh() {
+    if (importBlocked()) return;
     const BusyGuard guard(this); // nests: start and the source switches call this too
     buildTree();
     fetchPage(0, true);
@@ -875,6 +1274,7 @@ QVariantMap LibraryModel::developFor(const ImageRow& row) {
 }
 
 bool LibraryModel::setRating(const QString& image, int rating) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
         setError(QStringLiteral("no library is open"));
@@ -898,6 +1298,7 @@ bool LibraryModel::setRating(const QString& image, int rating) {
 }
 
 bool LibraryModel::setColorTag(const QString& image, int colorTag) {
+    if (importBlocked()) return false;
     const BusyGuard guard(this);
     if (library_.isEmpty()) {
         setError(QStringLiteral("no library is open"));

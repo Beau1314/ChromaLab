@@ -38,7 +38,10 @@ qt_add_executable(SpektraLabQt WIN32
     src/LibraryHost.hpp src/LibraryHost.cpp
     src/CatalogSourcesStore.hpp src/CatalogSourcesStore.cpp
     src/LibraryModel.hpp src/LibraryModel.cpp
-    src/ThumbnailStore.hpp src/ThumbnailStore.cpp)
+    src/ThumbnailStore.hpp src/ThumbnailStore.cpp
+    # The settings clipboard's pure group semantics (task 4.4), shared by the
+    # model's copy/paste and its own test.
+    src/SettingsClipboard.hpp src/SettingsClipboard.cpp)
 target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
 target_link_libraries(SpektraLabQt PRIVATE
     spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
@@ -46,6 +49,9 @@ set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(SpektraLabQt URI SpektraLab VERSION 1.0
     QML_FILES qml/Main.qml qml/Theme.qml qml/Section.qml qml/ActionButton.qml
         qml/CurveEditor.qml qml/ColorBalance.qml
+        # The library page (task 4.4): the sidebar's three tabs and the
+        # lazy grid over the library rows model.
+        qml/LibrarySidebar.qml qml/LibraryGridPage.qml
     NO_CACHEGEN)
 set_target_properties(SpektraLabQt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/app")
 # qmlimportscanner passes the source tree through a UTF-8 response file, and
@@ -136,7 +142,8 @@ if(BUILD_TESTING)
     # spklib-host is handed over as argv[1].
     qt_add_executable(spk_qt_library_model_test tests/library_model.cpp
         src/LibraryModel.cpp src/CatalogSourcesStore.cpp src/LibraryHost.cpp
-        src/EditStore.cpp src/Layer2.cpp src/ThumbnailStore.cpp)
+        src/EditStore.cpp src/Layer2.cpp src/ThumbnailStore.cpp
+        src/SettingsClipboard.cpp)
     target_include_directories(spk_qt_library_model_test PRIVATE src)
     target_compile_features(spk_qt_library_model_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_library_model_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
@@ -152,6 +159,16 @@ if(BUILD_TESTING)
     target_compile_features(spk_qt_thumbnail_store_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_thumbnail_store_test PRIVATE Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_thumbnail_store COMMAND spk_qt_thumbnail_store_test)
+    # The settings clipboard's group semantics (task 4.4): pure state
+    # arithmetic — a paste writes only the ticked groups' fields, the target
+    # keeps its own metering, As Shot white balance, placement, crop and
+    # decode mode. No helper process, no engine, no GPU.
+    qt_add_executable(spk_qt_settings_clip_test tests/settings_clip.cpp
+        src/SettingsClipboard.cpp src/EditStore.cpp src/Layer2.cpp)
+    target_include_directories(spk_qt_settings_clip_test PRIVATE src)
+    target_compile_features(spk_qt_settings_clip_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_settings_clip_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
+    add_test(NAME spk_qt_settings_clip COMMAND spk_qt_settings_clip_test)
     # The Temperature/Tint math the white-balance row drives is pure engine
     # host code (engine/host/white_balance.cpp, compiled into spk_image_io
     # beside its raw_decoder caller): Robertson mapping, its inverse and the
@@ -194,7 +211,8 @@ if(BUILD_TESTING)
         endif()
         set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
             spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host
-            spk_qt_sources_store spk_qt_library_model spk_qt_thumbnail_store PROPERTIES
+            spk_qt_sources_store spk_qt_library_model spk_qt_thumbnail_store
+            spk_qt_settings_clip PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp

@@ -24,19 +24,24 @@
 #include "LibraryModel.hpp"
 
 #include <QCoreApplication>
+#include <QDeadlineTimer>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QSet>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QUrl>
 #include <QVariantMap>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <stdexcept>
 
 namespace model = spk::desktop::library;
 namespace editing = spk::desktop::editing;
+namespace output = spk::desktop::output;
 
 namespace {
 int checks = 0;
@@ -154,6 +159,17 @@ int countFacet(const QVariantMap& facets, const char* facet, int value) {
             return map.value(QLatin1String("count")).toInt();
     }
     return -1;
+}
+
+// The worker seam's waits (task 4.4): thumbnail decodes and import progress
+// land as queued UI-thread events, so the test pumps the loop until the
+// condition holds — a bounded wait, and the check trips on expiry.
+void spinUntil(const std::function<bool()>& condition, const char* message,
+               int timeoutMs = 10000) {
+    QDeadlineTimer timer(timeoutMs);
+    while (!condition() && !timer.hasExpired())
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    check(condition(), message);
 }
 
 // --- the pure tier ---------------------------------------------------------------
@@ -430,9 +446,10 @@ void testModelWorkflow(const QString& helperPath) {
     check(exists.isValid() && exists.toBool(), "rows carry check_files' exists");
     check(cell(library, 0, model::LibraryModel::ThumbnailRole).value<QImage>().isNull(),
           "the thumbnail role starts empty — the grid asks per row (task 4.4)");
-    // The row thumbnail wiring: getThumbnail decodes through the store, fills
-    // the row's thumbnail role (dataChanged on ThumbnailRole) and repeats
-    // cheaply from the cache.
+    // The row thumbnail wiring, REVISED by the worker seam (task 4.4):
+    // getThumbnail schedules the decode on the pool (returns empty), the
+    // picture lands as dataChanged(ThumbnailRole) on the UI thread, and a
+    // repeat ask serves the row's cached tile at once.
     const auto rowPath = pathOf(library, 0);
     int thumbnailUpdates = 0;
     QObject::connect(&library, &QAbstractItemModel::dataChanged,
@@ -442,17 +459,17 @@ void testModelWorkflow(const QString& helperPath) {
                              ++thumbnailUpdates;
                      });
     const auto thumb = library.getThumbnail(rowPath, 32);
-    check(!thumb.isNull(), "getThumbnail decodes the row's PNG through the store");
-    check(cell(library, 0, model::LibraryModel::ThumbnailRole).value<QImage>().size() ==
-              thumb.size(),
-          "the row's thumbnail role carries the decoded picture");
+    check(thumb.isNull(),
+          "the first getThumbnail schedules the decode and returns empty (worker seam)");
+    spinUntil([&thumbnailUpdates] { return thumbnailUpdates >= 1; },
+              "the decoded thumbnail landed as dataChanged(ThumbnailRole)");
+    const auto filled = cell(library, 0, model::LibraryModel::ThumbnailRole).value<QImage>();
+    check(!filled.isNull(), "the row's thumbnail role carries the decoded picture");
     check(thumbnailUpdates == 1, "the filled thumbnail notified dataChanged(ThumbnailRole) once");
     const auto thumbAgain = library.getThumbnail(rowPath, 32);
-    check(!thumbAgain.isNull() && thumbAgain.size() == thumb.size(),
-          "a repeat getThumbnail serves the cache");
-    check(cell(library, 0, model::LibraryModel::ThumbnailRole).value<QImage>().size() ==
-              thumb.size(),
-          "the row still carries the thumbnail after the cached call");
+    check(!thumbAgain.isNull() && thumbAgain.size() == filled.size(),
+          "a repeat getThumbnail serves the row's cache synchronously");
+    check(thumbnailUpdates == 1, "the cached call did not re-notify");
 
     const auto facets = library.facets();
     check(facets.value(QLatin1String("total")).toInt() == 30, "facets carry the total");
@@ -753,7 +770,18 @@ void testImportSyncWorkflow(const QString& helperPath) {
     int progressFrames = 0;
     QObject::connect(&library, &model::LibraryModel::progressChanged,
                      [&progressFrames] { ++progressFrames; });
+    // Live observability (the worker seam, task 4.4): a timer samples the
+    // progress property while importFiles is still on the stack — its
+    // events are processed inside the pumped window (user input excluded),
+    // so a sample reading done>0 proves the property moved mid-run.
+    QVariantMap midRun;
+    QTimer sampler;
+    sampler.setInterval(1);
+    QObject::connect(&sampler, &QTimer::timeout,
+                     [&library, &midRun] { midRun = library.importProgress(); });
+    sampler.start();
     const auto result = library.importFiles(items);
+    sampler.stop();
     check(result.value(QLatin1String("error")).toString().isEmpty(),
           (std::string("importFiles: ") + library.lastError().toStdString()).c_str());
     check(result.value(QLatin1String("added")).toInt() == 10, "ten files added");
@@ -768,6 +796,9 @@ void testImportSyncWorkflow(const QString& helperPath) {
               progress.value(QLatin1String("total")).toInt() == 10,
           "the progress property ended at done==total, phase finishing");
     check(progressFrames >= 1, "the progress property notified");
+    check(!midRun.isEmpty() && midRun.value(QLatin1String("done")).toInt() > 0 &&
+              progressFrames >= 2,
+          "progress frames landed while importFiles was still in flight (worker seam)");
     check(library.total() == 10, "the grid lists the ten imports");
     // Exactly ONE album under Recent Imports: the later chunks joined the
     // first chunk's album, they did not each make their own.
@@ -949,6 +980,188 @@ void testImportSyncWorkflow(const QString& helperPath) {
                 "restored), stopWatching all held\n");
 }
 
+// The grid's selection and the settings clipboard over it (task 4.4): the
+// Mac's copy/paste on the library — records written through the model's
+// editing::Store, only the ticked groups' fields, the target's own crop,
+// decode mode and As Shot white balance kept.
+void testClipboardWorkflow(const QString& helperPath) {
+    QTemporaryDir root;
+    check(root.isValid(), "the clipboard workflow's temp root is valid");
+    const auto store = root.filePath(QStringLiteral("store"));
+    const auto edits = root.filePath(QStringLiteral("edits"));
+    const auto photos = root.filePath(QStringLiteral("photos"));
+    check(QDir().mkpath(photos), "the photos folder is made");
+    const QByteArray png = onePixelPng();
+    for (int i = 0; i < 3; ++i)
+        writeFile(QDir(photos).filePath(QStringLiteral("photo-%1.png").arg(i, 2, 10, QChar('0'))),
+                  png);
+
+    // The clipboard workflow's catalog: the test stocks the records name —
+    // Store::save refuses a record naming a stock the catalog lacks.
+    const spk::desktop::Catalog catalog{
+        {{"test_film_a", "Test Film A", false}, {"test_film_b", "Test Film B", true}},
+        {{"test_paper_a", "Test Paper A", false}, {"test_paper_b", "Test Paper B", false}}};
+    model::LibraryModel::Deps deps;
+    deps.helper.helperPath = helperPath;
+    deps.helper.storePath = store;
+    deps.registryPath = root.filePath(QStringLiteral("sources.json"));
+    deps.editDirectory = edits;
+    deps.thumbnailDirectory = root.filePath(QStringLiteral("thumbs"));
+    deps.catalog = [&catalog] { return &catalog; };
+    model::LibraryModel library(deps);
+    check(library.start(), (std::string("start: ") + library.lastError().toStdString()).c_str());
+    check(library.createCatalog(QStringLiteral("clipboard")),
+          (std::string("createCatalog: ") + library.lastError().toStdString()).c_str());
+    QVariantList items;
+    for (int i = 0; i < 3; ++i)
+        items << QDir(photos).filePath(QStringLiteral("photo-%1.png").arg(i, 2, 10, QChar('0')));
+    check(library.importFiles(items).value(QLatin1String("added")).toInt() == 3,
+          "three photos imported for the clipboard workflow");
+
+    // --- the selection vocabulary ------------------------------------------------
+    check(library.selectedCount() == 0, "the grid starts unselected");
+    library.selectOnly(0);
+    check(library.selectedCount() == 1 &&
+              cell(library, 0, model::LibraryModel::SelectedRole).toBool() &&
+              !cell(library, 1, model::LibraryModel::SelectedRole).toBool(),
+          "a plain click selects only its row");
+    library.toggleSelected(1);
+    check(library.selectedCount() == 2 &&
+              cell(library, 1, model::LibraryModel::SelectedRole).toBool(),
+          "a Ctrl-click adds a row");
+    library.toggleSelected(1);
+    check(library.selectedCount() == 1, "a second Ctrl-click takes the row back off");
+    library.selectOnly(2);
+    library.selectRange(0);
+    check(library.selectedCount() == 3,
+          "a Shift-click extends from the anchor over the run");
+    library.clearSelection();
+    check(library.selectedCount() == 0, "clear empties the selection");
+    library.selectAllRows();
+    check(library.selectedCount() == 3, "select-all takes every row");
+    check(library.selectedUuids().size() == 3, "the uuid list follows the selection");
+    library.refresh();
+    check(library.selectedCount() == 3,
+          "the selection survives a re-list row for row");
+
+    // --- copy from a stored record ------------------------------------------------
+    // Photo A's record, written the way the editor writes records — the
+    // model's clipboard reads the same store (main.cpp hands both the one
+    // directory).
+    const QString editsPath = QDir(photos).filePath(QStringLiteral("photo-00.png"));
+    editing::Store records(edits);
+    const QUrl sourceA = QUrl::fromLocalFile(editsPath);
+    editing::State edited;
+    edited.settings.film_stock = "test_film_b";
+    edited.settings.print_stock = "test_paper_a";
+    edited.settings.di_active = true;
+    edited.settings.di_blue_compensation = true;
+    edited.settings.auto_exposure = false;
+    edited.settings.film_exposure_ev = 0.3;
+    edited.settings.print_exposure = 1.2;
+    edited.settings.y_filter_shift = 0.05;
+    edited.settings.m_filter_shift = -0.02;
+    edited.settings.film_format_mm = 56.0;
+    edited.settings.grain_amount = 1.4;
+    edited.settings.halation_amount = 2.5;
+    edited.settings.wb_temperature_k = 6500.0;
+    edited.settings.wb_tint = 10.0;
+    edited.layer2.exposure = 0.5;
+    edited.layer2.curves.rgb.points = {QPointF(0, 0), QPointF(0.5, 0.6), QPointF(1, 1)};
+    edited.layer2.colorBalance.shadows.saturation = 0.3;
+    edited.geometry.quarterTurns = 1;
+    edited.mode = spk::desktop::DecodeMode::headroom;
+    records.save(sourceA, edited);
+
+    library.selectOnly(0);
+    library.setClipboardGroups(QVariantList{QStringLiteral("filmAndPaper"),
+                                            QStringLiteral("filmExposure"),
+                                            QStringLiteral("format"), QStringLiteral("decode"),
+                                            QStringLiteral("enlarger"), QStringLiteral("light"),
+                                            QStringLiteral("curve"), QStringLiteral("colour")});
+    check(library.clipboardGroups().size() == 8,
+          "the offered groups ride the sheet's ticks");
+    check(library.copySettings(), (std::string("copySettings: ") +
+                                   library.lastError().toStdString()).c_str());
+    check(library.hasClipboard(), "the clipboard holds a clip");
+    check(library.clipboardSourceName() == QLatin1String("photo-00.png"),
+          "the clip remembers its source's name");
+    // Paste into photo B: only the groups' fields cross; B's crop, decode
+    // mode, mask, glare and view stay its own.
+    const QString pathB = QDir(photos).filePath(QStringLiteral("photo-01.png"));
+    library.selectOnly(1);
+    check(library.pasteSettings(), (std::string("pasteSettings: ") +
+                                    library.lastError().toStdString()).c_str());
+    const auto reloaded = records.load(QUrl::fromLocalFile(pathB), catalog);
+    check(reloaded.state.has_value(), "the paste wrote photo B a record");
+    const editing::State& b = *reloaded.state;
+    check(b.settings.film_stock == edited.settings.film_stock &&
+              b.settings.print_stock == edited.settings.print_stock &&
+              b.settings.di_active && b.settings.di_blue_compensation,
+          "film, paper and the DI traveled");
+    check(!b.settings.auto_exposure &&
+              b.settings.film_exposure_ev == edited.settings.film_exposure_ev,
+          "the meter switch and film placement traveled as settings");
+    check(b.settings.print_exposure == edited.settings.print_exposure &&
+              b.settings.y_filter_shift == edited.settings.y_filter_shift &&
+              b.settings.m_filter_shift == edited.settings.m_filter_shift,
+          "the enlarger's three rows traveled");
+    check(b.settings.film_format_mm == edited.settings.film_format_mm &&
+              b.settings.grain_amount == edited.settings.grain_amount &&
+              b.settings.halation_amount == edited.settings.halation_amount,
+          "the format group traveled");
+    check(b.settings.wb_temperature_k == edited.settings.wb_temperature_k &&
+              b.settings.wb_tint == edited.settings.wb_tint,
+          "the measured white balance traveled with its numbers");
+    check(b.layer2.exposure == edited.layer2.exposure &&
+              b.layer2.curves == edited.layer2.curves &&
+              b.layer2.colorBalance.shadows.saturation == 0.3,
+          "light, curve and colour traveled");
+    check(b.geometry == output::Geometry{} && b.mode == spk::desktop::DecodeMode::compatible16,
+          "photo B kept its own crop and decode mode");
+    check(!b.settings.contrast_mask_active && b.settings.glare_amount == 1.0,
+          "the mask, glare and every ungrouped row stayed photo B's own");
+    check(developOf(library, 1).value(QLatin1String("state")).toString() ==
+              QLatin1String("developed"),
+          "the pasted row's develop badge turned developed");
+
+    // --- the As Shot rule over the wire ---------------------------------------------
+    // A clip copied from an As Shot frame keeps the target's own pair.
+    edited.settings.wb_temperature_k = 0.0;
+    edited.settings.wb_tint = 0.0;
+    records.save(sourceA, edited);
+    const QString pathC = QDir(photos).filePath(QStringLiteral("photo-02.png"));
+    editing::State warmed;
+    warmed.settings.film_stock = "test_film_a";
+    warmed.settings.print_stock = "test_paper_b";
+    warmed.settings.wb_temperature_k = 4800.0;
+    warmed.settings.wb_tint = -7.0;
+    records.save(QUrl::fromLocalFile(pathC), warmed);
+    library.selectOnly(0);
+    check(library.copySettings(), "the As Shot clip copied");
+    library.selectOnly(2);
+    check(library.pasteSettings(), "the As Shot clip pasted");
+    const auto reloadedC = records.load(QUrl::fromLocalFile(pathC), catalog);
+    check(reloadedC.state.has_value() &&
+              reloadedC.state->settings.wb_temperature_k == 4800.0 &&
+              reloadedC.state->settings.wb_tint == -7.0,
+          "an As Shot clip kept the target's own white balance");
+
+    // --- the refusals -----------------------------------------------------------------
+    library.clearSelection();
+    check(!library.copySettings() && !library.lastError().isEmpty(),
+          "copying with nothing selected fails with its reason");
+    library.selectOnly(1);
+    check(library.rowInfo(library.selectedUuids().front())
+              .value(QLatin1String("fileName"))
+              .toString() == QLatin1String("photo-01.png"),
+          "rowInfo serves the selected row's fields");
+
+    std::printf("clipboard workflow: selection vocabulary, copy groups from a stored record, "
+                "paste writes only the groups (target keeps crop/mode/WB), As Shot rule over "
+                "the wire, refusals all held\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -963,6 +1176,7 @@ int main(int argc, char** argv) {
         if (argc > 1 && QFileInfo(argv[1]).isFile()) {
             testModelWorkflow(QString::fromUtf8(argv[1]));
             testImportSyncWorkflow(QString::fromUtf8(argv[1]));
+            testClipboardWorkflow(QString::fromUtf8(argv[1]));
         } else {
             std::printf("model workflow skipped: no spklib-host given "
                         "(pure tier still verified)\n");

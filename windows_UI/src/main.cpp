@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -427,6 +428,22 @@ int main(int argc,char** argv) {
     QObject::connect(&engine,&QQmlApplicationEngine::objectCreationFailed,&app,[]{QCoreApplication::exit(2);},Qt::QueuedConnection);
     engine.loadFromModule("SpektraLab","Main");
     if(engine.rootObjects().isEmpty())return 2;
+    // The smoke harness's page switch (task 4.4): an offscreen runner sets
+    // SPK_SMOKE_MODE=library so the window opens on 图库 — the sidebar and
+    // the grid instantiate (and any QML error reaches the runner's stderr)
+    // without a click; SPK_SMOKE_SNAPSHOT captures one window grab beside
+    // the runner's evidence. Production never reads either variable.
+    if(qEnvironmentVariable("SPK_SMOKE_MODE")=="library" && !engine.rootObjects().isEmpty()) {
+        QObject* window=engine.rootObjects().first();
+        window->setProperty("appMode",QStringLiteral("图库"));
+        const QString snapshot=qEnvironmentVariable("SPK_SMOKE_SNAPSHOT");
+        if(!snapshot.isEmpty())
+            QTimer::singleShot(1500,window,[window,snapshot]{
+                const QImage grab=qobject_cast<QQuickWindow*>(window)?
+                    qobject_cast<QQuickWindow*>(window)->grabWindow():QImage();
+                if(!grab.isNull())grab.save(snapshot,"PNG");
+            });
+    }
     // Synchronous by the recorded decision (small local SQLite, the calls
     // are single-flight); a failure leaves the empty library state standing.
     libraryModel.start();

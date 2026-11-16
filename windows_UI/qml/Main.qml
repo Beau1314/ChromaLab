@@ -27,6 +27,13 @@ ApplicationWindow {
     property int exportFormat: 0
     property int exportQuality: 95
     property int exportLongEdge: 0
+    // The one window's mode (§8): 图库 swaps the left column to the library
+    // sidebar and the canvas to the grid; 冲洗/编辑 are the develop page this
+    // window has always been (the filmstrip stays their browser; the full
+    // shared-browser unification is future work).
+    property string appMode: "冲洗"
+    readonly property bool libraryMode: appMode === "图库"
+    onAppModeChanged: if (window.libraryMode && libraryPage.item !== null) libraryPage.item.takeFocus()
     // The active library item is a half-frame pair (its `pair` map is filled).
     // The pair's own look sections stay live; the shared photo sections that
     // pairWireOf overrides are guarded against it below.
@@ -58,7 +65,15 @@ ApplicationWindow {
     onCropModeChanged: updateDialogState()
 
     function updateDialogState() {
-        preview.setDialogOpen(cropMode || openDialog.visible || saveDialog.visible || batchDialog.visible || exportPopup.visible)
+        preview.setDialogOpen(cropMode || openDialog.visible || saveDialog.visible || batchDialog.visible || exportPopup.visible || copySheet.visible)
+    }
+    function groupName(id) {
+        var names = {
+            "filmAndPaper": "胶片与相纸", "filmExposure": "胶片曝光", "format": "画幅",
+            "decode": "解码", "enlarger": "放大机", "couplers": "偶合剂",
+            "preflash": "预闪", "light": "光线", "curve": "曲线", "colour": "颜色"
+        }
+        return names[id] === undefined ? id : names[id]
     }
     function startCrop() {
         if (!canEditCrop) return
@@ -142,6 +157,36 @@ ApplicationWindow {
     Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; enabled: preview.settingsEditable && preview.canRedo && !window.cropMode && !window.editingText; onActivated: preview.redo() }
     Shortcut { sequence: "Escape"; enabled: window.cropMode; onActivated: window.cancelCrop() }
     Shortcut { sequence: "Return"; enabled: window.cropMode; onActivated: window.finishCrop() }
+    // 图库's keys (MAC-LIBRARY-UI §5): zoom steps at ×1.25 across 64..256,
+    // copy opens the group sheet, paste writes the copied groups' settings.
+    // The page's own keys (0-5, − * +, arrows, Return, Ctrl+A) live on the
+    // grid itself, so a typing field never loses them.
+    Shortcut {
+        sequences: ["Ctrl+="]
+        enabled: window.libraryMode && !window.editingText
+        onActivated: if (libraryPage.item !== null) libraryPage.item.zoomIn()
+    }
+    Shortcut {
+        sequence: "Ctrl+-"
+        enabled: window.libraryMode && !window.editingText
+        onActivated: if (libraryPage.item !== null) libraryPage.item.zoomOut()
+    }
+    Shortcut {
+        sequence: "Ctrl+C"
+        enabled: window.libraryMode && !window.editingText && library.selectedCount > 0
+        onActivated: copySheet.open()
+    }
+    Shortcut {
+        sequence: "Ctrl+V"
+        enabled: window.libraryMode && !window.editingText && library.hasClipboard && library.selectedCount > 0
+        onActivated: library.pasteSettings()
+    }
+    // Filter and sort setters store state and only emit queryChanged; the
+    // QML layer wires it to refresh (the model's recorded seam).
+    Connections {
+        target: library
+        function onQueryChanged() { library.refresh() }
+    }
 
     component Note: Text {
         Layout.fillWidth: true
@@ -475,8 +520,33 @@ ApplicationWindow {
             Layout.preferredWidth: Theme.leftWidth; Layout.fillHeight: true; color: Theme.card
             ColumnLayout {
                 anchors.fill: parent; spacing: 0
-                Text { text: "胶片与相纸"; color: Theme.text; font.pixelSize: 14; font.bold: true; Layout.leftMargin: 14; Layout.preferredHeight: Theme.topHeight; verticalAlignment: Text.AlignVCenter }
+                // The mode row (§8): 图库 · 冲洗 · 编辑 leads the left column.
+                // 冲洗/编辑 show this page's rail; 图库 swaps the column to
+                // the library sidebar below.
+                Rectangle {
+                    objectName: "modeSwitch"
+                    Layout.fillWidth: true; Layout.preferredHeight: Theme.topHeight; color: Theme.card
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 2
+                        component ModeButton: ActionButton {
+                            required property string label
+                            required property string mode
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            implicitHeight: 25
+                            font.pixelSize: 12
+                            text: label
+                            accented: window.appMode === mode
+                            onClicked: window.appMode = mode
+                        }
+                        ModeButton { objectName: "modeLibraryButton"; label: "图库"; mode: "图库" }
+                        ModeButton { objectName: "modeDevelopButton"; label: "冲洗"; mode: "冲洗" }
+                        ModeButton { objectName: "modeEditButton"; label: "编辑"; mode: "编辑" }
+                    }
+                }
+                // The develop rail: 冲洗/编辑's column content, unchanged.
                 ScrollView {
+                    visible: !window.libraryMode
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                     ColumnLayout {
                         width: parent.width; spacing: 0
@@ -644,11 +714,26 @@ ApplicationWindow {
                         }
                     }
                 }
+                // The library sidebar (图库's column): the three tabs over
+                // the library model — source picker, collections tree,
+                // facet checks, info — instantiated only while in 图库.
+                Loader {
+                    id: libraryPage
+                    active: window.libraryMode
+                    visible: window.libraryMode
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    sourceComponent: LibrarySidebar {}
+                }
             }
         }
         Rectangle {
             Layout.fillWidth: true; Layout.fillHeight: true; color: Theme.ground
             ColumnLayout {
+                // 冲洗/编辑's page (the develop surface this window has
+                // always been); 图库 replaces the column with the grid page
+                // beside it.
+                visible: !window.libraryMode
                 anchors.fill: parent; spacing: 0
                 Rectangle {
                     Layout.fillWidth: true; implicitHeight: Theme.topHeight; color: Theme.card
@@ -834,6 +919,19 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+            }
+            // The grid page (图库): the lazy GridView over the library model
+            // with its own header and info strip. The filmstrip block above
+            // stays 冲洗/编辑's browser — the full shared-browser
+            // unification is future work.
+            LibraryGridPage {
+                objectName: "libraryPageItem"
+                anchors.fill: parent
+                visible: window.libraryMode
+                onOpenRequested: function(path) {
+                    library.openInDevelop(path)
+                    window.appMode = "冲洗"
                 }
             }
         }
@@ -1795,6 +1893,63 @@ ApplicationWindow {
             ActionButton { Layout.fillWidth: true; text: "导出所选 " + preview.selectedCount + " 张到文件夹…"; enabled: preview.selectedCount > 0 && !preview.busy; onClicked: { batchDialog.open(); exportPopup.close() } }
             Note { text: "当前画面导出不覆盖已有文件。批量导出逐张处理，自动跳过同名文件；未访问的照片也按各自设置渲染。" }
             ActionButton { Layout.alignment: Qt.AlignRight; text: "取消"; onClicked: exportPopup.close() }
+        }
+    }
+    // The Copy Settings group sheet (the Mac's C7): the groups tick at copy
+    // time and the ticks are remembered; Paste writes only them — settings,
+    // never solved numbers (SettingsClipboard's contract).
+    Popup {
+        id: copySheet
+        objectName: "copySheet"
+        anchors.centerIn: parent
+        width: 320
+        padding: 18
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onVisibleChanged: {
+            if (visible) ticks = library.clipboardGroups.slice()
+            window.updateDialogState()
+        }
+        property var ticks: []
+        background: Rectangle { color: Theme.card; border.color: Theme.line; radius: 7 }
+        contentItem: ColumnLayout {
+            spacing: 6
+            Text { text: "复制设置"; color: Theme.text; font.pixelSize: 16; font.bold: true }
+            Note { text: "勾选随复制保留的组；粘贴只写这些设置——目标照片按自己的测光重新放置，保留自己的 As Shot 白平衡、裁切与解码模式。" }
+            Repeater {
+                model: library.offeredClipboardGroups()
+                delegate: CheckBox {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    text: window.groupName(modelData)
+                    font.pixelSize: 11
+                    checked: copySheet.ticks.indexOf(modelData) >= 0
+                    onToggled: {
+                        var next = copySheet.ticks.filter(function(v) { return v !== modelData })
+                        if (checked) next.push(modelData)
+                        copySheet.ticks = next
+                    }
+                }
+            }
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line; opacity: 0.5 }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                ActionButton {
+                    objectName: "copySettingsButton"
+                    Layout.fillWidth: true
+                    accented: true
+                    text: "复制 " + library.selectedCount + " 张所选"
+                    enabled: copySheet.ticks.length > 0 && library.selectedCount > 0
+                    onClicked: {
+                        library.setClipboardGroups(copySheet.ticks)
+                        library.copySettings()
+                        copySheet.close()
+                    }
+                }
+                ActionButton { text: "取消"; onClicked: copySheet.close() }
+            }
         }
     }
 }

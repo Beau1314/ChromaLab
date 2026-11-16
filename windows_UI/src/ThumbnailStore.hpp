@@ -47,12 +47,16 @@
 // its own placeholder over the empty role. A RAW (above) keeps its
 // placeholder tile, cached like any other.
 //
-// THREADS, BY DECISION: get() is synchronous and documented as UI-thread
-// work, the same recorded decision as LibraryModel's blocking helper round
-// trips. A raster tile decodes in single-digit milliseconds. The store is
-// therefore deliberately not thread-safe: one owner thread. If 4.4's grid
-// ever wants scrolling decodes off the UI thread, the seam is a worker queue
-// calling this same class under a lock — the cache logic need not change.
+// THREADS, REVISED IN TASK 4.4 (was: get() synchronous on the UI thread).
+// The class is STILL not thread-safe and STILL single-owner — but the
+// owner is now LibraryModel's one-thread QThreadPool (the worker seam),
+// not the UI thread: every get() runs on the pool's decode thread, its
+// results are marshalled back as model dataChanged, and the UI thread
+// never touches the store. A raster tile decodes in single-digit
+// milliseconds, but a scroll asks dozens of tiles per frame — the pool
+// keeps that work off the UI thread while the cache logic (and the
+// no-lock design) stands unchanged. Should a second thread ever call in,
+// the seam named in 4.3 applies: wrap the calls under one mutex.
 namespace spk::desktop {
 
 class ThumbnailStore final {
