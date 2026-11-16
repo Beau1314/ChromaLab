@@ -6354,7 +6354,7 @@
   },
   "Copy settings": {
    "zh-Hans": "复制设置",
-   "zh-Hant": "複制設置",
+   "zh-Hant": "複製設定",
    "ja": "設定をコピー"
   },
   "Core width": {
@@ -6584,7 +6584,7 @@
   },
   "HDR scan pushes each of the slide's layer shoulders past their knees and lifts them inside the spectral scan, so the clear base lands on today's scan headroom multiple; it is an engine parameter and re-renders without re-decoding.": {
    "zh-Hans": "HDR 扫描把反转片每层的肩部移过各自的膝点、在光谱扫描内提升，使片基落在今日扫描的余量倍数上；走引擎参数，重新渲染而不重解码。",
-   "zh-Hant": "HDR 掃描把反轉片每層的肩部移過各自的膝點、在光譜掃描內提升，使片基落在今日掃描的余量倍數上；走引擎參數，重新渲染而不重解碼。",
+   "zh-Hant": "HDR 掃描把反轉片每層的肩部移過各自的膝點、在光譜掃描內提升，使片基落在今日掃描的餘量倍數上；走引擎參數，重新渲染而不重解碼。",
    "ja": "HDRスキャンはリバーサルフィルム各層の肩をそれぞれの膝点の先へ移し、スペクトルスキャンの中で持ち上げて、フィルムベースを今日のスキャンと同じ余裕倍数に置きます。エンジンパラメータとして働き、再レンダリングしますがRAW処理はし直しません。"
   },
   "Half-frame pair": {
@@ -6634,7 +6634,7 @@
   },
   "Headroom": {
    "zh-Hans": "余量",
-   "zh-Hant": "余量",
+   "zh-Hant": "餘量",
    "ja": "余裕"
   },
   "Highlight extension (experimental)": {
@@ -7079,7 +7079,7 @@
   },
   "Scale": {
    "zh-Hans": "作用范围",
-   "zh-Hant": "作用范圍",
+   "zh-Hant": "作用範圍",
    "ja": "作用範囲"
   },
   "Select a photo in the grid to see its info": {
@@ -7159,7 +7159,7 @@
   },
   "Straighten applies when the slider is released; the edges tighten automatically to avoid blank areas.": {
    "zh-Hans": "拉直在松开滑块后应用。边缘自动收紧以避免空白。",
-   "zh-Hant": "拉直在松開滑塊後應用。邊緣自動收緊以避免空白。",
+   "zh-Hant": "拉直在鬆開滑塊後應用。邊緣自動收緊以避免空白。",
    "ja": "傾き補正はスライダーを離したときに適用されます。空白を避けるため縁は自動的に切り詰められます。"
   },
   "Strength": {
@@ -7174,7 +7174,7 @@
   },
   "Suggested pull: highlights %@ / shadows %@ EV": {
    "zh-Hans": "建议收高光 %@ / 收阴影 %@ EV",
-   "zh-Hant": "建议收高光 %@ / 收陰影 %@ EV",
+   "zh-Hant": "建議收高光 %@ / 收陰影 %@ EV",
    "ja": "明部を %@、暗部を %@ EV 戻すことが望ましい"
   },
   "Sync settings": {

@@ -57,7 +57,9 @@ LANGUAGES = ("zh-Hans", "zh-Hant", "ja")
 SOURCES = ("qml", "src")
 CJK = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 
-# ---- the telltale tables (ported verbatim from app/SpektraLab/tools/localization_check.py) ----
+# ---- the telltale tables (ported verbatim from app/SpektraLab/tools/localization_check.py,
+# plus three pairs the port's own catalog missed: 范围→範圍 建议→建議 松开→鬆開 are
+# Simplified-only writes the Mac table never had to name) ----
 
 PAIRS = """
 机機 这這 们們 说說 时時 为為 会會 对對 开開 关關 设設 计計 认認 证證 选選 择擇 显顯 图圖 览覽 过過 还還 进進 远遠 连連 运運
@@ -92,6 +94,7 @@ PAIRS = """
 怀懷 态態 总總 恋戀 恳懇 恶惡 悦悅 悬懸 惊驚 惧懼 惨慘 惩懲 惫憊 愤憤 愿願 慑懾 懒懶 戏戲 战戰 户戶 扑撲 执執 扩擴 扫掃
 扬揚 扰擾 抚撫 抛拋 抢搶 护護 报報 拟擬 拢攏 拣揀 拥擁 拦攔 拧擰 拨撥 择擇 挚摯 挛攣 挠撓 挡擋 挣掙 挤擠 挥揮 捞撈 损損
 捡撿 换換 捣搗 据據 掳擄 掷擲 掸撣 掺摻 揽攬 搀攙 摄攝 摆擺 摇搖 摊攤 撑撐 撵攆 撷擷 敌敵 敛斂 数數 斋齋 斗鬥 斩斬 断斷
+范範 议議 松鬆
 """.split()
 NOT_BOTH = set("干斗冲获愿么弥")  # ambiguous after all: both scripts write them
 SIMPLIFIED_ONLY = {p[0] for p in PAIRS if len(p) == 2 and p[0] != p[1]} - NOT_BOTH
