@@ -54,10 +54,10 @@ Rectangle {
     function kindValues() { return ["raw", "raster", "pair", "movie", "other"] }
     function kindLabel(kind) {
         if (kind === "raw") return "RAW"
-        if (kind === "raster") return "位图"
-        if (kind === "pair") return "半幅对"
-        if (kind === "movie") return "视频"
-        return "其他"
+        if (kind === "raster") return Localization.L("Bitmap")
+        if (kind === "pair") return Localization.L("Half-frame pair")
+        if (kind === "movie") return Localization.L("Movie")
+        return Localization.L("Other")
     }
 
     ColumnLayout {
@@ -95,9 +95,9 @@ Rectangle {
                         onClicked: sidebar.tabIndex = tabIndex_
                     }
                 }
-                NavTab { tabIndex_: 0; title: "库" }
-                NavTab { tabIndex_: 1; title: "过滤" }
-                NavTab { tabIndex_: 2; title: "信息" }
+                NavTab { tabIndex_: 0; title: Localization.epoch && Localization.L("Library") }
+                NavTab { tabIndex_: 1; title: Localization.epoch && Localization.L("Filter") }
+                NavTab { tabIndex_: 2; title: Localization.epoch && Localization.L("Info") }
             }
         }
 
@@ -189,7 +189,7 @@ Rectangle {
                     objectName: "librarySearchField"
                     Layout.fillWidth: true
                     Layout.margins: 8
-                    placeholderText: "过滤照片"
+                    placeholderText: Localization.epoch && Localization.L("Filter photos")
                     font.pixelSize: 11
                     onTextChanged: searchDebounce.restart()
                 }
@@ -253,10 +253,10 @@ Rectangle {
                             }
                         }
 
-                        FacetHeader { title: "评分" }
+                        FacetHeader { title: Localization.epoch && Localization.L("Rating") }
                         FacetCheck {
                             objectName: "ratingFilter0"
-                            label: "无评分"
+                            label: Localization.epoch && Localization.L("No rating")
                             count: sidebar.facetCount("rating", 0)
                             on: library.ratingFilter.indexOf(0) >= 0
                             values: "ratingFilter"
@@ -274,10 +274,10 @@ Rectangle {
                                 value: index + 1
                             }
                         }
-                        FacetHeader { title: "色标" }
+                        FacetHeader { title: Localization.epoch && Localization.L("Colour Label") }
                         FacetCheck {
                             objectName: "colorFilter0"
-                            label: "无色标"
+                            label: Localization.epoch && Localization.L("No colour label")
                             count: sidebar.facetCount("color_tag", 0)
                             on: library.colorTagFilter.indexOf(0) >= 0
                             values: "colorTagFilter"
@@ -288,7 +288,7 @@ Rectangle {
                             delegate: FacetCheck {
                                 required property int index
                                 objectName: "colorFilter" + (index + 1)
-                                label: "色标 " + (index + 1)
+                                label: Localization.epoch && Localization.L("Colour label %@", [index + 1])
                                 count: sidebar.facetCount("color_tag", index + 1)
                                 on: library.colorTagFilter.indexOf(index + 1) >= 0
                                 values: "colorTagFilter"
@@ -296,13 +296,13 @@ Rectangle {
                                 swatch: sidebar.labelColors[index + 1]
                             }
                         }
-                        FacetHeader { title: "种类" }
+                        FacetHeader { title: Localization.epoch && Localization.L("Kind") }
                         Repeater {
                             model: sidebar.kindValues()
                             delegate: FacetCheck {
                                 required property string modelData
                                 objectName: "kindFilter_" + modelData
-                                label: sidebar.kindLabel(modelData)
+                                label: Localization.epoch && sidebar.kindLabel(modelData)
                                 count: sidebar.facetTextCount("kind", modelData)
                                 on: library.kindFilter.indexOf(modelData) >= 0
                                 values: "kindFilter"
@@ -326,7 +326,7 @@ Rectangle {
                         visible: sidebar.infoRow.fileName === undefined
                         Layout.fillWidth: true
                         Layout.margins: 12
-                        text: "在网格中选择一张照片查看信息"
+                        text: Localization.epoch && Localization.L("Select a photo in the grid to see its info")
                         color: Theme.muted
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -353,28 +353,28 @@ Rectangle {
                             elide: Text.ElideMiddle
                         }
                     }
-                    InfoRow { label: "文件"; value: sidebar.infoRow.fileName === undefined ? "" : String(sidebar.infoRow.fileName) }
-                    InfoRow { label: "种类"; value: sidebar.infoRow.kind === undefined ? "" : String(sidebar.infoRow.kind) }
-                    InfoRow { label: "拍摄"; value: sidebar.infoRow.capturedLocal === undefined ? "" : String(sidebar.infoRow.capturedLocal) }
+                    InfoRow { label: Localization.epoch && Localization.L("File"); value: sidebar.infoRow.fileName === undefined ? "" : String(sidebar.infoRow.fileName) }
+                    InfoRow { label: Localization.epoch && Localization.L("Kind"); value: sidebar.infoRow.kind === undefined ? "" : String(sidebar.infoRow.kind) }
+                    InfoRow { label: Localization.epoch && Localization.L("Capture"); value: sidebar.infoRow.capturedLocal === undefined ? "" : String(sidebar.infoRow.capturedLocal) }
                     InfoRow {
-                        label: "评分"
+                        label: Localization.epoch && Localization.L("Rating")
                         value: sidebar.infoRow.rating === undefined || Number(sidebar.infoRow.rating) <= 0
                                ? "" : "★★★★★".slice(0, Number(sidebar.infoRow.rating))
                     }
                     InfoRow {
-                        label: "色标"
+                        label: Localization.epoch && Localization.L("Colour Label")
                         value: sidebar.infoRow.colorTag === undefined || Number(sidebar.infoRow.colorTag) <= 0
-                               ? "" : "色标 " + Number(sidebar.infoRow.colorTag)
+                               ? "" : Localization.epoch && Localization.L("Colour label %@", [Number(sidebar.infoRow.colorTag)])
                     }
                     InfoRow {
-                        label: "显影"
+                        label: Localization.epoch && Localization.L("Develop")
                         value: sidebar.infoRow.develop === undefined ? ""
                                : sidebar.infoRow.develop.state === "developed"
                                    ? (String(sidebar.infoRow.develop.film) + " · " +
                                       String(sidebar.infoRow.develop.paper))
-                                   : "未显影"
+                                   : Localization.epoch && Localization.L("Not developed")
                     }
-                    InfoRow { label: "路径"; value: sidebar.infoRow.path === undefined ? "" : String(sidebar.infoRow.path) }
+                    InfoRow { label: Localization.epoch && Localization.L("Path"); value: sidebar.infoRow.path === undefined ? "" : String(sidebar.infoRow.path) }
                 }
             }
         }
@@ -399,8 +399,7 @@ Rectangle {
                 Text {
                     visible: !library.busy && Number(library.importProgress.total) > 0 &&
                              library.importProgress.phase !== undefined
-                    text: "导入 " + Number(library.importProgress.done) + " / " +
-                          Number(library.importProgress.total)
+                    text: Localization.epoch && Localization.L("Import %@ / %@", [Number(library.importProgress.done), Number(library.importProgress.total)])
                     color: Theme.accent
                     font.pixelSize: 10
                 }

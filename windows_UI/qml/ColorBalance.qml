@@ -10,7 +10,8 @@ import QtQuick.Layouts
 // ("colorBalance:<zone>"), so one drag is one undo step.
 ColumnLayout {
     id: root
-    readonly property var zoneLabels: ["整体", "阴影", "中间调", "高光"]
+    readonly property var zoneLabels: Localization.epoch &&
+        [Localization.L("Master"), Localization.L("Shadows"), Localization.L("Midtones"), Localization.L("Highlights")]
     readonly property bool editable: preview.settingsEditable && preview.hasFrame
     Layout.fillWidth: true
     spacing: 8
@@ -68,11 +69,11 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Text { text: root.zoneLabels[index]; color: Theme.text; font.pixelSize: 11; font.bold: true }
                 Item { Layout.fillWidth: true }
-                ActionButton { text: "重置"; font.pixelSize: 10; implicitHeight: 20; enabled: root.editable; onClicked: root.resetZone(index) }
+                ActionButton { text: Localization.epoch && Localization.L("Reset"); font.pixelSize: 10; implicitHeight: 20; enabled: root.editable; onClicked: root.resetZone(index) }
             }
-            ZoneSlider { label: "色相"; zone: index; axis: 0; from: 0; to: 360; step: 1; decimals: 0; suffix: "°" }
-            ZoneSlider { label: "饱和度"; zone: index; axis: 1; from: 0; to: 1; step: 0.05; decimals: 2 }
-            ZoneSlider { label: "亮度"; zone: index; axis: 2; from: -1; to: 1; step: 0.05; decimals: 2 }
+            ZoneSlider { label: Localization.epoch && Localization.L("Hue"); zone: index; axis: 0; from: 0; to: 360; step: 1; decimals: 0; suffix: "°" }
+            ZoneSlider { label: Localization.epoch && Localization.L("Saturation"); zone: index; axis: 1; from: 0; to: 1; step: 0.05; decimals: 2 }
+            ZoneSlider { label: Localization.epoch && Localization.L("Brightness"); zone: index; axis: 2; from: -1; to: 1; step: 0.05; decimals: 2 }
         }
     }
 }

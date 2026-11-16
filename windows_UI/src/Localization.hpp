@@ -50,7 +50,12 @@ class Localization : public QObject {
     Q_PROPERTY(int epoch READ epoch NOTIFY languageChanged FINAL)
 
 public:
-    explicit Localization(QObject* parent = nullptr);
+    // Requires an argument on purpose: a default-constructible QML_SINGLETON
+    // is engine-constructed with `new T` and the static create() factory is
+    // ignored (Qt's singletonConstructionMode prefers Constructor), which
+    // would give QML its own English instance beside the bootstrapped one.
+    // Tests construct with nullptr.
+    explicit Localization(QObject* parent);
 
     // The one instance the QML engine and the application share.
     static Localization& instance();

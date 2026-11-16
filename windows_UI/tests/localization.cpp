@@ -7,6 +7,7 @@
 // test never touches the user's real language setting.
 #include "Localization.hpp"
 #include <QCoreApplication>
+#include <QJSEngine>
 #include <QDir>
 #include <QFile>
 #include <QSettings>
@@ -61,7 +62,7 @@ void writeSyntheticCatalog(const QString& path) {
 }
 
 void testCatalogLoads(const QString& shipped) {
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     check(!localization.isLoaded(), "fresh instance is not loaded");
     check(localization.language() == QStringLiteral("en"), "fresh instance is English");
     check(localization.loadCatalog(shipped), "shipped catalog loads");
@@ -75,7 +76,7 @@ void testCatalogLoads(const QString& shipped) {
 }
 
 void testEnglishIsKeyAndFallback() {
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     localization.setLanguage(QStringLiteral("en"));
     check(localization.L(QStringLiteral("Settings")) == QStringLiteral("Settings"),
           "English never reads a table: the literal comes back byte for byte");
@@ -84,13 +85,13 @@ void testEnglishIsKeyAndFallback() {
     check(localization.L(QStringLiteral("%1 frames")).isEmpty() == false,
           "an unknown key with markers still falls back to itself");
     // Before any catalog: the same fallback holds (English is the degraded mode too).
-    l10n::Localization unloaded;
+    l10n::Localization unloaded(nullptr);
     check(unloaded.L(QStringLiteral("Settings")) == QStringLiteral("Settings"),
           "with no catalog at all, English is still the literal");
 }
 
 void testLookupPerLanguage(const QString& shipped) {
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     check(localization.loadCatalog(shipped), "shipped catalog loads");
     localization.setLanguage(QStringLiteral("zh-Hans"));
     check(localization.L(QStringLiteral("Settings")) == QStringLiteral("设置"), "zh-Hans lookup");
@@ -105,7 +106,7 @@ void testLookupPerLanguage(const QString& shipped) {
 }
 
 void testSwitchEmitsAndBumpsEpoch() {
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     SwitchSpy spy(localization);
     check(localization.epoch() == 1, "the epoch starts at 1 (the QML re-render idiom reads it)");
     localization.setLanguage(QStringLiteral("ja"));
@@ -122,7 +123,7 @@ void testSwitchEmitsAndBumpsEpoch() {
 }
 
 void testMissingLanguageFallsBackToKey(const QString& synthetic) {
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     check(localization.loadCatalog(synthetic), "synthetic catalog loads");
     localization.setLanguage(QStringLiteral("ja"));
     check(localization.L(QStringLiteral("Only Hans")) == QStringLiteral("Only Hans"),
@@ -133,7 +134,7 @@ void testMissingLanguageFallsBackToKey(const QString& synthetic) {
 }
 
 void testInterpolation(const QString& shipped, const QString& synthetic) {
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     check(localization.loadCatalog(synthetic), "synthetic catalog loads");
     // Positional %N$@ in a value becomes %N, so QString::arg fills it.
     localization.setLanguage(QStringLiteral("zh-Hans"));
@@ -194,7 +195,7 @@ void testFirstLaunchDerivesOnceAndPersists(const QString& shipped) {
     QTemporaryDir dir;
     const QString store = dir.filePath("settings.ini");
     {
-        l10n::Localization localization;
+        l10n::Localization localization(nullptr);
         QSettings settings(store, QSettings::IniFormat);
         localization.useSettings(&settings);
         check(localization.loadCatalog(shipped), "shipped catalog loads");
@@ -207,7 +208,7 @@ void testFirstLaunchDerivesOnceAndPersists(const QString& shipped) {
     }
     {
         // The second launch: the stored choice stands even as the host says Japanese.
-        l10n::Localization localization;
+        l10n::Localization localization(nullptr);
         QSettings settings(store, QSettings::IniFormat);
         localization.useSettings(&settings);
         check(localization.loadCatalog(shipped), "shipped catalog loads");
@@ -221,7 +222,7 @@ void testUserChoiceSurvives(const QString& shipped) {
     QTemporaryDir dir;
     const QString store = dir.filePath("settings.ini");
     {
-        l10n::Localization localization;
+        l10n::Localization localization(nullptr);
         QSettings settings(store, QSettings::IniFormat);
         localization.useSettings(&settings);
         check(localization.loadCatalog(shipped), "shipped catalog loads");
@@ -230,7 +231,7 @@ void testUserChoiceSurvives(const QString& shipped) {
         check(settings.value(QStringLiteral("language")).toString() == QStringLiteral("zh-Hant"),
               "an explicit choice persists too");
     }
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     QSettings settings(store, QSettings::IniFormat);
     localization.useSettings(&settings);
     check(localization.loadCatalog(shipped), "shipped catalog loads");
@@ -240,7 +241,7 @@ void testUserChoiceSurvives(const QString& shipped) {
           "the restart's lookups use the persisted language");
     // A stored code the app no longer knows degrades to English, not to a crash.
     settings.setValue(QStringLiteral("language"), QStringLiteral("ko"));
-    l10n::Localization second;
+    l10n::Localization second(nullptr);
     QSettings settings2(store, QSettings::IniFormat);
     second.useSettings(&settings2);
     check(second.loadCatalog(shipped), "shipped catalog loads");
@@ -260,7 +261,7 @@ void testScriptPolicingSpotChecks(const QString& shipped) {
     const QString simplifiedOnly = QStringLiteral("设图过还张导档库帧胶电显测滤阅");
     const QString traditionalOnly = QStringLiteral("設圖過還張導檔庫幀膠電顯測濾燈閱");
     const QString notJapanese = QStringLiteral("设图冲黑會體國邊轉");
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     check(localization.loadCatalog(shipped), "shipped catalog loads");
     int zhHansChecked = 0, zhHantChecked = 0, jaChecked = 0;
     for (const QString& key : localization.keys()) {
@@ -282,7 +283,7 @@ void testScriptPolicingSpotChecks(const QString& shipped) {
 }
 
 void testKeysAndValueFor(const QString& shipped) {
-    l10n::Localization localization;
+    l10n::Localization localization(nullptr);
     check(localization.loadCatalog(shipped), "shipped catalog loads");
     check(localization.keys().contains(QStringLiteral("Settings")), "keys() exposes the catalog's keys");
     check(localization.keys().contains(QStringLiteral("Done")), "keys() exposes the catalog's keys (Done)");
@@ -302,6 +303,14 @@ void testImportedQmlSingletonExists(const QString& shipped) {
     shared.setLanguage(QStringLiteral("zh-Hans"));
     check(spy.count == 1, "the shared instance signals like any other");
     shared.setLanguage(QStringLiteral("en"));
+    // The factory contract (task 6.1): the engine must get THE instance, not
+    // a fresh default-constructed one — a default-constructible singleton
+    // takes Qt's Constructor mode and never calls create(), which stranded
+    // QML on an English instance beside the bootstrapped one. The class now
+    // requires a constructor argument, so Factory mode calls create().
+    QJSEngine js;
+    check(l10n::Localization::create(nullptr, &js) == &shared,
+          "create() hands the engine the bootstrapped instance");
 }
 } // namespace
 

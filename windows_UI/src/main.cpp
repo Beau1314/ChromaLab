@@ -441,7 +441,7 @@ int main(int argc,char** argv) {
     // the runner's evidence. Production never reads either variable.
     if(qEnvironmentVariable("SPK_SMOKE_MODE")=="library" && !engine.rootObjects().isEmpty()) {
         QObject* window=engine.rootObjects().first();
-        window->setProperty("appMode",QStringLiteral("图库"));
+        window->setProperty("appMode",QStringLiteral("library"));
         const QString snapshot=qEnvironmentVariable("SPK_SMOKE_SNAPSHOT");
         if(!snapshot.isEmpty())
             QTimer::singleShot(1500,window,[window,snapshot]{

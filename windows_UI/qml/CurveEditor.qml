@@ -14,7 +14,8 @@ ColumnLayout {
     property int channel: 0
     readonly property var channelKeys: ["rgb", "luma", "red", "green", "blue"]
     readonly property string channelKey: channelKeys[channel]
-    readonly property var channelLabels: ["RGB", "明度", "红", "绿", "蓝"]
+    readonly property var channelLabels: Localization.epoch &&
+        ["RGB", Localization.L("Luma"), Localization.L("Red"), Localization.L("Green"), Localization.L("Blue")]
     readonly property var channelColors: ["#faf8f4", "#c9b06a", "#e8524e", "#62c462", "#4ec0e8"]
     // Reading preview.layer2 subscribes this binding to settingsChanged; the
     // curve* invokables alone would never make it re-evaluate.

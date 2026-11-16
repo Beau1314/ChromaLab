@@ -442,9 +442,17 @@ which is what the gate scans for. The catalog is the Mac's
 `tools/xcstrings_to_json.py` into `assets/localization.json` and embedded as a
 Qt resource. The Mac's marker conventions survive: `%@` and `%N$@` in keys and
 values, normalized to Qt's `%N` at lookup so `arg()` fills them and a reordered
-translation keeps its meaning; numeric formats pass through as on the Mac. Task
-6.1 migrates today's raw strings onto it; until then they stand grandfathered
-in `tools/localization_exceptions.json`.
+translation keeps its meaning; numeric formats pass through as on the Mac.
+Task 6.1 migrated every user-visible string onto it, so
+`tools/localization_exceptions.json` stands empty (it only ever shrinks), and
+the develop window's mode row carries the language picker: each language names
+itself (English / 简体中文 / 繁體中文 / 日本語) and a choice takes effect at once
+and persists. One narrowing of the derive rules against the Mac's
+`AppLanguage.derived`: the host list is `QLocale().uiLanguages()`, whose
+subtags are matched only as written here (hans/hant/tw/hk/mo/yue) — the legacy
+Microsoft tags Windows can still emit (`zh-CHT`, `zh-CHS`) fall through the
+plain-`zh` branch and derive Simplified, so a Traditional user on such a
+system picks 繁體中文 once in the picker and the choice then stands.
 
 `tools/localization_check_windows.py` is the Mac's `localization_check.py`
 ported to this tree (its own `--self-test` breaks each rule once). In CTest as

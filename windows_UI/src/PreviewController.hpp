@@ -2,6 +2,7 @@
 #include "desktop/preview_host.hpp"
 #include "FrameOutput.hpp"
 #include "EditStore.hpp"
+#include "Localization.hpp"
 #include <QImage>
 #include <QObject>
 #include <QStringList>
@@ -403,7 +404,7 @@ private:
     void refreshBeforeImage();
     void computeHistogram();
     bool ready_=false, busy_=true, failed_=false;
-    QString status_=QStringLiteral("正在启动渲染引擎…");
+    QString status_=spk::desktop::Localization::instance().L("Starting the render engine…");
     QVariantList films_, papers_;
     spk::desktop::Catalog catalog_;
     int film_index_=0, paper_index_=0, decode_mode_=0;

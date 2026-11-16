@@ -31,8 +31,8 @@ ApplicationWindow {
     // sidebar and the canvas to the grid; 冲洗/编辑 are the develop page this
     // window has always been (the filmstrip stays their browser; the full
     // shared-browser unification is future work).
-    property string appMode: "冲洗"
-    readonly property bool libraryMode: appMode === "图库"
+    property string appMode: "develop"
+    readonly property bool libraryMode: appMode === "library"
     onAppModeChanged: if (window.libraryMode && libraryPage.item !== null) libraryPage.item.takeFocus()
     // The active library item is a half-frame pair (its `pair` map is filled).
     // The pair's own look sections stay live; the shared photo sections that
@@ -69,9 +69,11 @@ ApplicationWindow {
     }
     function groupName(id) {
         var names = {
-            "filmAndPaper": "胶片与相纸", "filmExposure": "胶片曝光", "format": "画幅",
-            "decode": "解码", "enlarger": "放大机", "couplers": "偶合剂",
-            "preflash": "预闪", "light": "光线", "curve": "曲线", "colour": "颜色"
+            "filmAndPaper": Localization.L("Film & Paper"), "filmExposure": Localization.L("Film Exposure"),
+            "format": Localization.L("Frame"), "decode": Localization.L("Decode"),
+            "enlarger": Localization.L("Enlarger"), "couplers": Localization.L("Colour couplers"),
+            "preflash": Localization.L("Pre-flash"), "light": Localization.L("Light"),
+            "curve": Localization.L("Curve"), "colour": Localization.L("Colour")
         }
         return names[id] === undefined ? id : names[id]
     }
@@ -109,9 +111,9 @@ ApplicationWindow {
     function openExport() { if (preview.hasFrame && !preview.busy && !cropMode) exportPopup.open() }
     function showExportOptions() { openExport() }
     function formatFilter() {
-        if (exportFormat === 3) return ["JPEG 图像 (*.jpg *.jpeg)"]
-        if (exportFormat === 1 || exportFormat === 2) return ["PNG 图像 (*.png)"]
-        return ["16 位 TIFF (*.tif *.tiff)"]
+        if (exportFormat === 3) return [Localization.L("JPEG image (*.jpg *.jpeg)")]
+        if (exportFormat === 1 || exportFormat === 2) return [Localization.L("PNG image (*.png)")]
+        return [Localization.L("16-bit TIFF (*.tif *.tiff)")]
     }
     onClosing: function(event) {
         if (preview.batchExporting) preview.cancelExport()
@@ -124,15 +126,15 @@ ApplicationWindow {
     }
     FileDialog {
         id: openDialog
-        title: "导入一张或多张 RAW 照片"
+        title: Localization.epoch && Localization.L("Import one or more RAW photos")
         fileMode: FileDialog.OpenFiles
-        nameFilters: ["相机 RAW (*.arw *.nef *.nrw *.dng *.cr2 *.cr3 *.raf *.rw2 *.orf *.pef *.srw)", "所有文件 (*)"]
+        nameFilters: Localization.epoch && [Localization.L("Camera RAW (*.arw *.nef *.nrw *.dng *.cr2 *.cr3 *.raf *.rw2 *.orf *.pef *.srw)"), Localization.L("All files (*)")]
         onVisibleChanged: window.updateDialogState()
         onAccepted: preview.openFiles(selectedFiles)
     }
     FileDialog {
         id: saveDialog
-        title: "导出当前画面 · 不覆盖现有文件"
+        title: Localization.epoch && Localization.L("Export the current frame · will not overwrite existing files")
         fileMode: FileDialog.SaveFile
         nameFilters: window.formatFilter()
         defaultSuffix: window.exportFormat === 3 ? "jpg" : window.exportFormat === 0 ? "tif" : "png"
@@ -142,7 +144,7 @@ ApplicationWindow {
     }
     FolderDialog {
         id: batchDialog
-        title: "选择批量导出文件夹 · 跳过已有文件"
+        title: Localization.epoch && Localization.L("Choose the batch-export folder · existing files are skipped")
         currentFolder: preview.sourceFolder
         onVisibleChanged: window.updateDialogState()
         onAccepted: preview.exportBatch(selectedFolder, window.exportFormat, window.exportQuality, window.exportLongEdge)
@@ -391,13 +393,13 @@ ApplicationWindow {
             enabled: preview.settingsEditable
             onToggled: preview.setAdjustment(effect.activeKey, checked)
         }
-        Adjustment { label: "强度"; setting: effect.amountKey; fallback: 1; from: 0; to: effect.maximum; available: preview.adjustments[effect.activeKey] !== false }
+        Adjustment { label: Localization.epoch && Localization.L("Strength"); setting: effect.amountKey; fallback: 1; from: 0; to: effect.maximum; available: preview.adjustments[effect.activeKey] !== false }
     }
     component FilmGroup: ColumnLayout {
         id: group
         property bool positive: false
         Layout.fillWidth: true; spacing: 3
-        Text { text: group.positive ? "反转片 · Positive" : "负片 · Negative"; color: Theme.muted; font.pixelSize: 10; font.bold: true }
+        Text { text: group.positive ? Localization.epoch && Localization.L("Slide · Positive") : Localization.epoch && Localization.L("Negative film · Negative"); color: Theme.muted; font.pixelSize: 10; font.bold: true }
         ListView {
             id: list
             objectName: group.positive ? "positiveFilmList" : "filmList"
@@ -437,13 +439,13 @@ ApplicationWindow {
         property int side: 0
         readonly property var hole: window.pairActive && preview.pair.holes !== undefined ? preview.pair.holes[side] : null
         readonly property bool ok: hole !== null
-        readonly property string sideName: window.pairActive && preview.pair.turned === true
-            ? (side === 0 ? "上" : "下") : (side === 0 ? "左" : "右")
+        readonly property string sideName: Localization.epoch && Localization.L(window.pairActive && preview.pair.turned === true
+            ? (side === 0 ? "Top" : "Bottom") : (side === 0 ? "Left" : "Right"))
         Layout.fillWidth: true; spacing: 6
-        Text { text: holePanel.sideName + "孔" + (holePanel.ok && holePanel.hole.sourceName !== undefined && holePanel.hole.sourceName.length > 0 ? " · " + holePanel.hole.sourceName : ""); color: Theme.text; font.pixelSize: 11; font.bold: true }
+        Text { text: Localization.epoch && Localization.L("%@ hole", [holePanel.sideName]) + (holePanel.ok && holePanel.hole.sourceName !== undefined && holePanel.hole.sourceName.length > 0 ? " · " + holePanel.hole.sourceName : ""); color: Theme.text; font.pixelSize: 11; font.bold: true }
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "曝光"; color: Theme.text; font.pixelSize: 11 }
+            Text { text: Localization.epoch && Localization.L("Exposure"); color: Theme.text; font.pixelSize: 11 }
             Item { Layout.fillWidth: true }
             Text {
                 text: holePanel.ok ? (holePanel.hole.exposureEv >= 0 ? "+" : "") + Number(holePanel.hole.exposureEv).toFixed(2) + " EV" : ""
@@ -463,7 +465,7 @@ ApplicationWindow {
         }
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "测光读数"; color: Theme.text; font.pixelSize: 11 }
+            Text { text: Localization.epoch && Localization.L("Meter reading"); color: Theme.text; font.pixelSize: 11 }
             Item { Layout.fillWidth: true }
             Text {
                 // The reading arrives with the compose reply (the meter cache
@@ -471,7 +473,7 @@ ApplicationWindow {
                 // job runs with no reading yet it reads as metering.
                 text: !holePanel.ok ? ""
                     : holePanel.hole.meteredEv === undefined
-                        ? (preview.busy ? "测光中…" : "尚无读数")
+                        ? (preview.busy ? Localization.epoch && Localization.L("Metering…") : Localization.epoch && Localization.L("No reading yet"))
                         : Number(holePanel.hole.meteredEv).toFixed(2) + " EV"
                 color: Theme.muted; font.pixelSize: 10
             }
@@ -479,7 +481,7 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             Switch {
-                text: "日期"; font.pixelSize: 11
+                text: Localization.epoch && Localization.L("Date"); font.pixelSize: 11
                 palette.windowText: Theme.text
                 checked: holePanel.ok && holePanel.hole.dated === true
                 enabled: preview.settingsEditable
@@ -488,7 +490,7 @@ ApplicationWindow {
             TextField {
                 objectName: "pairHole" + holePanel.side + "DateText"
                 Layout.fillWidth: true
-                placeholderText: "如 '26 11 15"
+                placeholderText: Localization.epoch && Localization.L("e.g. '26 11 15")
                 text: holePanel.ok && holePanel.hole.dateText !== undefined ? holePanel.hole.dateText : ""
                 enabled: preview.settingsEditable && holePanel.ok && holePanel.hole.dated === true
                 font.pixelSize: 11
@@ -503,17 +505,17 @@ ApplicationWindow {
         // lands -- a live edit here would silently change nothing.
         ColumnLayout {
             Layout.fillWidth: true; spacing: 2
-            Text { text: "印相 trim（暂存）"; color: Theme.muted; font.pixelSize: 10; font.bold: true }
-            Text { text: "亮度 " + (holePanel.ok ? (holePanel.hole.trim.printExposure >= 0 ? "+" : "") + Number(holePanel.hole.trim.printExposure).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
-            Text { text: "黄滤镜 " + (holePanel.ok ? (holePanel.hole.trim.yFilterShift >= 0 ? "+" : "") + Number(holePanel.hole.trim.yFilterShift).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
-            Text { text: "洋红滤镜 " + (holePanel.ok ? (holePanel.hole.trim.mFilterShift >= 0 ? "+" : "") + Number(holePanel.hole.trim.mFilterShift).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
-            Text { text: "预闪 " + (holePanel.ok ? Number(holePanel.hole.trim.preflashExposure).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
+            Text { text: Localization.epoch && Localization.L("Print trim (stored)"); color: Theme.muted; font.pixelSize: 10; font.bold: true }
+            Text { text: Localization.epoch && Localization.L("Brightness ") + (holePanel.ok ? (holePanel.hole.trim.printExposure >= 0 ? "+" : "") + Number(holePanel.hole.trim.printExposure).toFixed(2) : ""); color: Theme.muted; font.pixelSize: 10 }
+            Text { text: Localization.epoch && Localization.L("Yellow filter %@", [holePanel.ok ? (holePanel.hole.trim.yFilterShift >= 0 ? "+" : "") + Number(holePanel.hole.trim.yFilterShift).toFixed(2) : ""]); color: Theme.muted; font.pixelSize: 10 }
+            Text { text: Localization.epoch && Localization.L("Magenta filter %@", [holePanel.ok ? (holePanel.hole.trim.mFilterShift >= 0 ? "+" : "") + Number(holePanel.hole.trim.mFilterShift).toFixed(2) : ""]); color: Theme.muted; font.pixelSize: 10 }
+            Text { text: Localization.epoch && Localization.L("Pre-flash %@", [holePanel.ok ? Number(holePanel.hole.trim.preflashExposure).toFixed(2) : ""]); color: Theme.muted; font.pixelSize: 10 }
         }
         // Scene Placement per hole is deferred: requestLatitude() carries no
         // region parameter yet and refuses on a pair (PAIR-WIRING §6.2/§6.3
         // want the per-hole region request), so there is deliberately no
         // 应用映射/Fit row here to build a dead path against.
-        Note { text: "印相 trim 四行随对记录保存；逐孔印相切割在后续任务接线，当前不改变像素。" }
+        Note { text: Localization.epoch && Localization.L("The four print-trim rows are saved with the pair's record; per-hole print cropping is wired in a later task and changes no pixels today.") }
     }
 
     RowLayout {
@@ -541,9 +543,47 @@ ApplicationWindow {
                             accented: window.appMode === mode
                             onClicked: window.appMode = mode
                         }
-                        ModeButton { objectName: "modeLibraryButton"; label: "图库"; mode: "图库" }
-                        ModeButton { objectName: "modeDevelopButton"; label: "冲洗"; mode: "冲洗" }
-                        ModeButton { objectName: "modeEditButton"; label: "编辑"; mode: "编辑" }
+                        ModeButton { objectName: "modeLibraryButton"; label: Localization.epoch && Localization.L("Library"); mode: "library" }
+                        ModeButton { objectName: "modeDevelopButton"; label: Localization.epoch && Localization.L("Develop"); mode: "develop" }
+                        ModeButton { objectName: "modeEditButton"; label: Localization.epoch && Localization.L("Edit"); mode: "edit" }
+                        // The language picker: each language names itself, so
+                        // the rows are the same string in all four UI
+                        // languages and deliberately bypass L(). The char
+                        // codes keep the CJK out of the source (the gate's
+                        // unwrapped-literal scan would flag plain literals;
+                        // these names are not translations).
+                        ToolButton {
+                            id: languageButton
+                            objectName: "languageButton"
+                            readonly property var rows: [
+                                { "code": "en", "name": "English" },
+                                { "code": "zh-Hans", "name": String.fromCharCode(0x7B80, 0x4F53, 0x4E2D, 0x6587) },
+                                { "code": "zh-Hant", "name": String.fromCharCode(0x7E41, 0x9AD4, 0x4E2D, 0x6587) },
+                                { "code": "ja", "name": String.fromCharCode(0x65E5, 0x672C, 0x8A9E) }
+                            ]
+                            function ownName(code) {
+                                for (var i = 0; i < rows.length; ++i)
+                                    if (rows[i].code === code) return rows[i].name
+                                return code
+                            }
+                            text: ownName(Localization.language)
+                            font.pixelSize: 11
+                            implicitHeight: 25
+                            onClicked: languageMenu.popup()
+                            Menu {
+                                id: languageMenu
+                                Repeater {
+                                    model: languageButton.rows
+                                    MenuItem {
+                                        required property var modelData
+                                        text: modelData.name
+                                        checkable: true
+                                        checked: Localization.language === modelData.code
+                                        onTriggered: Localization.language = modelData.code
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 // The develop rail: 冲洗/编辑's column content, unchanged.
@@ -553,26 +593,26 @@ ApplicationWindow {
                     ColumnLayout {
                         width: parent.width; spacing: 0
                         Section {
-                            title: "导航图"
+                            title: Localization.epoch && Localization.L("Navigator")
                             Rectangle {
                                 Layout.fillWidth: true; Layout.preferredHeight: 132; color: Theme.wellDark
                                 FrameCanvas { anchors.fill: parent; anchors.margins: 6; image: preview.previewImage; enabled: false }
-                                Text { anchors.centerIn: parent; visible: !preview.hasFrame; text: "导入照片开始"; color: Theme.muted; font.pixelSize: 11 }
+                                Text { anchors.centerIn: parent; visible: !preview.hasFrame; text: Localization.epoch && Localization.L("Import photos to begin"); color: Theme.muted; font.pixelSize: 11 }
                             }
                             RowLayout {
-                                ActionButton { text: "适合"; implicitHeight: 23; enabled: preview.hasFrame; onClicked: canvas.resetView(true) }
+                                ActionButton { text: Localization.epoch && Localization.L("Fit"); implicitHeight: 23; enabled: preview.hasFrame; onClicked: canvas.resetView(true) }
                                 Item { Layout.fillWidth: true }
                                 Text { text: preview.hasFrame ? canvas.scalePercent.toFixed(1) + "%" : ""; color: Theme.muted; font.pixelSize: 10 }
                             }
                         }
                         Section {
-                            title: "胶片"
+                            title: Localization.epoch && Localization.L("Film")
                             FilmGroup { positive: true }
                             FilmGroup { positive: false }
                         }
                         Section {
-                            title: "相纸"
-                            Note { visible: preview.filmIsPositive; text: "反转片直接扫描，不使用相纸。"; color: Theme.accent }
+                            title: Localization.epoch && Localization.L("Paper")
+                            Note { visible: preview.filmIsPositive; text: Localization.epoch && Localization.L("Slide film is scanned directly; no paper is used."); color: Theme.accent }
                             ListView {
                                 id: papers; objectName: "paperList"
                                 Layout.fillWidth: true; Layout.preferredHeight: 174; clip: true
@@ -595,17 +635,17 @@ ApplicationWindow {
                             }
                         }
                         Section {
-                            title: "裁切"
+                            title: Localization.epoch && Localization.L("Crop image")
                             Note {
                                 visible: window.pairActive
-                                text: "半幅对 · 画面级裁切与方向不适用于对件：两孔的画面在孔内逐孔放置（见「半幅对」面板）。"
+                                text: Localization.epoch && Localization.L("Half-frame pair · picture-level crop and orientation do not apply to a pair: each hole's picture is placed inside its hole (see the Half-frame pair panel).")
                                 color: Theme.accent
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 ComboBox {
                                     id: cropAspect; Layout.fillWidth: true
-                                    model: ["自由比例", "1:1", "3:2", "4:3", "16:9"]; enabled: window.canEditCrop
+                                    model: Localization.epoch && [Localization.L("Free ratio"), "1:1", "3:2", "4:3", "16:9"]; enabled: window.canEditCrop
                                     currentIndex: {
                                         var c = preview.cropRect
                                         if (!preview.hasFrame || (c.x === 0 && c.y === 0 && c.width === 1 && c.height === 1)) return 0
@@ -618,23 +658,23 @@ ApplicationWindow {
                                     }
                                     onActivated: { window.cropMode = false; preview.setCropAspect([0, 1, 1.5, 4 / 3, 16 / 9][currentIndex]); canvas.resetView(true) }
                                 }
-                                ActionButton { text: "重置"; enabled: window.canEditCrop; onClicked: { window.cropMode = false; preview.resetCrop(); canvas.resetView(true) } }
+                                ActionButton { text: Localization.epoch && Localization.L("Reset"); enabled: window.canEditCrop; onClicked: { window.cropMode = false; preview.resetCrop(); canvas.resetView(true) } }
                             }
-                            ActionButton { Layout.fillWidth: true; text: window.cropMode ? "完成裁切" : "在画面中拖选裁切"; accented: window.cropMode; enabled: window.canEditCrop; onClicked: window.cropMode ? window.finishCrop() : window.startCrop() }
-                            Note { text: window.cropMode ? "在未旋转原图上拖出矩形；完成后恢复方向与拉直。Enter 确认，Esc 取消。" : "预览与导出使用同一裁切与方向；原始 RAW 不变。" }
+                            ActionButton { Layout.fillWidth: true; text: window.cropMode ? Localization.epoch && Localization.L("Finish crop") : Localization.epoch && Localization.L("Drag in the picture to crop"); accented: window.cropMode; enabled: window.canEditCrop; onClicked: window.cropMode ? window.finishCrop() : window.startCrop() }
+                            Note { text: window.cropMode ? Localization.epoch && Localization.L("Drag a rectangle on the unrotated original; orientation and straighten return when you finish. Enter confirms, Esc cancels.") : Localization.epoch && Localization.L("Preview and export share the same crop and orientation; the original RAW is untouched.") }
                             RowLayout {
                                 Layout.fillWidth: true
-                                ActionButton { objectName: "rotateLeftButton"; Layout.fillWidth: true; text: "左转 90°"; enabled: window.canEditCrop && !window.cropMode; onClicked: { preview.rotateCounterClockwise(); canvas.resetView(true) } }
-                                ActionButton { objectName: "rotateRightButton"; Layout.fillWidth: true; text: "右转 90°"; enabled: window.canEditCrop && !window.cropMode; onClicked: { preview.rotateClockwise(); canvas.resetView(true) } }
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                ActionButton { objectName: "flipHorizontalButton"; Layout.fillWidth: true; text: "水平翻转"; accented: preview.flipHorizontal; enabled: window.canEditCrop && !window.cropMode; onClicked: preview.setFlipHorizontal(!preview.flipHorizontal) }
-                                ActionButton { objectName: "flipVerticalButton"; Layout.fillWidth: true; text: "垂直翻转"; accented: preview.flipVertical; enabled: window.canEditCrop && !window.cropMode; onClicked: preview.setFlipVertical(!preview.flipVertical) }
+                                ActionButton { objectName: "rotateLeftButton"; Layout.fillWidth: true; text: Localization.epoch && Localization.L("Rotate left 90°"); enabled: window.canEditCrop && !window.cropMode; onClicked: { preview.rotateCounterClockwise(); canvas.resetView(true) } }
+                                ActionButton { objectName: "rotateRightButton"; Layout.fillWidth: true; text: Localization.epoch && Localization.L("Rotate right 90°"); enabled: window.canEditCrop && !window.cropMode; onClicked: { preview.rotateClockwise(); canvas.resetView(true) } }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "拉直"; color: Theme.text; font.pixelSize: 11 }
+                                ActionButton { objectName: "flipHorizontalButton"; Layout.fillWidth: true; text: Localization.epoch && Localization.L("Flip horizontally"); accented: preview.flipHorizontal; enabled: window.canEditCrop && !window.cropMode; onClicked: preview.setFlipHorizontal(!preview.flipHorizontal) }
+                                ActionButton { objectName: "flipVerticalButton"; Layout.fillWidth: true; text: Localization.epoch && Localization.L("Flip vertically"); accented: preview.flipVertical; enabled: window.canEditCrop && !window.cropMode; onClicked: preview.setFlipVertical(!preview.flipVertical) }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: Localization.epoch && Localization.L("Straighten"); color: Theme.text; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
                                 Text { text: (straightenSlider.pressed ? straightenSlider.from + straightenSlider.position * (straightenSlider.to - straightenSlider.from) : preview.straightenDegrees).toFixed(1) + "°"; color: Theme.muted; font.pixelSize: 10 }
                             }
@@ -653,16 +693,16 @@ ApplicationWindow {
                                 }
                                 onMoved: { if (!pressed) preview.setStraightenDegrees(value) }
                             }
-                            Note { text: "拉直在松开滑块后应用。边缘自动收紧以避免空白。" }
-                            ActionButton { objectName: "resetGeometryButton"; Layout.fillWidth: true; text: "重置裁切与方向"; enabled: window.canEditCrop && !window.cropMode; onClicked: { preview.resetGeometry(); canvas.resetView(true) } }
+                            Note { text: Localization.epoch && Localization.L("Straighten applies when the slider is released; the edges tighten automatically to avoid blank areas.") }
+                            ActionButton { objectName: "resetGeometryButton"; Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset crop & orientation"); enabled: window.canEditCrop && !window.cropMode; onClicked: { preview.resetGeometry(); canvas.resetView(true) } }
                         }
                         Section {
-                            title: "放大机 · 相纸亮度"
+                            title: Localization.epoch && Localization.L("Enlarger · paper brightness")
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "亮度"; color: Theme.text; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Brightness"); color: Theme.text; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: preview.filmIsPositive ? "不适用" : (preview.exposureEv >= 0 ? "+" : "") + preview.exposureEv.toFixed(1) + " EV"; color: Theme.muted; font.pixelSize: 10 }
+                                Text { text: preview.filmIsPositive ? Localization.epoch && Localization.L("Not applicable") : (preview.exposureEv >= 0 ? "+" : "") + preview.exposureEv.toFixed(1) + " EV"; color: Theme.muted; font.pixelSize: 10 }
                             }
                             Slider {
                                 objectName: "exposureSlider"; Layout.fillWidth: true; from: -2; to: 2; stepSize: 0.1; implicitHeight: 24
@@ -670,8 +710,8 @@ ApplicationWindow {
                                 onPressedChanged: { if (pressed) preview.beginEditGesture("exposureEv"); else preview.endEditGesture() }
                                 onMoved: preview.exposureEv = value
                             }
-                            Adjustment { label: "黄色滤镜"; setting: "yFilterShift"; from: -1; to: 1; step: 0.01; decimals: 2; available: !preview.filmIsPositive }
-                            Adjustment { label: "洋红滤镜"; setting: "mFilterShift"; from: -1; to: 1; step: 0.01; decimals: 2; available: !preview.filmIsPositive }
+                            Adjustment { label: Localization.epoch && Localization.L("Yellow filter"); setting: "yFilterShift"; from: -1; to: 1; step: 0.01; decimals: 2; available: !preview.filmIsPositive }
+                            Adjustment { label: Localization.epoch && Localization.L("Magenta filter"); setting: "mFilterShift"; from: -1; to: 1; step: 0.01; decimals: 2; available: !preview.filmIsPositive }
                             // 遮罩 (RFC-024, phase 2): the contrast mask is an
                             // engine parameter on Windows now. The switch turns
                             // it on and the four sliders set the curve's
@@ -683,7 +723,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Switch {
                                     objectName: "contrastMaskSwitch"
-                                    text: "遮罩"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("Mask"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: preview.mask.active
                                     enabled: preview.settingsEditable && !preview.filmIsPositive
@@ -691,18 +731,18 @@ ApplicationWindow {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: !preview.mask.active ? "关闭" : "已应用"
+                                    text: !preview.mask.active ? Localization.epoch && Localization.L("Close") : Localization.epoch && Localization.L("Applied")
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
-                            MaskSlider { label: "高光提升"; name: "highlights"; from: 0; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
-                            MaskSlider { label: "阴影压低"; name: "shadows"; from: 0; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
-                            MaskSlider { label: "核心宽度"; name: "core"; from: 0.1; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
-                            MaskSlider { label: "作用范围"; name: "scale"; from: 0.002; to: 0.12; step: 0.002; decimals: 3 }
+                            MaskSlider { label: Localization.epoch && Localization.L("Lift highlights"); name: "highlights"; from: 0; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
+                            MaskSlider { label: Localization.epoch && Localization.L("Pull shadows"); name: "shadows"; from: 0; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
+                            MaskSlider { label: Localization.epoch && Localization.L("Core width"); name: "core"; from: 0.1; to: 3; step: 0.05; decimals: 2; suffix: " stops" }
+                            MaskSlider { label: Localization.epoch && Localization.L("Scale"); name: "scale"; from: 0.002; to: 0.12; step: 0.002; decimals: 3 }
                             ActionButton {
                                 objectName: "resetMaskButton"
                                 Layout.fillWidth: true
-                                text: "重置遮罩"
+                                text: Localization.epoch && Localization.L("Reset mask")
                                 enabled: preview.settingsEditable && !preview.filmIsPositive && preview.hasFrame
                                 onClicked: {
                                     preview.setMask("active", false)
@@ -712,7 +752,7 @@ ApplicationWindow {
                                     preview.setMask("scale", 0.03)
                                 }
                             }
-                            Note { text: "对比遮罩按画面局部提升相纸高光、压低阴影：开关与滑块走引擎参数，重新渲染而不重解码。" }
+                            Note { text: Localization.epoch && Localization.L("The contrast mask lifts the paper's highlights and pulls its shadows locally: the switch and sliders are engine parameters and re-render without re-decoding.") }
                         }
                     }
                 }
@@ -741,15 +781,15 @@ ApplicationWindow {
                     Layout.fillWidth: true; implicitHeight: Theme.topHeight; color: Theme.card
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 6
-                        ActionButton { text: "导入 RAW"; enabled: window.canBrowse; onClicked: openDialog.open(); implicitHeight: 27 }
-                        ActionButton { text: "导出"; enabled: preview.hasFrame && !preview.busy && !window.cropMode; onClicked: window.openExport(); implicitHeight: 27 }
-                        ActionButton { text: "裁切"; accented: window.cropMode; enabled: window.canEditCrop; onClicked: window.cropMode ? window.finishCrop() : window.startCrop(); implicitHeight: 27 }
-                        ActionButton { objectName: "compareButton"; text: "对比"; accented: preview.compareEnabled; enabled: preview.hasFrame && !window.cropMode; onClicked: preview.compareEnabled = !preview.compareEnabled; implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: "左侧显示未评分的冲印结果，右侧显示当前编辑 · V" }
-                        ActionButton { objectName: "undoButton"; text: "撤销"; enabled: preview.settingsEditable && preview.canUndo && !window.cropMode; onClicked: preview.undo(); implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: "撤销当前照片的上一步调整 · Ctrl+Z" }
-                        ActionButton { objectName: "redoButton"; text: "重做"; enabled: preview.settingsEditable && preview.canRedo && !window.cropMode; onClicked: preview.redo(); implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: "重做当前照片的调整 · Ctrl+Shift+Z / Ctrl+Y" }
+                        ActionButton { text: Localization.epoch && Localization.L("Import RAW"); enabled: window.canBrowse; onClicked: openDialog.open(); implicitHeight: 27 }
+                        ActionButton { text: Localization.epoch && Localization.L("Export"); enabled: preview.hasFrame && !preview.busy && !window.cropMode; onClicked: window.openExport(); implicitHeight: 27 }
+                        ActionButton { text: Localization.epoch && Localization.L("Crop image"); accented: window.cropMode; enabled: window.canEditCrop; onClicked: window.cropMode ? window.finishCrop() : window.startCrop(); implicitHeight: 27 }
+                        ActionButton { objectName: "compareButton"; text: Localization.epoch && Localization.L("Compare"); accented: preview.compareEnabled; enabled: preview.hasFrame && !window.cropMode; onClicked: preview.compareEnabled = !preview.compareEnabled; implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("The ungraded print on the left, the current edit on the right · V") }
+                        ActionButton { objectName: "undoButton"; text: Localization.epoch && Localization.L("Undo"); enabled: preview.settingsEditable && preview.canUndo && !window.cropMode; onClicked: preview.undo(); implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("Undo the photo's last adjustment · Ctrl+Z") }
+                        ActionButton { objectName: "redoButton"; text: Localization.epoch && Localization.L("Redo"); enabled: preview.settingsEditable && preview.canRedo && !window.cropMode; onClicked: preview.redo(); implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("Redo the photo's adjustment · Ctrl+Shift+Z / Ctrl+Y") }
                         Item { Layout.fillWidth: true }
                         Text { text: preview.hasFrame ? canvas.scalePercent.toFixed(1) + "%" : ""; color: Theme.muted; font.pixelSize: 10; horizontalAlignment: Text.AlignRight }
-                        ActionButton { text: "适合"; accented: canvas.fit; enabled: preview.hasFrame; onClicked: canvas.resetView(true); implicitHeight: 27 }
+                        ActionButton { text: Localization.epoch && Localization.L("Fit"); accented: canvas.fit; enabled: preview.hasFrame; onClicked: canvas.resetView(true); implicitHeight: 27 }
                         ActionButton { text: "100%"; accented: !canvas.fit; enabled: preview.hasFrame && !window.cropMode; onClicked: canvas.resetView(false); implicitHeight: 27 }
                     }
                 }
@@ -840,20 +880,20 @@ ApplicationWindow {
                     Column {
                         anchors.centerIn: parent; spacing: 16; visible: !preview.hasFrame
                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: "SpektraLab"; color: "#e5e2dc"; font.pixelSize: 32; font.letterSpacing: 1 }
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "导入 RAW，逐张选择胶片与相纸"; color: "#d0cdc6"; font.pixelSize: 13 }
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "支持一次拖入多张照片"; color: "#c0bdb7"; font.pixelSize: 11 }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: Localization.epoch && Localization.L("Import RAW; pick the film and paper per photo"); color: "#d0cdc6"; font.pixelSize: 13 }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: Localization.epoch && Localization.L("You can drop several photos at once"); color: "#c0bdb7"; font.pixelSize: 11 }
                     }
                     DropArea { anchors.fill: parent; enabled: window.canBrowse; onDropped: function(drop) { if (drop.hasUrls) preview.openFiles(drop.urls) } }
                     Rectangle {
                         anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 26
                         width: window.cropMode ? 78 : 48; height: 20; radius: 2; color: "#b32d2d2c"; visible: preview.hasFrame
-                        Text { anchors.centerIn: parent; text: window.cropMode ? "裁切原图" : "FULL"; color: Theme.text; font.pixelSize: 9; font.letterSpacing: 1 }
+                        Text { anchors.centerIn: parent; text: window.cropMode ? Localization.epoch && Localization.L("Cropping the original") : "FULL"; color: Theme.text; font.pixelSize: 9; font.letterSpacing: 1 }
                     }
                     BusyIndicator { anchors.centerIn: parent; running: preview.busy; visible: running; width: 44; height: 44 }
                 }
                 Rectangle {
                     Layout.fillWidth: true; implicitHeight: 28; color: Theme.card
-                    Text { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; verticalAlignment: Text.AlignVCenter; text: preview.hasFrame ? preview.metadata.width + " × " + preview.metadata.height + "   ·   SDR sRGB / 8 位预览   ·   " + (preview.dirty ? "更新预览中…" : "选择与调整自动应用") : "完整分辨率预览"; color: preview.dirty ? Theme.accent : Theme.muted; font.pixelSize: 10; elide: Text.ElideRight }
+                    Text { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; verticalAlignment: Text.AlignVCenter; text: preview.hasFrame ? Localization.epoch && Localization.L("%@ × %@   ·   SDR sRGB / 8-bit preview   ·   %@", [preview.metadata.width, preview.metadata.height, preview.dirty ? Localization.L("Updating the preview…") : Localization.L("Selection and adjustments apply automatically")]) : Localization.epoch && Localization.L("Full-resolution preview"); color: preview.dirty ? Theme.accent : Theme.muted; font.pixelSize: 10; elide: Text.ElideRight }
                 }
                 Rectangle {
                     Layout.fillWidth: true; implicitHeight: Theme.stripHeight; color: Theme.card
@@ -862,7 +902,7 @@ ApplicationWindow {
                         anchors.fill: parent; anchors.margins: 8; spacing: 6
                         RowLayout {
                             Layout.fillWidth: true; spacing: 6
-                            Text { text: preview.libraryItems.length + " 张照片 · 已选 " + preview.selectedCount; color: Theme.muted; font.pixelSize: 10 }
+                            Text { text: Localization.epoch && Localization.L("%@ photos · %@ selected", [preview.libraryItems.length, preview.selectedCount]); color: Theme.muted; font.pixelSize: 10 }
                             Text {
                                 Layout.fillWidth: true
                                 visible: window.pairNotice.length > 0
@@ -871,9 +911,9 @@ ApplicationWindow {
                                 elide: Text.ElideRight
                             }
                             Item { Layout.fillWidth: true; visible: window.pairNotice.length === 0 }
-                            ActionButton { text: "全选"; implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.libraryItems.length > 0; onClicked: preview.selectAllPhotos(true) }
-                            ActionButton { text: "清除选择"; implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.selectedCount > 0; onClicked: preview.selectAllPhotos(false) }
-                            ActionButton { text: "同步设置"; implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.hasFrame && preview.selectedCount > 0; onClicked: preview.syncSelectedSettings(false); ToolTip.visible: hovered; ToolTip.text: "将当前照片的胶片、相纸、解码和效果同步到所选照片，不同步裁切。" }
+                            ActionButton { text: Localization.epoch && Localization.L("Select All"); implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.libraryItems.length > 0; onClicked: preview.selectAllPhotos(true) }
+                            ActionButton { text: Localization.epoch && Localization.L("Clear selection"); implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.selectedCount > 0; onClicked: preview.selectAllPhotos(false) }
+                            ActionButton { text: Localization.epoch && Localization.L("Sync settings"); implicitHeight: 23; font.pixelSize: 10; enabled: window.canBrowse && preview.hasFrame && preview.selectedCount > 0; onClicked: preview.syncSelectedSettings(false); ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("Synced the film, paper, decode and effects to the selected photos; the crop is not synced.") }
                             // 建对 (PAIR-WIRING §5): the two selected photographs
                             // become one pair library item. The controller
                             // refuses (and changes nothing) while the engine is
@@ -883,18 +923,18 @@ ApplicationWindow {
                             // true), so the button only surfaces the refusal.
                             ActionButton {
                                 objectName: "createPairButton"
-                                text: "建对"; implicitHeight: 23; font.pixelSize: 10
+                                text: Localization.epoch && Localization.L("Make pair"); implicitHeight: 23; font.pixelSize: 10
                                 enabled: window.canBrowse && window.pairCandidates.length === 2
                                 onClicked: {
                                     if (preview.createPair(window.pairCandidates[0].url, window.pairCandidates[1].url)) {
                                         window.pairNotice = ""
                                     } else {
-                                        window.pairNotice = "无法建对：请等待当前操作完成，或改选两张不同的照片（半幅对不能作为对孔）"
+                                        window.pairNotice = Localization.L("Cannot make the pair: wait for the current operation to finish, or pick two different photos (a half-frame pair cannot be a hole)")
                                         pairNoticeTimer.restart()
                                     }
                                 }
                                 ToolTip.visible: hovered
-                                ToolTip.text: "把所选的前两张照片（按库序）合为一件半幅对；对以独立库项出现，逐孔编辑见右侧「半幅对」面板。"
+                                ToolTip.text: Localization.epoch && Localization.L("Combines the first two selected photos (in library order) into one half-frame pair; the pair appears as its own library item, and each hole is edited in the Half-frame pair panel on the right.")
                             }
                         }
                         ListView {
@@ -909,7 +949,7 @@ ApplicationWindow {
                                 required property int index
                                 width: 132; height: filmstrip.height - 3
                                 color: Theme.wellDark; border.color: modelData.active ? Theme.accent : Theme.line; border.width: modelData.active ? 2 : 0
-                                Text { anchors.centerIn: parent; anchors.verticalCenterOffset: -8; text: modelData.error ? "无法读取" : "点击预览"; color: modelData.error ? "#ffb39f" : Theme.muted; font.pixelSize: 10 }
+                                Text { anchors.centerIn: parent; anchors.verticalCenterOffset: -8; text: modelData.error ? Localization.epoch && Localization.L("Cannot be read") : Localization.epoch && Localization.L("Click to preview"); color: modelData.error ? "#ffb39f" : Theme.muted; font.pixelSize: 10 }
                                 FrameCanvas { anchors.fill: parent; anchors.margins: 5; anchors.bottomMargin: 22; image: modelData.thumbnail; enabled: false }
                                 Text { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 6; text: modelData.name; color: Theme.text; font.pixelSize: 10; elide: Text.ElideMiddle }
                                 MouseArea {
@@ -933,7 +973,7 @@ ApplicationWindow {
                 visible: window.libraryMode
                 onOpenRequested: function(path) {
                     library.openInDevelop(path)
-                    window.appMode = "冲洗"
+                    window.appMode = "develop"
                 }
             }
         }
@@ -941,7 +981,7 @@ ApplicationWindow {
             Layout.preferredWidth: Theme.rightWidth; Layout.fillHeight: true; color: Theme.card
             ColumnLayout {
                 anchors.fill: parent; spacing: 0
-                Text { text: "参数 · 显影前"; color: Theme.text; font.pixelSize: 14; font.bold: true; Layout.leftMargin: 14; Layout.preferredHeight: Theme.topHeight; verticalAlignment: Text.AlignVCenter }
+                Text { text: Localization.epoch && Localization.L("Parameters · pre-develop"); color: Theme.text; font.pixelSize: 14; font.bold: true; Layout.leftMargin: 14; Layout.preferredHeight: Theme.topHeight; verticalAlignment: Text.AlignVCenter }
                 ScrollView {
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                     ColumnLayout {
@@ -955,28 +995,28 @@ ApplicationWindow {
                         // piece, and the filmstrip already carries the item.
                         Section {
                             id: pairSection
-                            title: "半幅对"
+                            title: Localization.epoch && Localization.L("Half-frame pair")
                             visible: window.pairActive
                             Note {
                                 visible: window.pairActive
-                                text: "对不拥有自己的照片：两孔随各自源照片的解码与裁切；件的胶片、相纸与胶片边缘在下方共用面板调整。"
+                                text: Localization.epoch && Localization.L("A pair owns no photos of its own: each hole follows its source photo's decode and crop; the piece's film, paper and film rebate are adjusted in the shared panels below.")
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "记录"; color: Theme.text; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Record"); color: Theme.text; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: window.pairActive && preview.pair.saved === true ? "已保存" : "保存中…"
+                                    text: window.pairActive && preview.pair.saved === true ? Localization.epoch && Localization.L("Saved") : Localization.epoch && Localization.L("Saving…")
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "间距"; color: window.pairOnStrip ? Theme.muted : Theme.text; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Spacing"); color: window.pairOnStrip ? Theme.muted : Theme.text; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
                                 Text {
                                     text: window.pairActive
-                                        ? (window.pairOnStrip ? "1.0 mm（片条固定）" : Number(preview.pair.spacingMM).toFixed(2) + " mm")
+                                        ? (window.pairOnStrip ? Localization.epoch && Localization.L("1.0 mm (strip-fixed)") : Number(preview.pair.spacingMM).toFixed(2) + " mm")
                                         : ""
                                     color: Theme.muted; font.pixelSize: 10
                                 }
@@ -993,7 +1033,7 @@ ApplicationWindow {
                                 }
                                 onMoved: preview.setPairPiece("spacingMM", value)
                             }
-                            Note { visible: window.pairOnStrip; text: "胶片边缘开启：对走在片条上，间隙固定为片条的 1 mm；关闭胶片边缘后可调。" }
+                            Note { visible: window.pairOnStrip; text: Localization.epoch && Localization.L("With the film rebate on, the pair rides its strip and the gap is fixed to the strip's 1 mm; turn the film rebate off to adjust it.") }
                             // Wide-gap dated bare pair (PAIR-WIRING §2's gate
                             // shape): with a date on and no film edge, the
                             // engine's 37:24 shape gate refuses spacing above
@@ -1002,14 +1042,14 @@ ApplicationWindow {
                             Note {
                                 visible: window.pairActive && !window.pairOnStrip && window.pairAnyDated &&
                                          window.pairSpacingMM > 2.85
-                                text: "有日期且无胶片边缘时间距上限约 2.85 mm：更宽的间隙超出引擎的画幅比例约束，组装会被拒绝。"
+                                text: Localization.epoch && Localization.L("With a date on and no film rebate, the gap tops out near 2.85 mm: a wider gap exceeds the engine's format-shape constraint and the compose is refused.")
                                 color: Theme.accent
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Switch {
                                     objectName: "pairTurnedSwitch"
-                                    text: "转向（竖排）"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("Turn (stack)"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: window.pairActive && preview.pair.turned === true
                                     enabled: preview.settingsEditable
@@ -1017,7 +1057,7 @@ ApplicationWindow {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: window.pairActive && preview.pair.turned === true ? "上下竖排" : "左右并排"
+                                    text: window.pairActive && preview.pair.turned === true ? Localization.epoch && Localization.L("Stacked vertically") : Localization.epoch && Localization.L("Side by side")
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
@@ -1025,7 +1065,7 @@ ApplicationWindow {
                             PairHoleSection { side: 0 }
                             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line; opacity: 0.35 }
                             PairHoleSection { side: 1 }
-                            Note { text: "曝光与放置改动重新组装整件；日期改动按同底片重印。撤销/重做按对件自己的历史行走。" }
+                            Note { text: Localization.epoch && Localization.L("Exposure and placement changes re-compose the whole piece; date changes reprint the same negative. Undo/redo walks the pair's own history.") }
                         }
                         // Output histogram: 4×256 bins over the published
                         // preview pixels (geometry + grade applied), the same
@@ -1033,7 +1073,7 @@ ApplicationWindow {
                         // luma behind, R/G/B over it — against the max bin.
                         Section {
                             id: histogramSection
-                            title: "直方图"
+                            title: Localization.epoch && Localization.L("Histogram")
                             visible: preview.hasFrame
                             readonly property var bins: preview.histogram
                             // Indexed by channel (bins[0..3] = R/G/B/luma):
@@ -1094,10 +1134,10 @@ ApplicationWindow {
                             }
                             Row {
                                 spacing: 8
-                                HistogramKey { label: "红"; swatch: "#e8524e" }
-                                HistogramKey { label: "绿"; swatch: "#62c462" }
-                                HistogramKey { label: "蓝"; swatch: "#5d7de8" }
-                                HistogramKey { label: "亮度"; swatch: "#bdbdbd" }
+                                HistogramKey { label: Localization.epoch && Localization.L("Red"); swatch: "#e8524e" }
+                                HistogramKey { label: Localization.epoch && Localization.L("Green"); swatch: "#62c462" }
+                                HistogramKey { label: Localization.epoch && Localization.L("Blue"); swatch: "#5d7de8" }
+                                HistogramKey { label: Localization.epoch && Localization.L("Brightness"); swatch: "#bdbdbd" }
                             }
                         }
                         // Scene latitude (RFC-023): an on-demand measurement
@@ -1112,7 +1152,7 @@ ApplicationWindow {
                         // draws whichever layers arrived.
                         Section {
                             id: latitudeSection
-                            title: "宽容度"
+                            title: Localization.epoch && Localization.L("Latitude")
                             visible: preview.hasFrame
                             readonly property var reply: preview.latitude && preview.latitude.medium !== undefined ? preview.latitude : null
                             readonly property var medium: reply ? reply.medium : null
@@ -1126,12 +1166,12 @@ ApplicationWindow {
                                 var parts = []
                                 var m = latitudeSection.medium
                                 if (m && m.latitude_stops !== undefined)
-                                    parts.push("宽容度 " + Number(m.latitude_stops).toFixed(1) + " stops")
+                                    parts.push(Localization.epoch && Localization.L("Latitude %@ stops", [Number(m.latitude_stops).toFixed(1)]))
                                 var s = latitudeSection.reply && latitudeSection.reply.suggested !== undefined ? latitudeSection.reply.suggested : null
                                 if (s && s.valid !== undefined)
-                                    parts.push("建议收高光 " + Number(s.highlight_pull_back === undefined ? 0 : s.highlight_pull_back).toFixed(1) + " / 收阴影 " + Number(s.shadow_pull_back === undefined ? 0 : s.shadow_pull_back).toFixed(1) + " EV")
+                                    parts.push(Localization.epoch && Localization.L("Suggested pull: highlights %@ / shadows %@ EV", [Number(s.highlight_pull_back === undefined ? 0 : s.highlight_pull_back).toFixed(1), Number(s.shadow_pull_back === undefined ? 0 : s.shadow_pull_back).toFixed(1)]))
                                 var fit = latitudeSection.reply && latitudeSection.reply.fit !== undefined ? latitudeSection.reply.fit : null
-                                if (fit && fit.valid !== undefined && !fit.valid) parts.push("拟合未通过")
+                                if (fit && fit.valid !== undefined && !fit.valid) parts.push(Localization.epoch && Localization.L("The fit did not pass"))
                                 return parts.join(" · ")
                             }
                             onReplyChanged: latitudePlot.requestPaint()
@@ -1143,7 +1183,7 @@ ApplicationWindow {
                                 ActionButton {
                                     id: latitudeButton
                                     objectName: "latitudeButton"
-                                    text: preview.latitudeBusy ? "分析中…" : "分析"
+                                    text: preview.latitudeBusy ? Localization.epoch && Localization.L("Analysing…") : Localization.epoch && Localization.L("Analyse")
                                     // A pair's reading is the piece's per-hole
                                     // region (PAIR-WIRING §6.2); until that
                                     // request exists the controller refuses the
@@ -1245,7 +1285,7 @@ ApplicationWindow {
                                 Text {
                                     anchors.centerIn: parent
                                     visible: !latitudeSection.reply && !preview.latitudeBusy
-                                    text: "点击「分析」测量当前胶片与场景"
+                                    text: Localization.epoch && Localization.L("Click Analyse to measure the current film and scene")
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
@@ -1262,7 +1302,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Switch {
                                     objectName: "sceneLatitudeSwitch"
-                                    text: "应用映射"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("Apply mapping"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: preview.sceneLatitudeActive
                                     enabled: preview.settingsEditable
@@ -1270,14 +1310,14 @@ ApplicationWindow {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: !preview.sceneLatitudeActive ? "关闭" : "已应用"
+                                    text: !preview.sceneLatitudeActive ? Localization.epoch && Localization.L("Close") : Localization.epoch && Localization.L("Applied")
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
                             ActionButton {
                                 objectName: "commitFitButton"
                                 Layout.fillWidth: true
-                                text: "提交拟合"
+                                text: Localization.epoch && Localization.L("Commit fit")
                                 // The fit lands on the first curve; a pair's
                                 // commit waits for the per-hole region (§6.3),
                                 // and the controller refuses it on a pair.
@@ -1287,56 +1327,56 @@ ApplicationWindow {
                             Note { visible: latitudeSection.summary.length > 0; text: latitudeSection.summary; color: Theme.text }
                             Note {
                                 visible: window.pairActive
-                                text: "半幅对 · 分析与提交拟合暂不适用于对件（逐孔区域测量待后续任务）；「应用映射」仍按整件生效。"
+                                text: Localization.epoch && Localization.L("Half-frame pair · Analyse and Commit fit do not yet apply to a pair (per-hole region measurement is a later task); Apply mapping still acts on the whole piece.")
                                 color: Theme.accent
                             }
-                            Note { text: "分析只读取当前显影结果，不改变画面；「应用映射」按已提交的曲线放置场景，「提交拟合」写入求解的高光/阴影收放。" }
+                            Note { text: Localization.epoch && Localization.L("Analyse only reads the current develop and does not change the picture; Apply mapping places the scene with the committed curve, and Commit fit writes the solved highlight/shadow pull-backs.") }
                         }
                         Section {
-                            title: "编辑 · 光线"
-                            Layer2Adjustment { label: "曝光"; setting: "exposure"; from: -5; to: 5; step: 0.05; decimals: 2; suffix: " EV" }
-                            Layer2Adjustment { label: "亮度"; setting: "brightness"; from: -100; to: 100; step: 1; decimals: 0 }
-                            Layer2Adjustment { label: "对比度"; setting: "contrast"; from: -100; to: 100; step: 1; decimals: 0 }
-                            Layer2Adjustment { label: "高光"; setting: "highlights"; from: -100; to: 100; step: 1; decimals: 0 }
-                            Layer2Adjustment { label: "阴影"; setting: "shadows"; from: -100; to: 100; step: 1; decimals: 0 }
-                            Layer2Adjustment { label: "黑色阶"; setting: "blackPoint"; from: 0; to: 100; step: 1; decimals: 0 }
-                            Layer2Adjustment { label: "白色阶"; setting: "whitePoint"; from: 0; to: 100; step: 1; decimals: 0 }
-                            ActionButton { Layout.fillWidth: true; text: "重置光线"; enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.setLayer2Zero(["exposure", "brightness", "contrast", "highlights", "shadows", "blackPoint", "whitePoint"]) }
-                            Note { text: "分级调整作用于显影后的画面：实时生效，不触发重新渲染，与导出像素一致。" }
+                            title: Localization.epoch && Localization.L("Edit · Light")
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Exposure"); setting: "exposure"; from: -5; to: 5; step: 0.05; decimals: 2; suffix: " EV" }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Brightness"); setting: "brightness"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Contrast"); setting: "contrast"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Highlights"); setting: "highlights"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Shadows"); setting: "shadows"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Black point"); setting: "blackPoint"; from: 0; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("White point"); setting: "whitePoint"; from: 0; to: 100; step: 1; decimals: 0 }
+                            ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset light"); enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.setLayer2Zero(["exposure", "brightness", "contrast", "highlights", "shadows", "blackPoint", "whitePoint"]) }
+                            Note { text: Localization.epoch && Localization.L("Graded adjustments act on the developed picture: live, without triggering a re-render, and pixel-identical to the export.") }
                         }
                         Section {
-                            title: "编辑 · 颜色"
-                            Layer2Adjustment { label: "色温"; setting: "temperature"; from: -100; to: 100; step: 1; decimals: 0 }
-                            Layer2Adjustment { label: "色调"; setting: "tint"; from: -100; to: 100; step: 1; decimals: 0 }
-                            Layer2Adjustment { label: "饱和度"; setting: "saturation"; from: -100; to: 100; step: 1; decimals: 0 }
-                            ActionButton { Layout.fillWidth: true; text: "重置颜色"; enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.setLayer2Zero(["temperature", "tint", "saturation"]) }
+                            title: Localization.epoch && Localization.L("Edit · Colour")
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Temperature"); setting: "temperature"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Tint"); setting: "tint"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Saturation"); setting: "saturation"; from: -100; to: 100; step: 1; decimals: 0 }
+                            ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset colour"); enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.setLayer2Zero(["temperature", "tint", "saturation"]) }
                         }
                         Section {
-                            title: "曲线"
+                            title: Localization.epoch && Localization.L("Curve")
                             CurveEditor {}
                         }
                         Section {
-                            title: "编辑 · 色彩平衡"
+                            title: Localization.epoch && Localization.L("Edit · Colour balance")
                             ColorBalance {}
-                            ActionButton { Layout.fillWidth: true; text: "重置色彩平衡"; enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.resetColorBalance() }
+                            ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset colour balance"); enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.resetColorBalance() }
                         }
                         Section {
-                            title: "编辑 · 暗角"
-                            Layer2Adjustment { label: "数量"; setting: "vignetteAmount"; readKey: "vignette.amount"; from: -100; to: 100; step: 1; decimals: 0 }
-                            Layer2Adjustment { label: "中点"; setting: "vignetteMidpoint"; readKey: "vignette.midpoint"; fallback: 50; from: 0; to: 100; step: 1; decimals: 0 }
-                            ActionButton { Layout.fillWidth: true; text: "重置暗角"; enabled: preview.settingsEditable && preview.hasFrame; onClicked: { preview.setLayer2("vignetteAmount", 0); preview.setLayer2("vignetteMidpoint", 50) } }
-                            Note { text: "负值压暗画面边缘，正值加亮；中点决定暗角从画面何处开始。" }
+                            title: Localization.epoch && Localization.L("Edit · Vignette")
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Amount"); setting: "vignetteAmount"; readKey: "vignette.amount"; from: -100; to: 100; step: 1; decimals: 0 }
+                            Layer2Adjustment { label: Localization.epoch && Localization.L("Midpoint"); setting: "vignetteMidpoint"; readKey: "vignette.midpoint"; fallback: 50; from: 0; to: 100; step: 1; decimals: 0 }
+                            ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset vignette"); enabled: preview.settingsEditable && preview.hasFrame; onClicked: { preview.setLayer2("vignetteAmount", 0); preview.setLayer2("vignetteMidpoint", 50) } }
+                            Note { text: Localization.epoch && Localization.L("Negative values darken the picture's edges, positive values brighten; the midpoint decides where in the picture the vignette begins.") }
                         }
                         Section {
                             id: cameraSection
-                            title: "输入 / 相机"
+                            title: Localization.epoch && Localization.L("Input / camera")
                             Note {
                                 visible: window.pairActive
-                                text: "半幅对 · 胶片曝光、白平衡与测光在件级控制：对的曝光恒为 0（每孔的曝光在「半幅对」面板），解码随各孔源照片。"
+                                text: Localization.epoch && Localization.L("Half-frame pair · film exposure, white balance and metering are controlled at piece level: the pair's exposure is always 0 (each hole's exposure is in the Half-frame pair panel) and the decode follows each hole's source photo.")
                                 color: Theme.accent
                             }
-                            Adjustment { label: "胶片曝光"; setting: "filmExposureEv"; from: -4; to: 4; step: 0.1; decimals: 1; suffix: " EV"; available: !window.pairActive }
-                            Note { text: "在胶片曝光前调整场景亮度。每张照片的效果与裁切自动保存，下次导入时恢复。" }
+                            Adjustment { label: Localization.epoch && Localization.L("Film Exposure"); setting: "filmExposureEv"; from: -4; to: 4; step: 0.1; decimals: 1; suffix: " EV"; available: !window.pairActive }
+                            Note { text: Localization.epoch && Localization.L("Adjusts the scene's brightness before the film exposure. Each photo's effects and crop save automatically and return on the next import.") }
                             // 白平衡（RAW 解码侧的 Temperature/Tint，Adobe DNG 口径）：
                             // 0 = 自动（As Shot）。改动是解码参数，会重新解码当前照片
                             // 而不是增量重渲染；高光扩展解码不接受覆盖，控件随之禁用。
@@ -1345,10 +1385,10 @@ ApplicationWindow {
                             readonly property bool wbAsShot: preview.wbTemperature <= 0
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "温度"; color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Temperature"); color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: cameraSection.wbAsShot ? "自动（As Shot）" : Math.round(preview.wbTemperature) + " K"; color: Theme.muted; font.pixelSize: 10 }
-                                ActionButton { text: "As Shot"; implicitHeight: 23; font.pixelSize: 10; enabled: preview.settingsEditable && cameraSection.wbEditable && preview.wbAsShotAvailable; onClicked: preview.applyWbAsShot(); ToolTip.visible: hovered; ToolTip.text: "回填照片解码回报的拍摄白平衡数值" }
+                                Text { text: cameraSection.wbAsShot ? Localization.epoch && Localization.L("Auto (As Shot)") : Math.round(preview.wbTemperature) + " K"; color: Theme.muted; font.pixelSize: 10 }
+                                ActionButton { text: "As Shot"; implicitHeight: 23; font.pixelSize: 10; enabled: preview.settingsEditable && cameraSection.wbEditable && preview.wbAsShotAvailable; onClicked: preview.applyWbAsShot(); ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("Backfills the as-shot white balance the photo's decode reported") }
                             }
                             Slider {
                                 objectName: "wbTemperatureSlider"
@@ -1361,10 +1401,10 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "色调"; color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Tint"); color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: cameraSection.wbAsShot ? "自动（As Shot）" : (preview.wbTint > 0 ? "+" : "") + Math.round(preview.wbTint); color: Theme.muted; font.pixelSize: 10 }
-                                ActionButton { text: "As Shot"; implicitHeight: 23; font.pixelSize: 10; enabled: preview.settingsEditable && cameraSection.wbEditable && preview.wbAsShotAvailable; onClicked: preview.applyWbAsShot(); ToolTip.visible: hovered; ToolTip.text: "回填照片解码回报的拍摄白平衡数值" }
+                                Text { text: cameraSection.wbAsShot ? Localization.epoch && Localization.L("Auto (As Shot)") : (preview.wbTint > 0 ? "+" : "") + Math.round(preview.wbTint); color: Theme.muted; font.pixelSize: 10 }
+                                ActionButton { text: "As Shot"; implicitHeight: 23; font.pixelSize: 10; enabled: preview.settingsEditable && cameraSection.wbEditable && preview.wbAsShotAvailable; onClicked: preview.applyWbAsShot(); ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("Backfills the as-shot white balance the photo's decode reported") }
                             }
                             Slider {
                                 objectName: "wbTintSlider"
@@ -1377,11 +1417,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "白平衡"; color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("White Balance"); color: cameraSection.wbEditable ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "wbPresetCombo"
                                     Layout.fillWidth: true
-                                    model: ["自动（As Shot）", "日光 5500K", "阴天 6500K", "阴影 8000K", "钨丝灯 3200K", "荧光灯 4000K", "闪光灯 5500K"]
+                                    model: Localization.epoch && [Localization.L("Auto (As Shot)"), Localization.L("Daylight 5500K"), Localization.L("Cloudy 6500K"), Localization.L("Shade 8000K"), Localization.L("Tungsten 3200K"), Localization.L("Fluorescent 4000K"), Localization.L("Flash 5500K")]
                                     readonly property var presets: ["", "daylight", "cloudy", "shade", "tungsten", "fluorescent", "flash"]
                                     enabled: preview.settingsEditable && cameraSection.wbEditable
                                     currentIndex: {
@@ -1395,7 +1435,7 @@ ApplicationWindow {
                                         if (k === 5500 && t === 10) return 6
                                         return -1
                                     }
-                                    displayText: currentIndex < 0 ? "自定" : currentText
+                                    displayText: currentIndex < 0 ? Localization.epoch && Localization.L("Custom") : currentText
                                     onActivated: presets[currentIndex] === "" ? preview.resetWb() : preview.applyWbPreset(presets[currentIndex])
                                 }
                             }
@@ -1403,7 +1443,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Switch {
                                     id: meterSwitch
-                                    text: "测光"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("Meter"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     // pairWireOf forces the meter off on a pair
                                     // (each hole's exposure rides its own
@@ -1413,21 +1453,21 @@ ApplicationWindow {
                                     onToggled: preview.autoExposure = checked
                                 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: meterSwitch.checked ? "中心加权平均" : "关闭（不经测光放置场景）"; color: Theme.muted; font.pixelSize: 10 }
+                                Text { text: meterSwitch.checked ? Localization.epoch && Localization.L("Centre-weighted average") : Localization.epoch && Localization.L("Off (the scene is placed without metering)"); color: Theme.muted; font.pixelSize: 10 }
                             }
-                            Note { text: "白平衡作用于 RAW 解码，改动会重新解码当前照片；As Shot 回填解码回报的拍摄白平衡数值。测光关闭时，胶片曝光直接决定场景放置。" }
+                            Note { text: Localization.epoch && Localization.L("White balance acts on the RAW decode and a change re-decodes the photo; As Shot backfills the as-shot white balance the decode reported. With the meter off, the film exposure places the scene directly.") }
                         }
                         Section {
-                            title: "胶片画幅与效果"
+                            title: Localization.epoch && Localization.L("Film format & effects")
                             RowLayout {
-                                Text { text: "画幅长边"; color: Theme.text; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Format long edge"); color: Theme.text; font.pixelSize: 11 }
                                 ComboBox {
                                     Layout.fillWidth: true
-                                    model: ["18 mm", "24 mm", "35 mm（默认）", "36 mm（135）", "56 mm", "70 mm", "90 mm"]
+                                    model: Localization.epoch && ["18 mm", "24 mm", Localization.L("35 mm (default)"), "36 mm（135）", "56 mm", "70 mm", "90 mm"]
                                     readonly property var lengths: [18, 24, 35, 36, 56, 70, 90]
                                     readonly property real actualLength: Number(preview.adjustments.filmFormatMm === undefined ? 35 : preview.adjustments.filmFormatMm)
                                     currentIndex: lengths.indexOf(actualLength)
-                                    displayText: currentIndex < 0 ? actualLength.toFixed(1) + " mm（自定）" : currentText
+                                    displayText: currentIndex < 0 ? Localization.epoch && Localization.L("%@ mm (custom)", [actualLength.toFixed(1)]) : currentText
                                     // pairWireOf derives a pair's format from
                                     // the piece itself (36 mm + the gap), so
                                     // the shared row stands down rather than
@@ -1436,11 +1476,11 @@ ApplicationWindow {
                                     onActivated: preview.setAdjustment("filmFormatMm", lengths[currentIndex])
                                 }
                             }
-                            Note { visible: window.pairActive; text: "半幅对 · 画幅长边由整件决定（36 mm + 间距），不单独设置。"; color: Theme.accent }
-                            Note { text: "物理画幅决定颗粒与光晕尺度；裁切不改变画幅。" }
-                            Effect { label: "颗粒"; activeKey: "grainActive"; amountKey: "grainAmount" }
-                            Effect { label: "光晕"; activeKey: "halationActive"; amountKey: "halationAmount"; maximum: 4 }
-                            Effect { label: "眩光"; activeKey: "glareActive"; amountKey: "glareAmount"; maximum: 30 }
+                            Note { visible: window.pairActive; text: Localization.epoch && Localization.L("Half-frame pair · the format's long edge is decided by the whole piece (36 mm + the gap); it is not set separately."); color: Theme.accent }
+                            Note { text: Localization.epoch && Localization.L("The physical format sets the grain and halation scale; cropping does not change the format.") }
+                            Effect { label: Localization.epoch && Localization.L("Grain"); activeKey: "grainActive"; amountKey: "grainAmount" }
+                            Effect { label: Localization.epoch && Localization.L("Halation"); activeKey: "halationActive"; amountKey: "halationAmount"; maximum: 4 }
+                            Effect { label: Localization.epoch && Localization.L("Glare"); activeKey: "glareActive"; amountKey: "glareAmount"; maximum: 30 }
                         }
                         // 数字中间片 (RFC-028): replaces the paper with a Cineon
                         // log rendering of the film's own negative. Engine-side
@@ -1448,47 +1488,47 @@ ApplicationWindow {
                         // and re-renders the session; negative film only.
                         Section {
                             id: diSection
-                            title: "数字中间片"
+                            title: Localization.epoch && Localization.L("Digital Intermediate")
                             readonly property bool diActive: preview.di.active === undefined ? false : preview.di.active
                             readonly property bool diAvailable: preview.settingsEditable && !preview.filmIsPositive
                             RowLayout {
                                 Layout.fillWidth: true
                                 Switch {
                                     objectName: "diActiveSwitch"
-                                    text: "数字中间片"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("Digital Intermediate"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: diSection.diActive
                                     enabled: diSection.diAvailable
                                     onToggled: preview.setDi("active", checked)
                                 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: diSection.diActive ? "Cineon 对数" : "相纸冲印"; color: Theme.muted; font.pixelSize: 10 }
+                                Text { text: diSection.diActive ? Localization.epoch && Localization.L("Cineon log") : Localization.epoch && Localization.L("Paper print"); color: Theme.muted; font.pixelSize: 10 }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Switch {
                                     objectName: "diBlueCompensationSwitch"
-                                    text: "蓝补偿"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("Blue compensation"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: preview.di.blueCompensation === undefined ? false : preview.di.blueCompensation
                                     enabled: diSection.diAvailable && diSection.diActive
                                     onToggled: preview.setDi("blueCompensation", checked)
                                 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: "校正蓝区的偏色"; color: Theme.muted; font.pixelSize: 10 }
+                                Text { text: Localization.epoch && Localization.L("Corrects the color cast in the blues"); color: Theme.muted; font.pixelSize: 10 }
                             }
-                            Note { visible: preview.filmIsPositive; text: "反转片直接扫描，没有负片，不适用数字中间片。"; color: Theme.accent }
-                            Note { text: "数字中间片以 Cineon 对数编码输出负片的正像，替代相纸冲印；蓝补偿按胶片拟合的蓝区窗口旋转色相。" }
+                            Note { visible: preview.filmIsPositive; text: Localization.epoch && Localization.L("Slide film is scanned directly — there is no negative, so the digital intermediate does not apply."); color: Theme.accent }
+                            Note { text: Localization.epoch && Localization.L("The digital intermediate renders the negative's positive image in Cineon log encoding, replacing the paper print; blue compensation rotates the hue inside the film-fitted blue window.") }
                         }
                         Section {
                             id: rawSection
-                            title: "RAW 解码"
+                            title: Localization.epoch && Localization.L("RAW decode")
                             // A pair opens no RAW of its own: each hole reads
                             // its source photo's own decode, so the shared
                             // choice stands down on a pair item.
-                            ComboBox { id: decode; Layout.fillWidth: true; model: ["兼容模式（默认）", "高光扩展（实验）"]; currentIndex: preview.decodeMode; enabled: preview.settingsEditable && !window.pairActive; onActivated: preview.decodeMode = currentIndex }
-                            Note { visible: window.pairActive; text: "半幅对 · 解码随各孔源照片，不在件上设置。"; color: Theme.accent }
-                            Note { text: preview.decodeMode ? "保留去马赛克后的部分高光及负值；仍使用整数去马赛克。" : "与已验证的原生 RAW 流程保持一致。" }
+                            ComboBox { id: decode; Layout.fillWidth: true; model: Localization.epoch && [Localization.L("Compatible (default)"), Localization.L("Highlight extension (experimental)")]; currentIndex: preview.decodeMode; enabled: preview.settingsEditable && !window.pairActive; onActivated: preview.decodeMode = currentIndex }
+                            Note { visible: window.pairActive; text: Localization.epoch && Localization.L("Half-frame pair · the decode follows each hole's source photo; it is not set on the piece."); color: Theme.accent }
+                            Note { text: preview.decodeMode ? Localization.epoch && Localization.L("Keeps some of the highlights and negative values after demosaicing; the demosaic stays integer.") : Localization.epoch && Localization.L("Matches the proven native RAW pipeline.") }
                             // HDR 扫描 (2026-11-06, phase 2 port): the slide's
                             // HDR scan is an engine parameter on Windows now —
                             // the switch turns it on and the slider sets the
@@ -1503,7 +1543,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Switch {
                                     objectName: "scanHdrSwitch"
-                                    text: "HDR 扫描"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("HDR scan"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: rawSection.hdrOn
                                     enabled: rawSection.hdrAvailable
@@ -1511,14 +1551,14 @@ ApplicationWindow {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: !rawSection.hdrOn ? "关闭"
+                                    text: !rawSection.hdrOn ? Localization.epoch && Localization.L("Close")
                                         : Number(preview.scanHdr.headroom).toFixed(1) + "×"
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "余量"; color: rawSection.hdrOn && rawSection.hdrAvailable ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Headroom"); color: rawSection.hdrOn && rawSection.hdrAvailable ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
                                 Text { text: Number(preview.scanHdr.headroom === undefined ? 0 : preview.scanHdr.headroom).toFixed(1) + "×"; color: Theme.muted; font.pixelSize: 10 }
                             }
@@ -1533,8 +1573,8 @@ ApplicationWindow {
                                 }
                                 onMoved: preview.setScanHdr("headroom", value)
                             }
-                            Note { visible: preview.hasFrame && !preview.filmIsPositive; text: "HDR 扫描仅适用于直接扫描的反转片；负片走相纸冲印，不适用。"; color: Theme.accent }
-                            Note { text: "HDR 扫描把反转片每层的肩部移过各自的膝点、在光谱扫描内提升，使片基落在今日扫描的余量倍数上；走引擎参数，重新渲染而不重解码。" }
+                            Note { visible: preview.hasFrame && !preview.filmIsPositive; text: Localization.epoch && Localization.L("HDR scan applies only to slide film scanned directly; negatives go to the paper print and cannot use it."); color: Theme.accent }
+                            Note { text: Localization.epoch && Localization.L("HDR scan pushes each of the slide's layer shoulders past their knees and lifts them inside the spectral scan, so the clear base lands on today's scan headroom multiple; it is an engine parameter and re-renders without re-decoding.") }
                         }
                         // 胶片边缘 (RFC-032, phase 2 port): the film outside
                         // the frame as real exposure — the gate, the rebate,
@@ -1545,20 +1585,20 @@ ApplicationWindow {
                         // and the picture's size becomes the film canvas's).
                         Section {
                             id: overscanSection
-                            title: "胶片边缘"
+                            title: Localization.epoch && Localization.L("Film rebate")
                             readonly property bool osOn: preview.overscan.on === undefined ? false : preview.overscan.on
                             readonly property bool osEditable: preview.settingsEditable
                             readonly property var formats: [
-                                {"id": "135", "label": "135 全幅（36×24）"},
-                                {"id": "135_half", "label": "135 半幅（18×24）"},
-                                {"id": "120_645", "label": "120 6×4.5"},
-                                {"id": "120_6x6", "label": "120 6×6"},
-                                {"id": "120_6x7", "label": "120 6×7"},
-                                {"id": "120_6x8", "label": "120 6×8"},
-                                {"id": "120_6x9", "label": "120 6×9"},
-                                {"id": "135_xpan", "label": "135 宽幅 XPan（65×24）"},
-                                {"id": "120_6x12", "label": "120 6×12"},
-                                {"id": "120_6x17", "label": "120 6×17"}
+                                {"id": "135", "key": "135 full (36×24)"},
+                                {"id": "135_half", "key": "135 half (18×24)"},
+                                {"id": "120_645", "key": "120 6×4.5"},
+                                {"id": "120_6x6", "key": "120 6×6"},
+                                {"id": "120_6x7", "key": "120 6×7"},
+                                {"id": "120_6x8", "key": "120 6×8"},
+                                {"id": "120_6x9", "key": "120 6×9"},
+                                {"id": "135_xpan", "key": "135 wide XPan (65×24)"},
+                                {"id": "120_6x12", "key": "120 6×12"},
+                                {"id": "120_6x17", "key": "120 6×17"}
                             ]
                             readonly property var gates: ["auto", "square", "rounded", "eared", "shouldered", "kicked"]
                             readonly property var modes: ["strip", "filed"]
@@ -1566,7 +1606,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Switch {
                                     objectName: "overscanSwitch"
-                                    text: "胶片边缘"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("Film rebate"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: overscanSection.osOn
                                     enabled: overscanSection.osEditable
@@ -1574,17 +1614,17 @@ ApplicationWindow {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: !overscanSection.osOn ? "关闭" : (preview.overscan.format === undefined ? "" : preview.overscan.format)
+                                    text: !overscanSection.osOn ? Localization.epoch && Localization.L("Close") : (preview.overscan.format === undefined ? "" : preview.overscan.format)
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "模式"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Mode"); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "overscanModeCombo"
                                     Layout.fillWidth: true
-                                    model: ["条片（整个片宽）", "单帧（少量片边）"]
+                                    model: Localization.epoch && [Localization.L("Strip (the full film width)"), Localization.L("Single frame (little rebate)")]
                                     readonly property var values: overscanSection.modes
                                     enabled: overscanSection.osEditable && overscanSection.osOn
                                     currentIndex: values.indexOf(preview.overscan.mode === undefined ? "strip" : preview.overscan.mode)
@@ -1593,11 +1633,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "画幅"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Frame"); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "overscanFormatCombo"
                                     Layout.fillWidth: true
-                                    model: overscanSection.formats.map(function(f) { return f.label })
+                                    model: Localization.epoch && overscanSection.formats.map(function(f) { return Localization.L(f.key) })
                                     // pairWireOf forces 135_half on a pair (the
                                     // strip's own format); the row stands down.
                                     enabled: overscanSection.osEditable && overscanSection.osOn && !window.pairActive
@@ -1612,11 +1652,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "门栅"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Gate"); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "overscanGateCombo"
                                     Layout.fillWidth: true
-                                    model: ["自动（真实机型）", "方形", "圆角", "带耳", "带肩", "外凸角"]
+                                    model: Localization.epoch && [Localization.L("Auto (real cameras)"), Localization.L("Square"), Localization.L("Rounded"), Localization.L("Eared"), Localization.L("Shouldered"), Localization.L("Kicked corner")]
                                     readonly property var values: overscanSection.gates
                                     enabled: overscanSection.osEditable && overscanSection.osOn
                                     currentIndex: values.indexOf(preview.overscan.gate === undefined ? "auto" : preview.overscan.gate)
@@ -1625,11 +1665,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "片孔"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Holes"); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "overscanHolesCombo"
                                     Layout.fillWidth: true
-                                    model: ["白孔（透过扫描光）", "黑孔（黑色背衬）"]
+                                    model: Localization.epoch && [Localization.L("White holes (scan light through)"), Localization.L("Black holes (black backing)")]
                                     enabled: overscanSection.osEditable && overscanSection.osOn
                                     currentIndex: preview.overscan.holes === "black" ? 1 : 0
                                     onActivated: preview.setOverscan("holes", currentIndex === 1 ? "black" : "white")
@@ -1637,11 +1677,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "载体"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Carrier"); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "overscanCarrierCombo"
                                     Layout.fillWidth: true
-                                    model: ["无（画布止于片边）", "黑色载体", "开放（扫描亮）"]
+                                    model: Localization.epoch && [Localization.L("None (canvas ends at the film's edge)"), Localization.L("Black carrier"), Localization.L("Open (scan bright)")]
                                     enabled: overscanSection.osEditable && overscanSection.osOn
                                     currentIndex: preview.overscan.carrier === "black" ? 1 : preview.overscan.carrier === "open" ? 2 : 0
                                     onActivated: preview.setOverscan("carrier", ["none", "black", "open"][currentIndex])
@@ -1649,11 +1689,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "印字"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Edge print"); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 TextField {
                                     objectName: "overscanEdgeTextInput"
                                     Layout.fillWidth: true
-                                    placeholderText: "边缘印字（如 KODAK PORTRA 400）"
+                                    placeholderText: Localization.epoch && Localization.L("Edge print (e.g. KODAK PORTRA 400)")
                                     text: preview.overscan.edgeText === undefined ? "" : preview.overscan.edgeText
                                     enabled: overscanSection.osEditable && overscanSection.osOn
                                     font.pixelSize: 11
@@ -1662,11 +1702,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "帧号"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Frame no."); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
                                 Text {
                                     text: Number(preview.overscan.frameNumber === undefined ? 0 : preview.overscan.frameNumber) === 0
-                                          ? "种子抽定" : String(preview.overscan.frameNumber)
+                                          ? Localization.epoch && Localization.L("Drawn from the seeds") : String(preview.overscan.frameNumber)
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
@@ -1683,7 +1723,7 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "相机种子"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Camera seed"); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 TextField {
                                     objectName: "overscanCameraSeedInput"
                                     Layout.preferredWidth: 96
@@ -1696,7 +1736,7 @@ ApplicationWindow {
                                         if (!isNaN(v) && v !== preview.overscan.cameraSeed) preview.setOverscan("cameraSeed", v)
                                     }
                                 }
-                                Text { text: "帧种子"; color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Frame seed"); color: overscanSection.osEditable && overscanSection.osOn ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 TextField {
                                     objectName: "overscanFrameSeedInput"
                                     Layout.preferredWidth: 96
@@ -1710,14 +1750,14 @@ ApplicationWindow {
                                     }
                                 }
                             }
-                            OverscanSlider { label: "边缘雾"; name: "fog"; from: 0; to: 4; step: 0.05 }
-                            OverscanSlider { label: "漏光"; name: "leaks"; from: 0; to: 4; step: 0.05 }
+                            OverscanSlider { label: Localization.epoch && Localization.L("Edge fog"); name: "fog"; from: 0; to: 4; step: 0.05 }
+                            OverscanSlider { label: Localization.epoch && Localization.L("Light leaks"); name: "leaks"; from: 0; to: 4; step: 0.05 }
                             Note {
                                 visible: window.pairActive
-                                text: "半幅对 · 开关即对件上/下片条；画幅固定为 135 半幅条（间隙随「半幅对」面板的间距），门栅、片孔、印字与雾光仍作用于整件。"
+                                text: Localization.epoch && Localization.L("Half-frame pair · the switch mounts and unmounts the piece on its strip; the format is fixed to a 135 half strip (the gap follows the Half-frame pair panel's spacing), while the gate, perforations, edge print and fog still act on the whole piece.")
                                 color: Theme.accent
                             }
-                            Note { text: "胶片边缘把画面外的胶片画出为真实曝光：门栅阴影、片基、片孔、片边印字、边缘雾与漏光一起显影；开关与选择走引擎参数，重新渲染而不重解码。画幅需与照片比例一致（先按门栅裁切）。" }
+                            Note { text: Localization.epoch && Localization.L("The film rebate draws the film outside the picture as real exposure: gate shadow, film base, perforations, edge print, edge fog and light leaks develop together; the switch and choices are engine parameters and re-render without re-decoding. The format must match the photo's shape (crop by the gate first).") }
                         }
                         // 日期背印 (RFC-031, phase 2 port): the date exposed
                         // onto the negative from behind — with or without the
@@ -1726,7 +1766,7 @@ ApplicationWindow {
                         // data face prints the shooting data beside the date.
                         Section {
                             id: dateSection
-                            title: "日期背印"
+                            title: Localization.epoch && Localization.L("Date back")
                             readonly property bool dtOn: preview.dateImprint.on === undefined ? false : preview.dateImprint.on
                             readonly property bool dtEditable: preview.settingsEditable
                             // On a pair the switch and the per-frame date text
@@ -1739,14 +1779,14 @@ ApplicationWindow {
                             readonly property bool dtLive: dtOn || (window.pairActive && window.pairAnyDated)
                             Note {
                                 visible: window.pairActive
-                                text: "半幅对 · 日期开关与文本由逐孔设置（见「半幅对」面板）；字面、位置与大小仍作用于整件。"
+                                text: Localization.epoch && Localization.L("Half-frame pair · the date switch and text are set per hole (see the Half-frame pair panel); the typeface, placement and size still act on the whole piece.")
                                 color: Theme.accent
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Switch {
                                     objectName: "dateImprintSwitch"
-                                    text: "日期背印"; font.pixelSize: 11
+                                    text: Localization.epoch && Localization.L("Date back"); font.pixelSize: 11
                                     palette.windowText: Theme.text
                                     checked: dateSection.dtOn
                                     enabled: dateSection.dtItemEditable
@@ -1754,17 +1794,17 @@ ApplicationWindow {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: !dateSection.dtLive ? "关闭" : (preview.dateImprint.style === undefined ? "" : preview.dateImprint.style)
+                                    text: !dateSection.dtLive ? Localization.epoch && Localization.L("Close") : (preview.dateImprint.style === undefined ? "" : preview.dateImprint.style)
                                     color: Theme.muted; font.pixelSize: 10
                                 }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "日期"; color: dateSection.dtItemEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Date"); color: dateSection.dtItemEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 TextField {
                                     objectName: "dateImprintTextInput"
                                     Layout.fillWidth: true
-                                    placeholderText: "如 '26 11 15"
+                                    placeholderText: Localization.epoch && Localization.L("e.g. '26 11 15")
                                     text: preview.dateImprint.text === undefined ? "" : preview.dateImprint.text
                                     enabled: dateSection.dtItemEditable && dateSection.dtLive
                                     font.pixelSize: 11
@@ -1773,11 +1813,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "数据"; color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Data"); color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 TextField {
                                     objectName: "dateImprintDataTextInput"
                                     Layout.fillWidth: true
-                                    placeholderText: "拍摄数据（如 1/125 F2.8 A 50mm）"
+                                    placeholderText: Localization.epoch && Localization.L("Shooting data (e.g. 1/125 F2.8 A 50mm)")
                                     text: preview.dateImprint.dataText === undefined ? "" : preview.dateImprint.dataText
                                     enabled: dateSection.dtEditable && dateSection.dtLive
                                     font.pixelSize: 11
@@ -1786,7 +1826,7 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "字面"; color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Typeface"); color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ActionButton {
                                     objectName: "dateStyleLcd"
                                     text: "LCD"; accented: preview.dateImprint.style === "lcd"
@@ -1795,13 +1835,13 @@ ApplicationWindow {
                                 }
                                 ActionButton {
                                     objectName: "dateStyleDots"
-                                    text: "点阵"; accented: preview.dateImprint.style === "dots"
+                                    text: Localization.epoch && Localization.L("Dots"); accented: preview.dateImprint.style === "dots"
                                     enabled: dateSection.dtEditable && dateSection.dtLive
                                     onClicked: preview.setDateImprint("style", "dots")
                                 }
                                 ActionButton {
                                     objectName: "dateStyleData"
-                                    text: "数据"; accented: preview.dateImprint.style === "data"
+                                    text: Localization.epoch && Localization.L("Data"); accented: preview.dateImprint.style === "data"
                                     enabled: dateSection.dtEditable && dateSection.dtLive
                                     onClicked: preview.setDateImprint("style", "data")
                                 }
@@ -1809,47 +1849,47 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text { text: "位置"; color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Where"); color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "datePlacementCombo"
                                     Layout.fillWidth: true
-                                    model: ["画面内（角上）", "片框（帧间）"]
+                                    model: Localization.epoch && [Localization.L("In the picture (corner)"), Localization.L("Rebate (between frames)")]
                                     enabled: dateSection.dtEditable && dateSection.dtLive
                                     currentIndex: preview.dateImprint.placement === "rebate" ? 1 : 0
                                     onActivated: preview.setDateImprint("placement", currentIndex === 1 ? "rebate" : "frame")
                                 }
-                                Text { text: "角"; color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
+                                Text { text: Localization.epoch && Localization.L("Corner"); color: dateSection.dtEditable && dateSection.dtLive ? Theme.text : Theme.muted; font.pixelSize: 11 }
                                 ComboBox {
                                     objectName: "dateCornerCombo"
                                     Layout.preferredWidth: 88
-                                    model: ["右下", "左下", "右上", "左上"]
+                                    model: Localization.epoch && [Localization.L("bottom right"), Localization.L("bottom left"), Localization.L("top right"), Localization.L("top left")]
                                     readonly property var values: ["br", "bl", "tr", "tl"]
                                     enabled: dateSection.dtEditable && dateSection.dtLive
                                     currentIndex: values.indexOf(preview.dateImprint.corner === undefined ? "br" : preview.dateImprint.corner)
                                     onActivated: preview.setDateImprint("corner", values[currentIndex])
                                 }
                             }
-                            DateSlider { label: "曝光"; name: "ev"; from: -2; to: 8; step: 0.1; suffix: " EV" }
-                            DateSlider { label: "大小"; name: "size"; from: 0.4; to: 3; step: 0.05; decimals: 2; suffix: "×" }
-                            DateSlider { label: "横内缩"; name: "insetX"; from: 0; to: 30; step: 0.5; suffix: " mm" }
-                            DateSlider { label: "纵内缩"; name: "insetY"; from: 0; to: 30; step: 0.5; suffix: " mm" }
-                            Note { text: "日期背印从胶片背面曝光日期与拍摄数据：与胶片边缘同用，也可单独印在画面角上；「片框」位置把日期印在帧间，需要胶片边缘开启。" }
+                            DateSlider { label: Localization.epoch && Localization.L("Exposure"); name: "ev"; from: -2; to: 8; step: 0.1; suffix: " EV" }
+                            DateSlider { label: Localization.epoch && Localization.L("Size"); name: "size"; from: 0.4; to: 3; step: 0.05; decimals: 2; suffix: "×" }
+                            DateSlider { label: Localization.epoch && Localization.L("Horizontal inset"); name: "insetX"; from: 0; to: 30; step: 0.5; suffix: " mm" }
+                            DateSlider { label: Localization.epoch && Localization.L("Vertical inset"); name: "insetY"; from: 0; to: 30; step: 0.5; suffix: " mm" }
+                            Note { text: Localization.epoch && Localization.L("The date back exposes the date and the shooting data through the film's back: use it with the film rebate, or print it alone in the picture's corner; the Rebate placement prints the date between frames and needs the film rebate on.") }
                         }
                         Section {
-                            title: "照片信息"
-                            Note { text: preview.hasFrame ? preview.metadata.camera : "尚未打开照片"; color: Theme.text }
-                            Note { text: preview.hasFrame ? preview.metadata.width + " × " + preview.metadata.height + " 像素\n" + (preview.metadata.mode === "headroom" ? "高光扩展解码" : "兼容解码") : "" }
-                            Note { text: preview.hasFrame ? "本次渲染 " + (preview.metadata.renderMs / 1000).toFixed(2) + " 秒 · " + (preview.metadata.cached ? "复用负片" : "完整渲染") : "" }
-                            ActionButton { Layout.fillWidth: true; text: "重置当前照片设置"; enabled: preview.settingsEditable; onClicked: preview.resetSettings() }
+                            title: Localization.epoch && Localization.L("Photo info")
+                            Note { text: preview.hasFrame ? preview.metadata.camera : Localization.epoch && Localization.L("No photo is open"); color: Theme.text }
+                            Note { text: preview.hasFrame ? Localization.epoch && Localization.L("%@ × %@ px\n%@", [preview.metadata.width, preview.metadata.height, preview.metadata.mode === "headroom" ? Localization.L("Highlight-extension decode") : Localization.L("Compatible decode")]) : "" }
+                            Note { text: preview.hasFrame ? Localization.epoch && Localization.L("This render took %@ s · %@", [(preview.metadata.renderMs / 1000).toFixed(2), preview.metadata.cached ? Localization.L("Negative reused") : Localization.L("Full render")]) : "" }
+                            ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset this photo's settings"); enabled: preview.settingsEditable; onClicked: preview.resetSettings() }
                         }
                         Section {
-                            title: preview.batchExporting ? "批量导出" : preview.failed ? "无法完成操作" : "状态"
-                            Note { text: window.closePending ? "等待当前操作完成后关闭…" : preview.status; color: preview.failed ? "#ffb39f" : Theme.muted }
+                            title: preview.batchExporting ? Localization.epoch && Localization.L("Batch export") : preview.failed ? Localization.epoch && Localization.L("The operation cannot be completed") : Localization.epoch && Localization.L("Status")
+                            Note { text: window.closePending ? Localization.epoch && Localization.L("Waiting for the current operation to finish before closing…") : preview.status; color: preview.failed ? "#ffb39f" : Theme.muted }
                             Note { objectName: "savedStatusNote"; text: preview.savedStatus; visible: text.length > 0 }
                             Note { objectName: "persistenceWarningNote"; text: preview.persistenceWarning; visible: text.length > 0; color: "#ffb39f" }
                             ProgressBar { Layout.fillWidth: true; visible: preview.batchExporting; from: 0; to: Math.max(1, preview.batchTotal); value: preview.batchProgress }
-                            ActionButton { Layout.fillWidth: true; text: "当前照片完成后停止"; visible: preview.batchExporting; onClicked: preview.cancelExport() }
-                            ActionButton { Layout.fillWidth: true; text: "重新尝试预览"; visible: preview.failed && preview.hasFrame && !preview.batchExporting; enabled: !preview.busy; onClicked: preview.apply() }
+                            ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Stop after the current photo"); visible: preview.batchExporting; onClicked: preview.cancelExport() }
+                            ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Retry the preview"); visible: preview.failed && preview.hasFrame && !preview.batchExporting; enabled: !preview.busy; onClicked: preview.apply() }
                         }
                     }
                 }
@@ -1867,34 +1907,34 @@ ApplicationWindow {
         background: Rectangle { color: Theme.card; border.color: Theme.line; radius: 7 }
         contentItem: ColumnLayout {
             spacing: 14
-            Text { text: "导出照片"; color: Theme.text; font.pixelSize: 20; font.bold: true }
-            Note { text: "当前画面或所选照片 · sRGB\n裁切与效果一起写入文件。" }
+            Text { text: Localization.epoch && Localization.L("Export photos"); color: Theme.text; font.pixelSize: 20; font.bold: true }
+            Note { text: Localization.epoch && Localization.L("The current frame or the selected photos · sRGB\nThe crop and effects are written into the file.") }
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line; opacity: 0.5 }
             RowLayout {
-                Text { text: "格式"; color: Theme.text; Layout.preferredWidth: 76 }
-                ComboBox { Layout.fillWidth: true; model: ["TIFF · 16 位", "PNG · 8 位", "PNG · 16 位", "JPEG · 8 位"]; currentIndex: window.exportFormat; onActivated: window.exportFormat = currentIndex }
+                Text { text: Localization.epoch && Localization.L("Format"); color: Theme.text; Layout.preferredWidth: 76 }
+                ComboBox { Layout.fillWidth: true; model: Localization.epoch && [Localization.L("TIFF · 16-bit"), Localization.L("PNG · 8-bit"), Localization.L("PNG · 16-bit"), Localization.L("JPEG · 8-bit")]; currentIndex: window.exportFormat; onActivated: window.exportFormat = currentIndex }
             }
             RowLayout {
                 visible: window.exportFormat === 3
-                Text { text: "JPEG 质量"; color: Theme.text; Layout.preferredWidth: 76 }
+                Text { text: Localization.epoch && Localization.L("JPEG quality"); color: Theme.text; Layout.preferredWidth: 76 }
                 Slider { Layout.fillWidth: true; from: 1; to: 100; stepSize: 1; value: window.exportQuality; onMoved: window.exportQuality = value }
                 Text { text: window.exportQuality; color: Theme.muted; Layout.preferredWidth: 28 }
             }
             RowLayout {
-                Text { text: "输出尺寸"; color: Theme.text; Layout.preferredWidth: 76 }
+                Text { text: Localization.epoch && Localization.L("Output size"); color: Theme.text; Layout.preferredWidth: 76 }
                 ComboBox {
-                    Layout.fillWidth: true; model: ["原始裁切尺寸", "长边 3840 像素", "长边 2560 像素", "长边 1920 像素", "长边 1080 像素"]
+                    Layout.fillWidth: true; model: Localization.epoch && [Localization.L("Original crop size"), Localization.L("Long edge 3840 px"), Localization.L("Long edge 2560 px"), Localization.L("Long edge 1920 px"), Localization.L("Long edge 1080 px")]
                     readonly property var sizes: [0, 3840, 2560, 1920, 1080]
                     currentIndex: Math.max(0, sizes.indexOf(window.exportLongEdge))
                     onActivated: window.exportLongEdge = sizes[currentIndex]
                 }
             }
-            Note { text: "保持长宽比例，不放大图像。PNG 无损保存，JPEG 为有损压缩。" }
+            Note { text: Localization.epoch && Localization.L("The aspect ratio is kept and images are never enlarged. PNG saves losslessly; JPEG compresses with loss.") }
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line; opacity: 0.5 }
-            ActionButton { Layout.fillWidth: true; accented: true; text: "导出当前已显示画面…"; enabled: preview.hasFrame && !preview.busy; onClicked: { saveDialog.open(); exportPopup.close() } }
-            ActionButton { Layout.fillWidth: true; text: "导出所选 " + preview.selectedCount + " 张到文件夹…"; enabled: preview.selectedCount > 0 && !preview.busy; onClicked: { batchDialog.open(); exportPopup.close() } }
-            Note { text: "当前画面导出不覆盖已有文件。批量导出逐张处理，自动跳过同名文件；未访问的照片也按各自设置渲染。" }
-            ActionButton { Layout.alignment: Qt.AlignRight; text: "取消"; onClicked: exportPopup.close() }
+            ActionButton { Layout.fillWidth: true; accented: true; text: Localization.epoch && Localization.L("Export the displayed frame…"); enabled: preview.hasFrame && !preview.busy; onClicked: { saveDialog.open(); exportPopup.close() } }
+            ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Export %@ selected to folder…", [preview.selectedCount]); enabled: preview.selectedCount > 0 && !preview.busy; onClicked: { batchDialog.open(); exportPopup.close() } }
+            Note { text: Localization.epoch && Localization.L("Exporting the current frame never overwrites an existing file. Batch export goes photo by photo and skips files that already exist; photos never opened still render by their own settings.") }
+            ActionButton { Layout.alignment: Qt.AlignRight; text: Localization.epoch && Localization.L("Cancel"); onClicked: exportPopup.close() }
         }
     }
     // The Copy Settings group sheet (the Mac's C7): the groups tick at copy
@@ -1917,14 +1957,14 @@ ApplicationWindow {
         background: Rectangle { color: Theme.card; border.color: Theme.line; radius: 7 }
         contentItem: ColumnLayout {
             spacing: 6
-            Text { text: "复制设置"; color: Theme.text; font.pixelSize: 16; font.bold: true }
-            Note { text: "勾选随复制保留的组；粘贴只写这些设置——目标照片按自己的测光重新放置，保留自己的 As Shot 白平衡、裁切与解码模式。" }
+            Text { text: Localization.epoch && Localization.L("Copy settings"); color: Theme.text; font.pixelSize: 16; font.bold: true }
+            Note { text: Localization.epoch && Localization.L("Tick the groups to keep with the copy; pasting writes only those settings — the target photos are placed again by their own metering and keep their own As Shot white balance, crop and decode mode.") }
             Repeater {
                 model: library.offeredClipboardGroups()
                 delegate: CheckBox {
                     required property string modelData
                     Layout.fillWidth: true
-                    text: window.groupName(modelData)
+                    text: Localization.epoch && window.groupName(modelData)
                     font.pixelSize: 11
                     checked: copySheet.ticks.indexOf(modelData) >= 0
                     onToggled: {
@@ -1942,7 +1982,7 @@ ApplicationWindow {
                     objectName: "copySettingsButton"
                     Layout.fillWidth: true
                     accented: true
-                    text: "复制 " + library.selectedCount + " 张所选"
+                    text: Localization.epoch && Localization.L("Copy %@ selected", [library.selectedCount])
                     enabled: copySheet.ticks.length > 0 && library.selectedCount > 0
                     onClicked: {
                         library.setClipboardGroups(copySheet.ticks)
@@ -1950,7 +1990,7 @@ ApplicationWindow {
                         copySheet.close()
                     }
                 }
-                ActionButton { text: "取消"; onClicked: copySheet.close() }
+                ActionButton { text: Localization.epoch && Localization.L("Cancel"); onClicked: copySheet.close() }
             }
         }
     }

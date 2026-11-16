@@ -95,10 +95,10 @@ if(BUILD_TESTING)
 
     qt_add_executable(spk_qt_library_workflow_test tests/library_workflow.cpp
         src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
-        src/PairPiece.cpp src/Layer2.cpp src/EditStore.cpp)
+        src/PairPiece.cpp src/Layer2.cpp src/EditStore.cpp src/Localization.cpp)
     target_include_directories(spk_qt_library_workflow_test PRIVATE src)
     target_compile_features(spk_qt_library_workflow_test PRIVATE cxx_std_20)
-    target_link_libraries(spk_qt_library_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
+    target_link_libraries(spk_qt_library_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml)
     qt_add_executable(spk_qt_edit_store_test tests/edit_store.cpp src/EditStore.cpp
         src/Layer2.cpp)
     target_include_directories(spk_qt_edit_store_test PRIVATE src)
@@ -154,10 +154,10 @@ if(BUILD_TESTING)
     qt_add_executable(spk_qt_library_model_test tests/library_model.cpp
         src/LibraryModel.cpp src/CatalogSourcesStore.cpp src/LibraryHost.cpp
         src/EditStore.cpp src/Layer2.cpp src/ThumbnailStore.cpp
-        src/SettingsClipboard.cpp)
+        src/SettingsClipboard.cpp src/Localization.cpp)
     target_include_directories(spk_qt_library_model_test PRIVATE src)
     target_compile_features(spk_qt_library_model_test PRIVATE cxx_std_20)
-    target_link_libraries(spk_qt_library_model_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
+    target_link_libraries(spk_qt_library_model_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml)
     add_test(NAME spk_qt_library_model COMMAND spk_qt_library_model_test
         "${SPKLIB_HOST_EXECUTABLE}")
     # The persistent thumbnail store (task 4.3): paint-decode-persist over
@@ -258,7 +258,8 @@ if(BUILD_TESTING)
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
         src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
-        src/PairPiece.cpp src/Layer2.cpp src/EditStore.cpp src/FrameCanvas.hpp src/FrameCanvas.cpp)
+        src/PairPiece.cpp src/Layer2.cpp src/EditStore.cpp src/FrameCanvas.hpp src/FrameCanvas.cpp
+        src/Localization.cpp)
     target_include_directories(spk_qt_editing_workflow_test PRIVATE src)
     target_compile_features(spk_qt_editing_workflow_test PRIVATE cxx_std_20)
     # The split-compare gate calls FrameCanvas's composite directly, which

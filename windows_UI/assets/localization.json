@@ -6021,6 +6021,1416 @@
    "zh-Hans": "＋ 新建",
    "zh-Hant": "＋ 新增",
    "ja": "＋ 新規"
+  },
+  " (crop included)": {
+   "zh-Hans": "（含裁切）",
+   "zh-Hant": "（含裁切）",
+   "ja": "（切り取りを含む）"
+  },
+  " (each keeps its crop)": {
+   "zh-Hans": "（各自保留裁切）",
+   "zh-Hant": "（各自保留裁切）",
+   "ja": "（それぞれの切り取りを保持）"
+  },
+  " · negative reused": {
+   "zh-Hans": " · 已复用胶片",
+   "zh-Hant": " · 已複用膠片",
+   "ja": " · ネガを再利用"
+  },
+  "%@ hole": {
+   "zh-Hans": "%@孔",
+   "zh-Hant": "%@孔",
+   "ja": "%@のコマ"
+  },
+  "%@ mm (custom)": {
+   "zh-Hans": "%@ mm（自定）",
+   "zh-Hant": "%@ mm（自定）",
+   "ja": "%@ mm（カスタム）"
+  },
+  "%@ photos · %@ selected": {
+   "zh-Hans": "%@ 张照片 · 已选 %@",
+   "zh-Hant": "%@ 張照片 · 已選 %@",
+   "ja": "%@ 枚の写真 · %@ 枚を選択中"
+  },
+  "%@ × %@   ·   SDR sRGB / 8-bit preview   ·   %@": {
+   "zh-Hans": "%@ × %@   ·   SDR sRGB / 8 位预览   ·   %@",
+   "zh-Hant": "%@ × %@   ·   SDR sRGB / 8 位預覽   ·   %@",
+   "ja": "%@ × %@   ·   SDR sRGB / 8ビットプレビュー   ·   %@"
+  },
+  "%@ × %@ px\n%@": {
+   "zh-Hans": "%@ × %@ 像素\n%@",
+   "zh-Hant": "%@ × %@ 像素\n%@",
+   "ja": "%@ × %@ px\n%@"
+  },
+  "%@: exported %@, skipped %@, failed %@": {
+   "zh-Hans": "%@：导出 %@ 张，跳过已有 %@ 张，失败 %@ 张",
+   "zh-Hant": "%@：導出 %@ 張，跳過已有 %@ 張，失敗 %@ 張",
+   "ja": "%@：書き出し %@ 枚、スキップ %@ 枚、失敗 %@ 枚"
+  },
+  "1.0 mm (strip-fixed)": {
+   "zh-Hans": "1.0 mm（片条固定）",
+   "zh-Hant": "1.0 mm（片條固定）",
+   "ja": "1.0 mm（ストリップ固定）"
+  },
+  "135 full (36×24)": {
+   "zh-Hans": "135 全幅（36×24）",
+   "zh-Hant": "135 全幅（36×24）",
+   "ja": "135 フル（36×24）"
+  },
+  "135 half (18×24)": {
+   "zh-Hans": "135 半幅（18×24）",
+   "zh-Hant": "135 半幅（18×24）",
+   "ja": "135 ハーフ（18×24）"
+  },
+  "135 wide XPan (65×24)": {
+   "zh-Hans": "135 宽幅 XPan（65×24）",
+   "zh-Hant": "135 寬幅 XPan（65×24）",
+   "ja": "135 ワイド XPan（65×24）"
+  },
+  "16-bit TIFF (*.tif *.tiff)": {
+   "zh-Hans": "16 位 TIFF (*.tif *.tiff)",
+   "zh-Hant": "16 位 TIFF (*.tif *.tiff)",
+   "ja": "16ビット TIFF (*.tif *.tiff)"
+  },
+  "35 mm (default)": {
+   "zh-Hans": "35 mm（默认）",
+   "zh-Hant": "35 mm（默認）",
+   "ja": "35 mm（標準）"
+  },
+  "A catalog needs a name": {
+   "zh-Hans": "目录需要一个名称",
+   "zh-Hant": "目錄需要一個名稱",
+   "ja": "カタログには名前が必要です"
+  },
+  "A library already exists at this location: ": {
+   "zh-Hans": "该位置已存在图库：",
+   "zh-Hant": "該位置已存在圖庫：",
+   "ja": "この場所にはすでにライブラリがあります："
+  },
+  "A pair owns no photos of its own: each hole follows its source photo's decode and crop; the piece's film, paper and film rebate are adjusted in the shared panels below.": {
+   "zh-Hans": "对不拥有自己的照片：两孔随各自源照片的解码与裁切；件的胶片、相纸与胶片边缘在下方共用面板调整。",
+   "zh-Hant": "對不擁有自己的照片：兩孔隨各自源照片的解碼與裁切；件的膠片、相紙與膠片邊緣在下方共用面板調整。",
+   "ja": "ペアは自分の写真を持ちません。2つのコマはそれぞれの元写真のRAW処理と切り取りに従い、組みのフィルム・印画紙・フィルムの縁は下の共通パネルで調整します。"
+  },
+  "A session needs a name": {
+   "zh-Hans": "会话需要一个名称",
+   "zh-Hant": "會話需要一個名稱",
+   "ja": "セッションには名前が必要です"
+  },
+  "A source photo is missing; the half-frame pair cannot be exported": {
+   "zh-Hans": "源照片缺失，无法导出半幅对",
+   "zh-Hant": "源照片缺失，無法導出半幅對",
+   "ja": "元写真が見つからず、2コマ組を書き出せません"
+  },
+  "Adjustments save automatically and return when the photo reopens": {
+   "zh-Hans": "调整将自动保存，重新打开照片时恢复",
+   "zh-Hant": "調整將自動保存，重新打開照片時恢復",
+   "ja": "調整は自動保存され、写真を開き直すと戻ります"
+  },
+  "Adjusts the scene's brightness before the film exposure. Each photo's effects and crop save automatically and return on the next import.": {
+   "zh-Hans": "在胶片曝光前调整场景亮度。每张照片的效果与裁切自动保存，下次导入时恢复。",
+   "zh-Hant": "在膠片曝光前調整場景亮度。每張照片的效果與裁切自動保存，下次導入時恢復。",
+   "ja": "フィルムの露出の前にシーンの明るさを調整します。写真ごとの効果と切り取りは自動保存され、次に読み込むときに戻ります。"
+  },
+  "All files (*)": {
+   "zh-Hans": "所有文件 (*)",
+   "zh-Hant": "所有文件 (*)",
+   "ja": "すべてのファイル (*)"
+  },
+  "Amount": {
+   "zh-Hans": "数量",
+   "zh-Hant": "數量",
+   "ja": "分量"
+  },
+  "An import is already running": {
+   "zh-Hans": "已有导入正在进行",
+   "zh-Hant": "已有導入正在進行",
+   "ja": "すでに読み込みが進行中です"
+  },
+  "An import is running; wait for it to finish and try again": {
+   "zh-Hans": "正在导入，请等它结束后再试",
+   "zh-Hant": "正在導入，請等它結束後再試",
+   "ja": "読み込み中です。終わってからもう一度お試しください"
+  },
+  "Analyse": {
+   "zh-Hans": "分析",
+   "zh-Hant": "分析",
+   "ja": "分析"
+  },
+  "Analyse only reads the current develop and does not change the picture; Apply mapping places the scene with the committed curve, and Commit fit writes the solved highlight/shadow pull-backs.": {
+   "zh-Hans": "分析只读取当前显影结果，不改变画面；「应用映射」按已提交的曲线放置场景，「提交拟合」写入求解的高光/阴影收放。",
+   "zh-Hant": "分析只讀取當前顯影結果，不改變畫面；「應用映射」按已提交的曲線放置場景，「提交擬合」寫入求解的高光/陰影收放。",
+   "ja": "分析は現在の現像結果を読むだけで、画像は変えません。「マッピングを適用」は確定済みの曲線でシーンを配置し、「フィットを確定」は求まった明部/暗部の引き戻しを書き込みます。"
+  },
+  "Analysing the latitude…": {
+   "zh-Hans": "正在分析宽容度…",
+   "zh-Hant": "正在分析寬容度…",
+   "ja": "寛容度を分析中…"
+  },
+  "Analysing…": {
+   "zh-Hans": "分析中…",
+   "zh-Hant": "分析中…",
+   "ja": "分析中…"
+  },
+  "Applied": {
+   "zh-Hans": "已应用",
+   "zh-Hant": "已應用",
+   "ja": "適用済み"
+  },
+  "Apply mapping": {
+   "zh-Hans": "应用映射",
+   "zh-Hant": "應用映射",
+   "ja": "マッピングを適用"
+  },
+  "Auto (As Shot)": {
+   "zh-Hans": "自动（As Shot）",
+   "zh-Hant": "自動（As Shot）",
+   "ja": "自動（撮影時の設定）"
+  },
+  "Auto (real cameras)": {
+   "zh-Hans": "自动（真实机型）",
+   "zh-Hant": "自動（真實機型）",
+   "ja": "自動（実機どおり）"
+  },
+  "Auto-saving the settings…": {
+   "zh-Hans": "正在自动保存设置…",
+   "zh-Hant": "正在自動保存設置…",
+   "ja": "設定を自動保存しています…"
+  },
+  "Backfills the as-shot white balance the photo's decode reported": {
+   "zh-Hans": "回填照片解码回报的拍摄白平衡数值",
+   "zh-Hant": "回填照片解碼回報的拍攝白平衡數值",
+   "ja": "写真のRAW処理が報告した撮影時のホワイトバランスの値を戻します"
+  },
+  "Batch export": {
+   "zh-Hans": "批量导出",
+   "zh-Hant": "批量導出",
+   "ja": "一括書き出し"
+  },
+  "Batch export cancelled": {
+   "zh-Hans": "批量导出已取消",
+   "zh-Hant": "批量導出已取消",
+   "ja": "一括書き出しを取り消しました"
+  },
+  "Batch export finished": {
+   "zh-Hans": "批量导出完成",
+   "zh-Hant": "批量導出完成",
+   "ja": "一括書き出しが完了しました"
+  },
+  "Batch exporting…": {
+   "zh-Hans": "正在批量导出…",
+   "zh-Hant": "正在批量導出…",
+   "ja": "一括書き出し中…"
+  },
+  "Bitmap": {
+   "zh-Hans": "位图",
+   "zh-Hant": "位圖",
+   "ja": "ビットマップ"
+  },
+  "Black carrier": {
+   "zh-Hans": "黑色载体",
+   "zh-Hant": "黑色載體",
+   "ja": "黒い台紙"
+  },
+  "Black holes (black backing)": {
+   "zh-Hans": "黑孔（黑色背衬）",
+   "zh-Hant": "黑孔（黑色背襯）",
+   "ja": "黒い送り穴（黒い台紙）"
+  },
+  "Black point": {
+   "zh-Hans": "黑色阶",
+   "zh-Hant": "黑色階",
+   "ja": "黒レベル"
+  },
+  "Blue compensation": {
+   "zh-Hans": "蓝补偿",
+   "zh-Hant": "藍補償",
+   "ja": "青補正"
+  },
+  "Bottom": {
+   "zh-Hans": "下",
+   "zh-Hant": "下",
+   "ja": "下"
+  },
+  "Camera RAW (*.arw *.nef *.nrw *.dng *.cr2 *.cr3 *.raf *.rw2 *.orf *.pef *.srw)": {
+   "zh-Hans": "相机 RAW (*.arw *.nef *.nrw *.dng *.cr2 *.cr3 *.raf *.rw2 *.orf *.pef *.srw)",
+   "zh-Hant": "相機 RAW (*.arw *.nef *.nrw *.dng *.cr2 *.cr3 *.raf *.rw2 *.orf *.pef *.srw)",
+   "ja": "カメラ RAW (*.arw *.nef *.nrw *.dng *.cr2 *.cr3 *.raf *.rw2 *.orf *.pef *.srw)"
+  },
+  "Camera seed": {
+   "zh-Hans": "相机种子",
+   "zh-Hant": "相機種子",
+   "ja": "カメラのシード"
+  },
+  "Cannot be read": {
+   "zh-Hans": "无法读取",
+   "zh-Hant": "無法讀取",
+   "ja": "読み込めません"
+  },
+  "Cannot make the pair: wait for the current operation to finish, or pick two different photos (a half-frame pair cannot be a hole)": {
+   "zh-Hans": "无法建对：请等待当前操作完成，或改选两张不同的照片（半幅对不能作为对孔）",
+   "zh-Hant": "無法建對：請等待當前操作完成，或改選兩張不同的照片（半幅對不能作為對孔）",
+   "ja": "2コマ組を作れません：現在の操作の完了を待つか、別の2枚を選んでください（ペアをコマにはできません）"
+  },
+  "Carrier": {
+   "zh-Hans": "载体",
+   "zh-Hant": "載體",
+   "ja": "台紙"
+  },
+  "Centre-weighted average": {
+   "zh-Hans": "中心加权平均",
+   "zh-Hant": "中心加權平均",
+   "ja": "中央重点平均"
+  },
+  "Choose the batch-export folder · existing files are skipped": {
+   "zh-Hans": "选择批量导出文件夹 · 跳过已有文件",
+   "zh-Hant": "選擇批量導出文件夾 · 跳過已有文件",
+   "ja": "一括書き出しのフォルダを選択 · 既存ファイルはスキップ"
+  },
+  "Cineon log": {
+   "zh-Hans": "Cineon 对数",
+   "zh-Hant": "Cineon 對數",
+   "ja": "Cineonログ"
+  },
+  "Clear selection": {
+   "zh-Hans": "清除选择",
+   "zh-Hant": "清除選擇",
+   "ja": "選択を解除"
+  },
+  "Click Analyse to measure the current film and scene": {
+   "zh-Hans": "点击「分析」测量当前胶片与场景",
+   "zh-Hant": "點擊「分析」測量當前膠片與場景",
+   "ja": "「分析」をクリックすると現在のフィルムとシーンを測定します"
+  },
+  "Click to preview": {
+   "zh-Hans": "点击预览",
+   "zh-Hant": "點擊預覽",
+   "ja": "クリックでプレビュー"
+  },
+  "Cloudy 6500K": {
+   "zh-Hans": "阴天 6500K",
+   "zh-Hant": "陰天 6500K",
+   "ja": "曇天 6500K"
+  },
+  "Colour couplers": {
+   "zh-Hans": "偶合剂",
+   "zh-Hant": "偶合劑",
+   "ja": "カプラー"
+  },
+  "Colour label %@": {
+   "zh-Hans": "色标 %@",
+   "zh-Hant": "色標 %@",
+   "ja": "カラーラベル %@"
+  },
+  "Combines the first two selected photos (in library order) into one half-frame pair; the pair appears as its own library item, and each hole is edited in the Half-frame pair panel on the right.": {
+   "zh-Hans": "把所选的前两张照片（按库序）合为一件半幅对；对以独立库项出现，逐孔编辑见右侧「半幅对」面板。",
+   "zh-Hant": "把所選的前兩張照片（按庫序）合為一件半幅對；對以獨立庫項出現，逐孔編輯見右側「半幅對」面板。",
+   "ja": "選択した写真のうち最初の2枚（ライブラリ順）を1組のハーフ判2コマ組にします。ペアは独立したライブラリ項目になり、コマごとの編集は右の「2コマ組」パネルで行います。"
+  },
+  "Commit fit": {
+   "zh-Hans": "提交拟合",
+   "zh-Hant": "提交擬合",
+   "ja": "フィットを確定"
+  },
+  "Compatible (default)": {
+   "zh-Hans": "兼容模式（默认）",
+   "zh-Hant": "兼容模式（默認）",
+   "ja": "互換モード（標準）"
+  },
+  "Compatible decode": {
+   "zh-Hans": "兼容解码",
+   "zh-Hant": "兼容解碼",
+   "ja": "互換RAW処理"
+  },
+  "Composing the half-frame pair…": {
+   "zh-Hans": "正在组装半幅对…",
+   "zh-Hant": "正在組裝半幅對…",
+   "ja": "2コマ組を組み立て中…"
+  },
+  "Copy %@ selected": {
+   "zh-Hans": "复制 %@ 张所选",
+   "zh-Hant": "複制 %@ 張所選",
+   "ja": "%@ 枚をコピー"
+  },
+  "Copy settings": {
+   "zh-Hans": "复制设置",
+   "zh-Hant": "複制設置",
+   "ja": "設定をコピー"
+  },
+  "Core width": {
+   "zh-Hans": "核心宽度",
+   "zh-Hant": "核心寬度",
+   "ja": "コアの幅"
+  },
+  "Corrects the color cast in the blues": {
+   "zh-Hans": "校正蓝区的偏色",
+   "zh-Hant": "校正藍區的偏色",
+   "ja": "青域の色かぶりを補正します"
+  },
+  "Create a catalog or session, then import photos": {
+   "zh-Hans": "新建目录或会话后导入照片",
+   "zh-Hant": "新建目錄或會話後導入照片",
+   "ja": "カタログまたはセッションを作成して写真を読み込みます"
+  },
+  "Crop image": {
+   "zh-Hans": "裁切",
+   "zh-Hant": "裁切",
+   "ja": "切り取り"
+  },
+  "Cropping the original": {
+   "zh-Hans": "裁切原图",
+   "zh-Hant": "裁切原圖",
+   "ja": "元画像を切り取り中"
+  },
+  "Date back": {
+   "zh-Hans": "日期背印",
+   "zh-Hant": "日期背印",
+   "ja": "日付写し込み"
+  },
+  "Date captured": {
+   "zh-Hans": "拍摄时间",
+   "zh-Hant": "拍攝時間",
+   "ja": "撮影日"
+  },
+  "Daylight 5500K": {
+   "zh-Hans": "日光 5500K",
+   "zh-Hant": "日光 5500K",
+   "ja": "太陽光 5500K"
+  },
+  "Decoding and rendering the RAW…": {
+   "zh-Hans": "正在解码并渲染 RAW…",
+   "zh-Hant": "正在解碼並渲染 RAW…",
+   "ja": "RAWを処理してレンダリングしています…"
+  },
+  "Drag a rectangle on the unrotated original; orientation and straighten return when you finish. Enter confirms, Esc cancels.": {
+   "zh-Hans": "在未旋转原图上拖出矩形；完成后恢复方向与拉直。Enter 确认，Esc 取消。",
+   "zh-Hant": "在未旋轉原圖上拖出矩形；完成後恢復方向與拉直。Enter 確認，Esc 取消。",
+   "ja": "回転していない元画像の上で矩形をドラッグします。完了すると回転と傾き補正が戻ります。Enterで確定、Escでキャンセル。"
+  },
+  "Drag in the picture to crop": {
+   "zh-Hans": "在画面中拖选裁切",
+   "zh-Hant": "在畫面中拖選裁切",
+   "ja": "画像をドラッグして切り取り"
+  },
+  "Drawn from the seeds": {
+   "zh-Hans": "种子抽定",
+   "zh-Hant": "種子抽定",
+   "ja": "シードで自動決定"
+  },
+  "Edge print": {
+   "zh-Hans": "印字",
+   "zh-Hant": "印字",
+   "ja": "縁の印字"
+  },
+  "Edge print (e.g. KODAK PORTRA 400)": {
+   "zh-Hans": "边缘印字（如 KODAK PORTRA 400）",
+   "zh-Hant": "邊緣印字（如 KODAK PORTRA 400）",
+   "ja": "縁の印字（例: KODAK PORTRA 400）"
+  },
+  "Edit · Colour": {
+   "zh-Hans": "编辑 · 颜色",
+   "zh-Hant": "編輯 · 顏色",
+   "ja": "編集 · 色"
+  },
+  "Edit · Colour balance": {
+   "zh-Hans": "编辑 · 色彩平衡",
+   "zh-Hant": "編輯 · 色彩平衡",
+   "ja": "編集 · カラーバランス"
+  },
+  "Edit · Light": {
+   "zh-Hans": "编辑 · 光线",
+   "zh-Hant": "編輯 · 光線",
+   "ja": "編集 · 光"
+  },
+  "Edit · Vignette": {
+   "zh-Hans": "编辑 · 暗角",
+   "zh-Hant": "編輯 · 暗角",
+   "ja": "編集 · 周辺減光"
+  },
+  "Enlarger · paper brightness": {
+   "zh-Hans": "放大机 · 相纸亮度",
+   "zh-Hant": "放大機 · 相紙亮度",
+   "ja": "引伸機 · 印画紙の明るさ"
+  },
+  "Export %@ selected to folder…": {
+   "zh-Hans": "导出所选 %@ 张到文件夹…",
+   "zh-Hant": "導出所選 %@ 張到文件夾…",
+   "ja": "選択した %@ 枚をフォルダに書き出す…"
+  },
+  "Export photos": {
+   "zh-Hans": "导出照片",
+   "zh-Hant": "導出照片",
+   "ja": "写真を書き出す"
+  },
+  "Export the current frame · will not overwrite existing files": {
+   "zh-Hans": "导出当前画面 · 不覆盖现有文件",
+   "zh-Hant": "導出當前畫面 · 不覆蓋現有文件",
+   "ja": "現在の画面を書き出す · 既存ファイルは上書きしません"
+  },
+  "Export the displayed frame…": {
+   "zh-Hans": "导出当前已显示画面…",
+   "zh-Hant": "導出當前已顯示畫面…",
+   "ja": "表示中の画面を書き出す…"
+  },
+  "Exported the current frame": {
+   "zh-Hans": "已导出当前画面",
+   "zh-Hant": "已導出當前畫面",
+   "ja": "現在の画面を書き出しました"
+  },
+  "Exporting the current frame never overwrites an existing file. Batch export goes photo by photo and skips files that already exist; photos never opened still render by their own settings.": {
+   "zh-Hans": "当前画面导出不覆盖已有文件。批量导出逐张处理，自动跳过同名文件；未访问的照片也按各自设置渲染。",
+   "zh-Hant": "當前畫面導出不覆蓋已有文件。批量導出逐張處理，自動跳過同名文件；未訪問的照片也按各自設置渲染。",
+   "ja": "現在の画面の書き出しは既存のファイルを上書きしません。一括書き出しは1枚ずつ処理し、同名のファイルは自動的にスキップします。未開封の写真もそれぞれの設定でレンダリングされます。"
+  },
+  "Exporting the current frame…": {
+   "zh-Hans": "正在导出当前画面…",
+   "zh-Hant": "正在導出當前畫面…",
+   "ja": "現在の画面を書き出し中…"
+  },
+  "Exposure and placement changes re-compose the whole piece; date changes reprint the same negative. Undo/redo walks the pair's own history.": {
+   "zh-Hans": "曝光与放置改动重新组装整件；日期改动按同底片重印。撤销/重做按对件自己的历史行走。",
+   "zh-Hant": "曝光與放置改動重新組裝整件；日期改動按同底片重印。撤銷/重做按對件自己的歷史行走。",
+   "ja": "露出と配置の変更は組み全体を組み立て直します。日付の変更は同じネガで焼き直します。取り消す/やり直すはペア自身の履歴に沿います。"
+  },
+  "File name": {
+   "zh-Hans": "文件名",
+   "zh-Hant": "文件名",
+   "ja": "ファイル名"
+  },
+  "Film format & effects": {
+   "zh-Hans": "胶片画幅与效果",
+   "zh-Hant": "膠片畫幅與效果",
+   "ja": "フィルムの判型と効果"
+  },
+  "Film rebate": {
+   "zh-Hans": "胶片边缘",
+   "zh-Hant": "膠片邊緣",
+   "ja": "フィルムの縁"
+  },
+  "Filter photos": {
+   "zh-Hans": "过滤照片",
+   "zh-Hant": "過濾照片",
+   "ja": "写真を絞り込む"
+  },
+  "Finish crop": {
+   "zh-Hans": "完成裁切",
+   "zh-Hant": "完成裁切",
+   "ja": "切り取りを完了"
+  },
+  "Flash 5500K": {
+   "zh-Hans": "闪光灯 5500K",
+   "zh-Hant": "閃光燈 5500K",
+   "ja": "フラッシュ 5500K"
+  },
+  "Flip horizontally": {
+   "zh-Hans": "水平翻转",
+   "zh-Hant": "水平翻轉",
+   "ja": "左右反転"
+  },
+  "Flip vertically": {
+   "zh-Hans": "垂直翻转",
+   "zh-Hant": "垂直翻轉",
+   "ja": "上下反転"
+  },
+  "Fluorescent 4000K": {
+   "zh-Hans": "荧光灯 4000K",
+   "zh-Hant": "螢光燈 4000K",
+   "ja": "蛍光灯 4000K"
+  },
+  "Format long edge": {
+   "zh-Hans": "画幅长边",
+   "zh-Hant": "畫幅長邊",
+   "ja": "判型の長辺"
+  },
+  "Frame seed": {
+   "zh-Hans": "帧种子",
+   "zh-Hant": "幀種子",
+   "ja": "コマのシード"
+  },
+  "Free ratio": {
+   "zh-Hans": "自由比例",
+   "zh-Hant": "自由比例",
+   "ja": "自由"
+  },
+  "Full render": {
+   "zh-Hans": "完整渲染",
+   "zh-Hant": "完整渲染",
+   "ja": "フルレンダリング"
+  },
+  "Full-resolution preview": {
+   "zh-Hans": "完整分辨率预览",
+   "zh-Hant": "完整分辨率預覽",
+   "ja": "フル解像度プレビュー"
+  },
+  "Graded adjustments act on the developed picture: live, without triggering a re-render, and pixel-identical to the export.": {
+   "zh-Hans": "分级调整作用于显影后的画面：实时生效，不触发重新渲染，与导出像素一致。",
+   "zh-Hant": "分級調整作用于顯影後的畫面：實時生效，不觸發重新渲染，與導出像素一致。",
+   "ja": "階調調整は現像後の画像に作用します。リアルタイムで反映され、再レンダリングは起きず、書き出しのピクセルと一致します。"
+  },
+  "Grid · click to select, double-click to develop": {
+   "zh-Hans": "网格 · 点击选择，双击进入冲洗",
+   "zh-Hant": "網格 · 點擊選擇，雙擊進入沖洗",
+   "ja": "グリッド · クリックで選択、ダブルクリックで現像へ"
+  },
+  "HDR scan": {
+   "zh-Hans": "HDR 扫描",
+   "zh-Hant": "HDR 掃描",
+   "ja": "HDRスキャン"
+  },
+  "HDR scan applies only to slide film scanned directly; negatives go to the paper print and cannot use it.": {
+   "zh-Hans": "HDR 扫描仅适用于直接扫描的反转片；负片走相纸冲印，不适用。",
+   "zh-Hant": "HDR 掃描僅適用於直接掃描的反轉片；負片走相紙沖印，不適用。",
+   "ja": "HDRスキャンは、直接スキャンしたリバーサルフィルム専用です。ネガは印画紙に焼き付けるため使えません。"
+  },
+  "HDR scan pushes each of the slide's layer shoulders past their knees and lifts them inside the spectral scan, so the clear base lands on today's scan headroom multiple; it is an engine parameter and re-renders without re-decoding.": {
+   "zh-Hans": "HDR 扫描把反转片每层的肩部移过各自的膝点、在光谱扫描内提升，使片基落在今日扫描的余量倍数上；走引擎参数，重新渲染而不重解码。",
+   "zh-Hant": "HDR 掃描把反轉片每層的肩部移過各自的膝點、在光譜掃描內提升，使片基落在今日掃描的余量倍數上；走引擎參數，重新渲染而不重解碼。",
+   "ja": "HDRスキャンはリバーサルフィルム各層の肩をそれぞれの膝点の先へ移し、スペクトルスキャンの中で持ち上げて、フィルムベースを今日のスキャンと同じ余裕倍数に置きます。エンジンパラメータとして働き、再レンダリングしますがRAW処理はし直しません。"
+  },
+  "Half-frame pair": {
+   "zh-Hans": "半幅对",
+   "zh-Hant": "半幅對",
+   "ja": "2コマ組"
+  },
+  "Half-frame pair %@: batch export is not supported yet": {
+   "zh-Hans": "半幅对 %@：暂不支持批量导出",
+   "zh-Hant": "半幅對 %@：暫不支持批量導出",
+   "ja": "2コマ組 %@：一括書き出しにはまだ対応していません"
+  },
+  "Half-frame pair · Analyse and Commit fit do not yet apply to a pair (per-hole region measurement is a later task); Apply mapping still acts on the whole piece.": {
+   "zh-Hans": "半幅对 · 分析与提交拟合暂不适用于对件（逐孔区域测量待后续任务）；「应用映射」仍按整件生效。",
+   "zh-Hant": "半幅對 · 分析與提交擬合暫不適用於對件（逐孔區域測量待後續任務）；「應用映射」仍按整件生效。",
+   "ja": "2コマ組 · 「分析」と「フィットを確定」はまだペアには使えません（コマごとの領域測定は今後の課題）。「マッピングを適用」は組み全体に効きます。"
+  },
+  "Half-frame pair · film exposure, white balance and metering are controlled at piece level: the pair's exposure is always 0 (each hole's exposure is in the Half-frame pair panel) and the decode follows each hole's source photo.": {
+   "zh-Hans": "半幅对 · 胶片曝光、白平衡与测光在件级控制：对的曝光恒为 0（每孔的曝光在「半幅对」面板），解码随各孔源照片。",
+   "zh-Hant": "半幅對 · 膠片曝光、白平衡與測光在件級控制：對的曝光恒為 0（每孔的曝光在「半幅對」面板），解碼隨各孔源照片。",
+   "ja": "2コマ組 · フィルムの露出・ホワイトバランス・測光は組みのレベルで制御します。ペアの露出は常に0（コマごとの露出は「2コマ組」パネル）、RAW処理は各コマの元写真に従います。"
+  },
+  "Half-frame pair · picture-level crop and orientation do not apply to a pair: each hole's picture is placed inside its hole (see the Half-frame pair panel).": {
+   "zh-Hans": "半幅对 · 画面级裁切与方向不适用于对件：两孔的画面在孔内逐孔放置（见「半幅对」面板）。",
+   "zh-Hant": "半幅對 · 畫面級裁切與方向不適用於對件：兩孔的畫面在孔內逐孔放置（見「半幅對」面板）。",
+   "ja": "2コマ組 · 画像レベルの切り取りと向きはペアには使えません。2つのコマの画像はそれぞれのコマ内に配置します（「2コマ組」パネル参照）。"
+  },
+  "Half-frame pair · the date switch and text are set per hole (see the Half-frame pair panel); the typeface, placement and size still act on the whole piece.": {
+   "zh-Hans": "半幅对 · 日期开关与文本由逐孔设置（见「半幅对」面板）；字面、位置与大小仍作用于整件。",
+   "zh-Hant": "半幅對 · 日期開關與文本由逐孔設置（見「半幅對」面板）；字面、位置與大小仍作用于整件。",
+   "ja": "2コマ組 · 日付のスイッチと文字列はコマごとに設定（「2コマ組」パネル参照）。書体・位置・サイズは組み全体に効きます。"
+  },
+  "Half-frame pair · the decode follows each hole's source photo; it is not set on the piece.": {
+   "zh-Hans": "半幅对 · 解码随各孔源照片，不在件上设置。",
+   "zh-Hant": "半幅對 · 解碼隨各孔源照片，不在件上設置。",
+   "ja": "2コマ組 · RAW処理は各コマの元写真に従い、組みでは設定しません。"
+  },
+  "Half-frame pair · the format's long edge is decided by the whole piece (36 mm + the gap); it is not set separately.": {
+   "zh-Hans": "半幅对 · 画幅长边由整件决定（36 mm + 间距），不单独设置。",
+   "zh-Hant": "半幅對 · 畫幅長邊由整件決定（36 mm + 間距），不單獨設置。",
+   "ja": "2コマ組 · 長辺は組み全体で決まります（36 mm＋間隔）。個別には設定しません。"
+  },
+  "Half-frame pair · the switch mounts and unmounts the piece on its strip; the format is fixed to a 135 half strip (the gap follows the Half-frame pair panel's spacing), while the gate, perforations, edge print and fog still act on the whole piece.": {
+   "zh-Hans": "半幅对 · 开关即对件上/下片条；画幅固定为 135 半幅条（间隙随「半幅对」面板的间距），门栅、片孔、印字与雾光仍作用于整件。",
+   "zh-Hant": "半幅對 · 開關即對件上/下片條；畫幅固定為 135 半幅條（間隙隨「半幅對」面板的間距），門柵、片孔、印字與霧光仍作用于整件。",
+   "ja": "2コマ組 · スイッチでストリップへの乗せ降ろしをします。判型は135ハーフに固定（間隔は「2コマ組」パネルの間隔に従う）。画枠・送り穴・縁の印字・かぶりは組み全体に効きます。"
+  },
+  "Headroom": {
+   "zh-Hans": "余量",
+   "zh-Hant": "余量",
+   "ja": "余裕"
+  },
+  "Highlight extension (experimental)": {
+   "zh-Hans": "高光扩展（实验）",
+   "zh-Hant": "高光擴展（實驗）",
+   "ja": "明部拡張（実験的）"
+  },
+  "Highlight-extension decode": {
+   "zh-Hans": "高光扩展解码",
+   "zh-Hant": "高光擴展解碼",
+   "ja": "明部拡張RAW処理"
+  },
+  "Horizontal inset": {
+   "zh-Hans": "横内缩",
+   "zh-Hant": "橫內縮",
+   "ja": "横のインセット"
+  },
+  "Import %@ / %@": {
+   "zh-Hans": "导入 %@ / %@",
+   "zh-Hant": "導入 %@ / %@",
+   "ja": "%@ / %@ を読み込み中"
+  },
+  "Import RAW": {
+   "zh-Hans": "导入 RAW",
+   "zh-Hant": "導入 RAW",
+   "ja": "RAWを読み込む"
+  },
+  "Import RAW; pick the film and paper per photo": {
+   "zh-Hans": "导入 RAW，逐张选择胶片与相纸",
+   "zh-Hant": "導入 RAW，逐張選擇膠片與相紙",
+   "ja": "RAWを読み込み、写真ごとにフィルムと印画紙を選びます"
+  },
+  "Import date": {
+   "zh-Hans": "导入时间",
+   "zh-Hant": "導入時間",
+   "ja": "読み込み日"
+  },
+  "Import one or more RAW photos": {
+   "zh-Hans": "导入一张或多张 RAW 照片",
+   "zh-Hant": "導入一張或多張 RAW 照片",
+   "ja": "RAW写真を1枚以上読み込みます"
+  },
+  "Import photos to begin": {
+   "zh-Hans": "导入照片开始",
+   "zh-Hant": "導入照片開始",
+   "ja": "写真を読み込んで開始"
+  },
+  "In the picture (corner)": {
+   "zh-Hans": "画面内（角上）",
+   "zh-Hant": "畫面內（角上）",
+   "ja": "画像内（隅）"
+  },
+  "Input / camera": {
+   "zh-Hans": "输入 / 相机",
+   "zh-Hant": "輸入 / 相機",
+   "ja": "入力 / カメラ"
+  },
+  "JPEG image (*.jpg *.jpeg)": {
+   "zh-Hans": "JPEG 图像 (*.jpg *.jpeg)",
+   "zh-Hant": "JPEG 圖像 (*.jpg *.jpeg)",
+   "ja": "JPEG 画像 (*.jpg *.jpeg)"
+  },
+  "JPEG quality": {
+   "zh-Hans": "JPEG 质量",
+   "zh-Hant": "JPEG 質量",
+   "ja": "JPEG 画質"
+  },
+  "JPEG · 8-bit": {
+   "zh-Hans": "JPEG · 8 位",
+   "zh-Hant": "JPEG · 8 位",
+   "ja": "JPEG · 8ビット"
+  },
+  "Keeps some of the highlights and negative values after demosaicing; the demosaic stays integer.": {
+   "zh-Hans": "保留去马赛克后的部分高光及负值；仍使用整数去马赛克。",
+   "zh-Hant": "保留去馬賽克後的部分高光及負值；仍使用整數去馬賽克。",
+   "ja": "デモザイク後の一部のハイライトと負の値を保持します。デモザイク自体は整数のままです。"
+  },
+  "Kicked corner": {
+   "zh-Hans": "外凸角",
+   "zh-Hant": "外凸角",
+   "ja": "張り出し"
+  },
+  "Kind": {
+   "zh-Hans": "种类",
+   "zh-Hant": "種類",
+   "ja": "種類"
+  },
+  "Larger thumbnails · Ctrl+=": {
+   "zh-Hans": "更大的缩略图 · Ctrl+=",
+   "zh-Hant": "更大的縮略圖 · Ctrl+=",
+   "ja": "縮小画像を大きく · Ctrl+="
+  },
+  "Latitude %@ stops": {
+   "zh-Hans": "宽容度 %@ stops",
+   "zh-Hant": "寬容度 %@ stops",
+   "ja": "寛容度 %@段"
+  },
+  "Latitude analysis finished": {
+   "zh-Hans": "宽容度分析完成",
+   "zh-Hant": "寬容度分析完成",
+   "ja": "寛容度の分析が完了しました"
+  },
+  "Left": {
+   "zh-Hans": "左",
+   "zh-Hant": "左",
+   "ja": "左"
+  },
+  "Lift highlights": {
+   "zh-Hans": "高光提升",
+   "zh-Hant": "高光提升",
+   "ja": "明部を持ち上げる"
+  },
+  "Light leaks": {
+   "zh-Hans": "漏光",
+   "zh-Hant": "漏光",
+   "ja": "光漏れ"
+  },
+  "Long edge 1080 px": {
+   "zh-Hans": "长边 1080 像素",
+   "zh-Hant": "長邊 1080 像素",
+   "ja": "長辺 1080 px"
+  },
+  "Long edge 1920 px": {
+   "zh-Hans": "长边 1920 像素",
+   "zh-Hant": "長邊 1920 像素",
+   "ja": "長辺 1920 px"
+  },
+  "Long edge 2560 px": {
+   "zh-Hans": "长边 2560 像素",
+   "zh-Hant": "長邊 2560 像素",
+   "ja": "長辺 2560 px"
+  },
+  "Long edge 3840 px": {
+   "zh-Hans": "长边 3840 像素",
+   "zh-Hant": "長邊 3840 像素",
+   "ja": "長辺 3840 px"
+  },
+  "Magenta filter": {
+   "zh-Hans": "洋红滤镜",
+   "zh-Hant": "洋紅濾鏡",
+   "ja": "赤紫フィルター"
+  },
+  "Magenta filter %@": {
+   "zh-Hans": "洋红滤镜 %@",
+   "zh-Hant": "洋紅濾鏡 %@",
+   "ja": "赤紫フィルター %@"
+  },
+  "Make pair": {
+   "zh-Hans": "建对",
+   "zh-Hant": "建對",
+   "ja": "2コマ組にする"
+  },
+  "Mask": {
+   "zh-Hans": "遮罩",
+   "zh-Hant": "遮罩",
+   "ja": "マスク"
+  },
+  "Matches the proven native RAW pipeline.": {
+   "zh-Hans": "与已验证的原生 RAW 流程保持一致。",
+   "zh-Hant": "與已驗證的原生 RAW 流程保持一致。",
+   "ja": "検証済みのネイティブRAW処理と同じです。"
+  },
+  "Meter": {
+   "zh-Hans": "测光",
+   "zh-Hant": "測光",
+   "ja": "測光"
+  },
+  "Meter reading": {
+   "zh-Hans": "测光读数",
+   "zh-Hant": "測光讀數",
+   "ja": "測光値"
+  },
+  "Metering…": {
+   "zh-Hans": "测光中…",
+   "zh-Hant": "測光中…",
+   "ja": "測光中…"
+  },
+  "Navigator": {
+   "zh-Hans": "导航图",
+   "zh-Hant": "導航圖",
+   "ja": "ナビゲーター"
+  },
+  "Negative film · Negative": {
+   "zh-Hans": "负片 · Negative",
+   "zh-Hant": "負片 · Negative",
+   "ja": "ネガ · ネガ"
+  },
+  "Negative reused": {
+   "zh-Hans": "复用负片",
+   "zh-Hant": "複用負片",
+   "ja": "ネガを再利用"
+  },
+  "Negative values darken the picture's edges, positive values brighten; the midpoint decides where in the picture the vignette begins.": {
+   "zh-Hans": "负值压暗画面边缘，正值加亮；中点决定暗角从画面何处开始。",
+   "zh-Hant": "負值壓暗畫面邊緣，正值加亮；中點決定暗角從畫面何處開始。",
+   "ja": "負の値は画像の縁を暗くし、正の値は明るくします。中心点で周辺減光の始まる場所を決めます。"
+  },
+  "No colour label": {
+   "zh-Hans": "无色标",
+   "zh-Hant": "無色標",
+   "ja": "カラーラベルなし"
+  },
+  "No library is open": {
+   "zh-Hans": "尚未打开任何图库",
+   "zh-Hant": "尚未打開任何圖庫",
+   "ja": "ライブラリが開かれていません"
+  },
+  "No photo is open": {
+   "zh-Hans": "尚未打开照片",
+   "zh-Hant": "尚未打開照片",
+   "ja": "写真が開かれていません"
+  },
+  "No photos selected to copy": {
+   "zh-Hans": "未选中要复制的照片",
+   "zh-Hant": "未選中要複制的照片",
+   "ja": "コピーする写真が選ばれていません"
+  },
+  "No photos selected to paste": {
+   "zh-Hans": "未选中要粘贴的照片",
+   "zh-Hant": "未選中要粘貼的照片",
+   "ja": "ペーストする写真が選ばれていません"
+  },
+  "No preview": {
+   "zh-Hans": "无预览",
+   "zh-Hant": "無預覽",
+   "ja": "プレビューなし"
+  },
+  "No rating": {
+   "zh-Hans": "无评分",
+   "zh-Hant": "無評分",
+   "ja": "評価なし"
+  },
+  "No reading yet": {
+   "zh-Hans": "尚无读数",
+   "zh-Hant": "尚無讀數",
+   "ja": "まだ測定値はありません"
+  },
+  "None (canvas ends at the film's edge)": {
+   "zh-Hans": "无（画布止于片边）",
+   "zh-Hant": "無（畫布止于片邊）",
+   "ja": "なし（フィルムの縁まで）"
+  },
+  "Not applicable": {
+   "zh-Hans": "不适用",
+   "zh-Hant": "不適用",
+   "ja": "適用外"
+  },
+  "Off (the scene is placed without metering)": {
+   "zh-Hans": "关闭（不经测光放置场景）",
+   "zh-Hant": "關閉（不經測光放置場景）",
+   "ja": "オフ（測光せずにシーンを配置）"
+  },
+  "Open (scan bright)": {
+   "zh-Hans": "开放（扫描亮）",
+   "zh-Hant": "開放（掃描亮）",
+   "ja": "オープン（スキャンが明るい）"
+  },
+  "Original crop size": {
+   "zh-Hans": "原始裁切尺寸",
+   "zh-Hant": "原始裁切尺寸",
+   "ja": "元の切り取りサイズ"
+  },
+  "Output size": {
+   "zh-Hans": "输出尺寸",
+   "zh-Hant": "輸出尺寸",
+   "ja": "出力サイズ"
+  },
+  "PNG image (*.png)": {
+   "zh-Hans": "PNG 图像 (*.png)",
+   "zh-Hant": "PNG 圖像 (*.png)",
+   "ja": "PNG 画像 (*.png)"
+  },
+  "PNG · 16-bit": {
+   "zh-Hans": "PNG · 16 位",
+   "zh-Hant": "PNG · 16 位",
+   "ja": "PNG · 16ビット"
+  },
+  "PNG · 8-bit": {
+   "zh-Hans": "PNG · 8 位",
+   "zh-Hant": "PNG · 8 位",
+   "ja": "PNG · 8ビット"
+  },
+  "Paper print": {
+   "zh-Hans": "相纸冲印",
+   "zh-Hant": "相紙沖印",
+   "ja": "印画紙への焼き付け"
+  },
+  "Parameters · pre-develop": {
+   "zh-Hans": "参数 · 显影前",
+   "zh-Hant": "參數 · 顯影前",
+   "ja": "パラメータ · 現像前"
+  },
+  "Path": {
+   "zh-Hans": "路径",
+   "zh-Hant": "路徑",
+   "ja": "パス"
+  },
+  "Photo info": {
+   "zh-Hans": "照片信息",
+   "zh-Hant": "照片信息",
+   "ja": "写真の情報"
+  },
+  "Pick a collection in the sidebar, or import photos into this source": {
+   "zh-Hans": "从侧栏选择收藏集，或将照片导入该来源",
+   "zh-Hant": "從側欄選擇收藏集，或將照片導入該來源",
+   "ja": "サイドバーで分類を選ぶか、この取得元に写真を読み込みます"
+  },
+  "Pre-flash %@": {
+   "zh-Hans": "预闪 %@",
+   "zh-Hant": "預閃 %@",
+   "ja": "予備露光 %@"
+  },
+  "Preview and export share the same crop and orientation; the original RAW is untouched.": {
+   "zh-Hans": "预览与导出使用同一裁切与方向；原始 RAW 不变。",
+   "zh-Hant": "預覽與導出使用同一裁切與方向；原始 RAW 不變。",
+   "ja": "プレビューと書き出しは同じ切り取りと向きを使います。元のRAWは変わりません。"
+  },
+  "Preview updated": {
+   "zh-Hans": "预览已更新",
+   "zh-Hant": "預覽已更新",
+   "ja": "プレビューを更新しました"
+  },
+  "Print trim (stored)": {
+   "zh-Hans": "印相 trim（暂存）",
+   "zh-Hant": "印相 trim（暫存）",
+   "ja": "印画トリム（仮保存）"
+  },
+  "Pull shadows": {
+   "zh-Hans": "阴影压低",
+   "zh-Hant": "陰影壓低",
+   "ja": "暗部を押さえる"
+  },
+  "RAW decode": {
+   "zh-Hans": "RAW 解码",
+   "zh-Hant": "RAW 解碼",
+   "ja": "RAW処理"
+  },
+  "Re-decoding with the white balance…": {
+   "zh-Hans": "正在按白平衡重新解码…",
+   "zh-Hant": "正在按白平衡重新解碼…",
+   "ja": "ホワイトバランスでRAW処理し直しています…"
+  },
+  "Ready · open a RAW to begin": {
+   "zh-Hans": "就绪 · 打开 RAW 开始",
+   "zh-Hant": "就緒 · 打開 RAW 開始",
+   "ja": "準備完了 · RAWを開いて開始"
+  },
+  "Rebate (between frames)": {
+   "zh-Hans": "片框（帧间）",
+   "zh-Hant": "片框（幀間）",
+   "ja": "縁（コマの間）"
+  },
+  "Record": {
+   "zh-Hans": "记录",
+   "zh-Hant": "記錄",
+   "ja": "記録"
+  },
+  "Redid the pair's adjustment": {
+   "zh-Hans": "已重做半幅对调整",
+   "zh-Hant": "已重做半幅對調整",
+   "ja": "2コマ組の調整をやり直しました"
+  },
+  "Redid the photo's adjustment": {
+   "zh-Hans": "已重做当前照片调整",
+   "zh-Hant": "已重做當前照片調整",
+   "ja": "この写真の調整をやり直しました"
+  },
+  "Redo the photo's adjustment · Ctrl+Shift+Z / Ctrl+Y": {
+   "zh-Hans": "重做当前照片的调整 · Ctrl+Shift+Z / Ctrl+Y",
+   "zh-Hant": "重做當前照片的調整 · Ctrl+Shift+Z / Ctrl+Y",
+   "ja": "この写真の調整をやり直す · Ctrl+Shift+Z / Ctrl+Y"
+  },
+  "Render finished in %@ s%@": {
+   "zh-Hans": "渲染完成 %@ 秒%@",
+   "zh-Hant": "渲染完成 %@ 秒%@",
+   "ja": "レンダリング完了 %@秒%@"
+  },
+  "Reset colour": {
+   "zh-Hans": "重置颜色",
+   "zh-Hant": "重置顏色",
+   "ja": "色を元に戻す"
+  },
+  "Reset colour balance": {
+   "zh-Hans": "重置色彩平衡",
+   "zh-Hant": "重置色彩平衡",
+   "ja": "カラーバランスを元に戻す"
+  },
+  "Reset crop & orientation": {
+   "zh-Hans": "重置裁切与方向",
+   "zh-Hant": "重置裁切與方向",
+   "ja": "切り取りと向きを元に戻す"
+  },
+  "Reset light": {
+   "zh-Hans": "重置光线",
+   "zh-Hant": "重置光線",
+   "ja": "光を元に戻す"
+  },
+  "Reset mask": {
+   "zh-Hans": "重置遮罩",
+   "zh-Hant": "重置遮罩",
+   "ja": "マスクを元に戻す"
+  },
+  "Reset this photo's settings": {
+   "zh-Hans": "重置当前照片设置",
+   "zh-Hant": "重置當前照片設置",
+   "ja": "この写真の設定を元に戻す"
+  },
+  "Reset vignette": {
+   "zh-Hans": "重置暗角",
+   "zh-Hant": "重置暗角",
+   "ja": "周辺減光を元に戻す"
+  },
+  "Retry the preview": {
+   "zh-Hans": "重新尝试预览",
+   "zh-Hant": "重新嘗試預覽",
+   "ja": "プレビューを再試行"
+  },
+  "Right": {
+   "zh-Hans": "右",
+   "zh-Hant": "右",
+   "ja": "右"
+  },
+  "Rotate left 90°": {
+   "zh-Hans": "左转 90°",
+   "zh-Hant": "左轉 90°",
+   "ja": "左に回転"
+  },
+  "Rotate right 90°": {
+   "zh-Hans": "右转 90°",
+   "zh-Hant": "右轉 90°",
+   "ja": "右に回転"
+  },
+  "Saved": {
+   "zh-Hans": "已保存",
+   "zh-Hant": "已保存",
+   "ja": "保存済み"
+  },
+  "Saving…": {
+   "zh-Hans": "保存中…",
+   "zh-Hant": "保存中…",
+   "ja": "保存中…"
+  },
+  "Scale": {
+   "zh-Hans": "作用范围",
+   "zh-Hant": "作用范圍",
+   "ja": "作用範囲"
+  },
+  "Select a photo in the grid to see its info": {
+   "zh-Hans": "在网格中选择一张照片查看信息",
+   "zh-Hant": "在網格中選擇一張照片查看信息",
+   "ja": "グリッドで写真を選ぶと情報が表示されます"
+  },
+  "Selection and adjustments apply automatically": {
+   "zh-Hans": "选择与调整自动应用",
+   "zh-Hant": "選擇與調整自動應用",
+   "ja": "選択と調整は自動で適用されます"
+  },
+  "Shade 8000K": {
+   "zh-Hans": "阴影 8000K",
+   "zh-Hant": "陰影 8000K",
+   "ja": "日陰 8000K"
+  },
+  "Shooting data (e.g. 1/125 F2.8 A 50mm)": {
+   "zh-Hans": "拍摄数据（如 1/125 F2.8 A 50mm）",
+   "zh-Hant": "拍攝數據（如 1/125 F2.8 A 50mm）",
+   "ja": "撮影データ（例: 1/125 F2.8 A 50mm）"
+  },
+  "Side by side": {
+   "zh-Hans": "左右并排",
+   "zh-Hant": "左右並排",
+   "ja": "横並び"
+  },
+  "Single frame (little rebate)": {
+   "zh-Hans": "单帧（少量片边）",
+   "zh-Hant": "單幀（少量片邊）",
+   "ja": "単コマ（細い縁）"
+  },
+  "Slide film is scanned directly — there is no negative, so the digital intermediate does not apply.": {
+   "zh-Hans": "反转片直接扫描，没有负片，不适用数字中间片。",
+   "zh-Hant": "反轉片直接掃描，沒有負片，不適用數字中間片。",
+   "ja": "リバーサルは直接スキャンするためネガがなく、デジタルインターミディエイトは使えません。"
+  },
+  "Slide film is scanned directly; no paper is used.": {
+   "zh-Hans": "反转片直接扫描，不使用相纸。",
+   "zh-Hant": "反轉片直接掃描，不使用相紙。",
+   "ja": "リバーサルフィルムは直接スキャンし、印画紙は使いません。"
+  },
+  "Slide · Positive": {
+   "zh-Hans": "反转片 · Positive",
+   "zh-Hant": "反轉片 · Positive",
+   "ja": "リバーサル · ポジ"
+  },
+  "Smaller thumbnails · Ctrl+-": {
+   "zh-Hans": "更小的缩略图 · Ctrl+-",
+   "zh-Hant": "更小的縮略圖 · Ctrl+-",
+   "ja": "縮小画像を小さく · Ctrl+-"
+  },
+  "Some settings did not save; see the note below": {
+   "zh-Hans": "部分设置未保存，请查看下方提示",
+   "zh-Hant": "部分設置未保存，請查看下方提示",
+   "ja": "保存できなかった設定があります。下の注意を確認してください"
+  },
+  "Stacked vertically": {
+   "zh-Hans": "上下竖排",
+   "zh-Hant": "上下豎排",
+   "ja": "縦並び"
+  },
+  "Starting the render engine…": {
+   "zh-Hans": "正在启动渲染引擎…",
+   "zh-Hant": "正在啟動渲染引擎…",
+   "ja": "レンダリングエンジンを起動中…"
+  },
+  "Status": {
+   "zh-Hans": "状态",
+   "zh-Hant": "狀態",
+   "ja": "状態"
+  },
+  "Stop after the current photo": {
+   "zh-Hans": "当前照片完成后停止",
+   "zh-Hant": "當前照片完成後停止",
+   "ja": "現在の写真で停止"
+  },
+  "Straighten applies when the slider is released; the edges tighten automatically to avoid blank areas.": {
+   "zh-Hans": "拉直在松开滑块后应用。边缘自动收紧以避免空白。",
+   "zh-Hant": "拉直在松開滑塊後應用。邊緣自動收緊以避免空白。",
+   "ja": "傾き補正はスライダーを離したときに適用されます。空白を避けるため縁は自動的に切り詰められます。"
+  },
+  "Strength": {
+   "zh-Hans": "强度",
+   "zh-Hant": "強度",
+   "ja": "強さ"
+  },
+  "Strip (the full film width)": {
+   "zh-Hans": "条片（整个片宽）",
+   "zh-Hant": "條片（整個片寬）",
+   "ja": "全幅（フィルム全幅）"
+  },
+  "Suggested pull: highlights %@ / shadows %@ EV": {
+   "zh-Hans": "建议收高光 %@ / 收阴影 %@ EV",
+   "zh-Hant": "建议收高光 %@ / 收陰影 %@ EV",
+   "ja": "明部を %@、暗部を %@ EV 戻すことが望ましい"
+  },
+  "Sync settings": {
+   "zh-Hans": "同步设置",
+   "zh-Hant": "同步設置",
+   "ja": "設定を同期"
+  },
+  "Synced the current settings to %@ photos%@": {
+   "zh-Hans": "已将当前参数同步至 %@ 张照片%@",
+   "zh-Hant": "已將當前參數同步至 %@ 張照片%@",
+   "ja": "%@枚に現在の設定を同期しました%@"
+  },
+  "Synced the film, paper, decode and effects to the selected photos; the crop is not synced.": {
+   "zh-Hans": "将当前照片的胶片、相纸、解码和效果同步到所选照片，不同步裁切。",
+   "zh-Hant": "將當前照片的膠片、相紙、解碼和效果同步到所選照片，不同步裁切。",
+   "ja": "現在の写真のフィルム・印画紙・RAW処理・効果を選択した写真に同期します。切り取りは同期しません。"
+  },
+  "TIFF · 16-bit": {
+   "zh-Hans": "TIFF · 16 位",
+   "zh-Hant": "TIFF · 16 位",
+   "ja": "TIFF · 16ビット"
+  },
+  "The aspect ratio is kept and images are never enlarged. PNG saves losslessly; JPEG compresses with loss.": {
+   "zh-Hans": "保持长宽比例，不放大图像。PNG 无损保存，JPEG 为有损压缩。",
+   "zh-Hant": "保持長寬比例，不放大圖像。PNG 無損保存，JPEG 為有損壓縮。",
+   "ja": "縦横比は維持され、画像は拡大されません。PNGは可逆保存、JPEGは非可逆圧縮です。"
+  },
+  "The catalog folder cannot be created": {
+   "zh-Hans": "无法创建目录文件夹",
+   "zh-Hant": "無法創建目錄文件夾",
+   "ja": "カタログフォルダを作成できません"
+  },
+  "The contrast mask lifts the paper's highlights and pulls its shadows locally: the switch and sliders are engine parameters and re-render without re-decoding.": {
+   "zh-Hans": "对比遮罩按画面局部提升相纸高光、压低阴影：开关与滑块走引擎参数，重新渲染而不重解码。",
+   "zh-Hant": "對比遮罩按畫面局部提升相紙高光、壓低陰影：開關與滑塊走引擎參數，重新渲染而不重解碼。",
+   "ja": "コントラストマスクは画像の部分ごとに印画紙の明部を持ち上げ、暗部を押さえます。スイッチとスライダーはエンジンパラメータで、再レンダリングしますがRAW処理はし直しません。"
+  },
+  "The current frame or the selected photos · sRGB\nThe crop and effects are written into the file.": {
+   "zh-Hans": "当前画面或所选照片 · sRGB\n裁切与效果一起写入文件。",
+   "zh-Hant": "當前畫面或所選照片 · sRGB\n裁切與效果一起寫入文件。",
+   "ja": "現在の画面または選択した写真 · sRGB\n切り取りと効果もファイルに書き込まれます。"
+  },
+  "The date back exposes the date and the shooting data through the film's back: use it with the film rebate, or print it alone in the picture's corner; the Rebate placement prints the date between frames and needs the film rebate on.": {
+   "zh-Hans": "日期背印从胶片背面曝光日期与拍摄数据：与胶片边缘同用，也可单独印在画面角上；「片框」位置把日期印在帧间，需要胶片边缘开启。",
+   "zh-Hant": "日期背印從膠片背面曝光日期與拍攝數據：與膠片邊緣同用，也可單獨印在畫面角上；「片框」位置把日期印在幀間，需要膠片邊緣開啟。",
+   "ja": "日付写し込みは、フィルムの裏面から日付と撮影データを露光します。フィルムの縁と一緒に、または画像の隅に単独で焼けます。「縁」の場所はコマの間に日付を焼くため、フィルムの縁がオンである必要があります。"
+  },
+  "The digital intermediate renders the negative's positive image in Cineon log encoding, replacing the paper print; blue compensation rotates the hue inside the film-fitted blue window.": {
+   "zh-Hans": "数字中间片以 Cineon 对数编码输出负片的正像，替代相纸冲印；蓝补偿按胶片拟合的蓝区窗口旋转色相。",
+   "zh-Hant": "數字中間片以 Cineon 對數編碼輸出負片的正像，替代相紙沖印；藍補償按膠片擬合的藍區窗口旋轉色相。",
+   "ja": "デジタルインターミディエイトは、ネガのポジ画像をCineonログで符号化して出力し、印画紙への焼き付けの代わりをします。青補正はフィルムに合わせた青域の窓の中で色相を回します。"
+  },
+  "The film rebate draws the film outside the picture as real exposure: gate shadow, film base, perforations, edge print, edge fog and light leaks develop together; the switch and choices are engine parameters and re-render without re-decoding. The format must match the photo's shape (crop by the gate first).": {
+   "zh-Hans": "胶片边缘把画面外的胶片画出为真实曝光：门栅阴影、片基、片孔、片边印字、边缘雾与漏光一起显影；开关与选择走引擎参数，重新渲染而不重解码。画幅需与照片比例一致（先按门栅裁切）。",
+   "zh-Hant": "膠片邊緣把畫面外的膠片畫出為真實曝光：門柵陰影、片基、片孔、片邊印字、邊緣霧與漏光一起顯影；開關與選擇走引擎參數，重新渲染而不重解碼。畫幅需與照片比例一致（先按門柵裁切）。",
+   "ja": "フィルムの縁は、画像の外のフィルムを本物の露光として描きます。画枠の影・フィルムベース・送り穴・縁の印字・縁かぶり・光漏れが一緒に現像されます。スイッチと選択はエンジンパラメータで、再レンダリングしますがRAW処理はし直しません。判型は写真の比率と一致する必要があります（先に画枠で切り取ってください）。"
+  },
+  "The fit did not pass": {
+   "zh-Hans": "拟合未通过",
+   "zh-Hant": "擬合未通過",
+   "ja": "フィットが成立しませんでした"
+  },
+  "The four print-trim rows are saved with the pair's record; per-hole print cropping is wired in a later task and changes no pixels today.": {
+   "zh-Hans": "印相 trim 四行随对记录保存；逐孔印相切割在后续任务接线，当前不改变像素。",
+   "zh-Hant": "印相 trim 四行隨對記錄保存；逐孔印相切割在後續任務接線，當前不改變像素。",
+   "ja": "印画トリムの4行はペアの記録とともに保存されます。コマごとの印画の切り詰めは今後の課題で、現時点ではピクセルを変えません。"
+  },
+  "The latitude analysis returned an invalid result": {
+   "zh-Hans": "宽容度分析返回了无效结果",
+   "zh-Hant": "寬容度分析返回了無效結果",
+   "ja": "寛容度の分析が無効な結果を返しました"
+  },
+  "The library is empty": {
+   "zh-Hans": "库是空的",
+   "zh-Hant": "庫是空的",
+   "ja": "ライブラリは空です"
+  },
+  "The operation cannot be completed": {
+   "zh-Hans": "无法完成操作",
+   "zh-Hant": "無法完成操作",
+   "ja": "操作を完了できません"
+  },
+  "The photo's settings saved automatically": {
+   "zh-Hans": "当前照片设置已自动保存",
+   "zh-Hant": "當前照片設置已自動保存",
+   "ja": "この写真の設定を自動保存しました"
+  },
+  "The physical format sets the grain and halation scale; cropping does not change the format.": {
+   "zh-Hans": "物理画幅决定颗粒与光晕尺度；裁切不改变画幅。",
+   "zh-Hant": "物理畫幅決定顆粒與光暈尺度；裁切不改變畫幅。",
+   "ja": "物理的な判型が粒状感とハレーションのスケールを決めます。切り取りは判型を変えません。"
+  },
+  "The preview already matches the current selection": {
+   "zh-Hans": "预览已是当前选择",
+   "zh-Hant": "預覽已是當前選擇",
+   "ja": "プレビューはすでに現在の選択どおりです"
+  },
+  "The session folder cannot be created": {
+   "zh-Hans": "无法创建会话文件夹",
+   "zh-Hant": "無法創建會話文件夾",
+   "ja": "セッションフォルダを作成できません"
+  },
+  "The settings record cannot be replaced": {
+   "zh-Hans": "设置记录无法被替换",
+   "zh-Hant": "設置記錄無法被替換",
+   "ja": "設定の記録を置き換えられません"
+  },
+  "The source cannot be opened": {
+   "zh-Hans": "无法打开该来源",
+   "zh-Hant": "無法打開該來源",
+   "ja": "その取得元を開けません"
+  },
+  "The source cannot be opened for import": {
+   "zh-Hans": "无法为导入打开该来源",
+   "zh-Hant": "無法為導入打開該來源",
+   "ja": "その取得元を読み込み用に開けません"
+  },
+  "The source is not in the sources registry file": {
+   "zh-Hans": "来源登记文件中没有该来源",
+   "zh-Hant": "來源登記文件中沒有該來源",
+   "ja": "取得元の登録ファイルにその取得元がありません"
+  },
+  "The sources registry file cannot be written": {
+   "zh-Hans": "无法写入来源登记文件",
+   "zh-Hant": "無法寫入來源登記文件",
+   "ja": "取得元の登録ファイルに書き込めません"
+  },
+  "The ungraded print on the left, the current edit on the right · V": {
+   "zh-Hans": "左侧显示未评分的冲印结果，右侧显示当前编辑 · V",
+   "zh-Hant": "左側顯示未評分的沖印結果，右側顯示當前編輯 · V",
+   "ja": "左に現像前の結果、右に現在の編集 · V"
+  },
+  "This render took %@ s · %@": {
+   "zh-Hans": "本次渲染 %@ 秒 · %@",
+   "zh-Hant": "本次渲染 %@ 秒 · %@",
+   "ja": "今回のレンダリング %@ 秒 · %@"
+  },
+  "This source has no photos yet": {
+   "zh-Hans": "此来源还没有照片",
+   "zh-Hant": "此來源還沒有照片",
+   "ja": "この取得元にはまだ写真がありません"
+  },
+  "Tick the groups to keep with the copy; pasting writes only those settings — the target photos are placed again by their own metering and keep their own As Shot white balance, crop and decode mode.": {
+   "zh-Hans": "勾选随复制保留的组；粘贴只写这些设置——目标照片按自己的测光重新放置，保留自己的 As Shot 白平衡、裁切与解码模式。",
+   "zh-Hant": "勾選隨複制保留的組；粘貼只寫這些設置——目標照片按自己的測光重新放置，保留自己的 As Shot 白平衡、裁切與解碼模式。",
+   "ja": "コピーに残すグループにチェックを入れてください。ペーストで書き込むのはその設定だけです。対象の写真は各自の測光で再配置され、撮影時のホワイトバランス・切り取り・RAW処理モードはそれぞれのまま保持されます。"
+  },
+  "Top": {
+   "zh-Hans": "上",
+   "zh-Hant": "上",
+   "ja": "上"
+  },
+  "Tungsten 3200K": {
+   "zh-Hans": "钨丝灯 3200K",
+   "zh-Hant": "鎢絲燈 3200K",
+   "ja": "白熱電球 3200K"
+  },
+  "Turn (stack)": {
+   "zh-Hans": "转向（竖排）",
+   "zh-Hant": "轉向（豎排）",
+   "ja": "向き（縦並び）"
+  },
+  "Typeface": {
+   "zh-Hans": "字面",
+   "zh-Hant": "字面",
+   "ja": "書体"
+  },
+  "Undid the pair's adjustment": {
+   "zh-Hans": "已撤销半幅对调整",
+   "zh-Hant": "已撤銷半幅對調整",
+   "ja": "2コマ組の調整を取り消しました"
+  },
+  "Undid the photo's last adjustment": {
+   "zh-Hans": "已撤销当前照片调整",
+   "zh-Hant": "已撤銷當前照片調整",
+   "ja": "この写真の調整を取り消しました"
+  },
+  "Undo the photo's last adjustment · Ctrl+Z": {
+   "zh-Hans": "撤销当前照片的上一步调整 · Ctrl+Z",
+   "zh-Hant": "撤銷當前照片的上一步調整 · Ctrl+Z",
+   "ja": "この写真の直前の調整を取り消す · Ctrl+Z"
+  },
+  "Updating the film effects…": {
+   "zh-Hans": "正在更新胶片效果…",
+   "zh-Hant": "正在更新膠片效果…",
+   "ja": "フィルムの効果を更新中…"
+  },
+  "Updating the half-frame pair…": {
+   "zh-Hans": "正在更新半幅对…",
+   "zh-Hant": "正在更新半幅對…",
+   "ja": "2コマ組を更新中…"
+  },
+  "Updating the preview": {
+   "zh-Hans": "正在更新预览…",
+   "zh-Hant": "正在更新預覽…",
+   "ja": "プレビューを更新中…"
+  },
+  "Updating the preview…": {
+   "zh-Hans": "更新预览中…",
+   "zh-Hant": "更新預覽中…",
+   "ja": "プレビューを更新中…"
+  },
+  "Vertical inset": {
+   "zh-Hans": "纵内缩",
+   "zh-Hant": "縱內縮",
+   "ja": "縦のインセット"
+  },
+  "Waiting for the current operation to finish before closing…": {
+   "zh-Hans": "等待当前操作完成后关闭…",
+   "zh-Hant": "等待當前操作完成後關閉…",
+   "ja": "現在の操作の完了を待ってから閉じます…"
+  },
+  "White balance acts on the RAW decode and a change re-decodes the photo; As Shot backfills the as-shot white balance the decode reported. With the meter off, the film exposure places the scene directly.": {
+   "zh-Hans": "白平衡作用于 RAW 解码，改动会重新解码当前照片；As Shot 回填解码回报的拍摄白平衡数值。测光关闭时，胶片曝光直接决定场景放置。",
+   "zh-Hant": "白平衡作用于 RAW 解碼，改動會重新解碼當前照片；As Shot 回填解碼回報的拍攝白平衡數值。測光關閉時，膠片曝光直接決定場景放置。",
+   "ja": "ホワイトバランスはRAW処理に作用し、変更すると写真を処理し直します。撮影時の設定は、RAW処理が報告した撮影時のホワイトバランスを戻します。測光オフのときは、フィルムの露出がシーンの配置を直接決めます。"
+  },
+  "White holes (scan light through)": {
+   "zh-Hans": "白孔（透过扫描光）",
+   "zh-Hant": "白孔（透過掃描光）",
+   "ja": "白い送り穴（スキャン光が通る）"
+  },
+  "White point": {
+   "zh-Hans": "白色阶",
+   "zh-Hant": "白色階",
+   "ja": "白レベル"
+  },
+  "With a date on and no film rebate, the gap tops out near 2.85 mm: a wider gap exceeds the engine's format-shape constraint and the compose is refused.": {
+   "zh-Hans": "有日期且无胶片边缘时间距上限约 2.85 mm：更宽的间隙超出引擎的画幅比例约束，组装会被拒绝。",
+   "zh-Hant": "有日期且無膠片邊緣時間距上限約 2.85 mm：更寬的間隙超出引擎的畫幅比例約束，組裝會被拒絕。",
+   "ja": "日付がありフィルムの縁がない場合、間隔は約2.85 mmが上限です。それより広いとエンジンの判型比率の制約を超え、組み立てが拒否されます。"
+  },
+  "With the film rebate on, the pair rides its strip and the gap is fixed to the strip's 1 mm; turn the film rebate off to adjust it.": {
+   "zh-Hans": "胶片边缘开启：对走在片条上，间隙固定为片条的 1 mm；关闭胶片边缘后可调。",
+   "zh-Hant": "膠片邊緣開啟：對走在片條上，間隙固定為片條的 1 mm；關閉膠片邊緣後可調。",
+   "ja": "フィルムの縁がオンのとき、ペアはストリップに乗り、間隔はストリップの1 mmに固定されます。オフにすると調整できます。"
+  },
+  "Yellow filter": {
+   "zh-Hans": "黄色滤镜",
+   "zh-Hant": "黃色濾鏡",
+   "ja": "黄フィルター"
+  },
+  "Yellow filter %@": {
+   "zh-Hans": "黄滤镜 %@",
+   "zh-Hant": "黃濾鏡 %@",
+   "ja": "黄フィルター %@"
+  },
+  "You can drop several photos at once": {
+   "zh-Hans": "支持一次拖入多张照片",
+   "zh-Hant": "支持一次拖入多張照片",
+   "ja": "複数の写真を一度にドロップできます"
+  },
+  "e.g. '26 11 15": {
+   "zh-Hans": "如 '26 11 15",
+   "zh-Hant": "如 '26 11 15",
+   "ja": "例: '26 11 15"
   }
  }
 }

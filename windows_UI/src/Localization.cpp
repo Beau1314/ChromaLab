@@ -66,7 +66,7 @@ QString normalizeMarkers(const QString& text) {
 Localization::Localization(QObject* parent) : QObject(parent) {}
 
 Localization& Localization::instance() {
-    static Localization theInstance;
+    static Localization theInstance(nullptr);
     return theInstance;
 }
 
@@ -195,6 +195,12 @@ QString Localization::storedLanguage() const {
 void Localization::bootstrap(const QStringList& hostLanguages) {
     if (!isLoaded())
         loadCatalog(QLatin1String(kDefaultCatalog));
+    // The production store exists before the first read: without this the
+    // default-constructed QSettings never comes into being and every launch
+    // would re-derive (the tests inject their INI with useSettings, so only
+    // the production path was blind to the stored choice — a task 6.0 gap
+    // the 6.1 smoke caught: the picker's choice must survive restarts).
+    settingsStore();
     const QString stored = storedLanguage();
     if (kLanguages.contains(stored)) {
         if (stored != m_language)

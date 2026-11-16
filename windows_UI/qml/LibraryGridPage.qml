@@ -54,7 +54,7 @@ Item {
                 spacing: 6
                 Text {
                     objectName: "libraryCountText"
-                    text: library.total + " 张照片 · 已选 " + library.selectedCount
+                    text: Localization.epoch && Localization.L("%@ photos · %@ selected", [library.total, library.selectedCount])
                     color: Theme.muted
                     font.pixelSize: 11
                 }
@@ -63,13 +63,13 @@ Item {
                     objectName: "librarySortCombo"
                     implicitWidth: 108
                     font.pixelSize: 11
-                    model: ["拍摄时间", "导入时间", "文件名", "评分"]
+                    model: Localization.epoch && [Localization.L("Date captured"), Localization.L("Import date"), Localization.L("File name"), Localization.L("Rating")]
                     readonly property var sorts: ["captured", "imported", "name", "rating"]
                     onActivated: library.sort = sorts[currentIndex]
                 }
                 CheckBox {
                     objectName: "libraryDescendingCheck"
-                    text: "降序"
+                    text: Localization.epoch && Localization.L("Descending")
                     font.pixelSize: 11
                     checked: library.descending
                     onToggled: library.descending = checked
@@ -82,7 +82,7 @@ Item {
                     font.pixelSize: 13
                     onClicked: gridPage.zoomOut()
                     ToolTip.visible: hovered
-                    ToolTip.text: "更小的缩略图 · Ctrl+-"
+                    ToolTip.text: Localization.epoch && Localization.L("Smaller thumbnails · Ctrl+-")
                 }
                 Text {
                     text: Math.round(gridPage.cellSize) + " px"
@@ -97,7 +97,7 @@ Item {
                     font.pixelSize: 13
                     onClicked: gridPage.zoomIn()
                     ToolTip.visible: hovered
-                    ToolTip.text: "更大的缩略图 · Ctrl+="
+                    ToolTip.text: Localization.epoch && Localization.L("Larger thumbnails · Ctrl+=")
                 }
             }
         }
@@ -203,7 +203,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: tile.develop !== undefined && tile.develop.state === "developed"
-                              ? "显影过" : "无预览"
+                              ? Localization.epoch && Localization.L("Developed") : Localization.epoch && Localization.L("No preview")
                         color: Theme.muted
                         font.pixelSize: 10
                     }
@@ -276,15 +276,15 @@ Item {
                 spacing: 10
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: library.sources.length === 0 ? "库是空的" : "此来源还没有照片"
+                    text: library.sources.length === 0 ? Localization.epoch && Localization.L("The library is empty") : Localization.epoch && Localization.L("This source has no photos yet")
                     color: "#e5e2dc"
                     font.pixelSize: 20
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: library.sources.length === 0
-                          ? "新建目录或会话后导入照片"
-                          : "从侧栏选择收藏集，或将照片导入该来源"
+                          ? Localization.epoch && Localization.L("Create a catalog or session, then import photos")
+                          : Localization.epoch && Localization.L("Pick a collection in the sidebar, or import photos into this source")
                     color: "#c0bdb7"
                     font.pixelSize: 12
                 }
@@ -303,8 +303,8 @@ Item {
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
                 verticalAlignment: Text.AlignVCenter
-                text: (library.hasClipboard ? "剪贴板：" + library.clipboardSourceName + "  ·  " : "") +
-                      (library.lastError.length > 0 ? library.lastError : "网格 · 点击选择，双击进入冲洗")
+                text: (library.hasClipboard ? Localization.epoch && Localization.L("Clipboard: ") + library.clipboardSourceName + "  ·  " : "") +
+                      (library.lastError.length > 0 ? library.lastError : Localization.epoch && Localization.L("Grid · click to select, double-click to develop"))
                 color: library.lastError.length > 0 ? "#ffb39f" : Theme.muted
                 font.pixelSize: 10
                 elide: Text.ElideRight

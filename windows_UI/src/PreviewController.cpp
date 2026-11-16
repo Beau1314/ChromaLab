@@ -22,6 +22,10 @@ namespace l2=desktop::layer2;
 namespace histogram=desktop::histogram;
 namespace pairc=desktop::pair;
 namespace io=spk::io;
+// The localization seam (task 6.1): user-facing status strings resolve
+// through the core at set time; the literals are the English keys.
+QString L(const QString& key) { return desktop::Localization::instance().L(key); }
+QString L(const QString& key,std::initializer_list<QVariant> args) { return desktop::Localization::instance().L(key,QVariantList(args)); }
 QString text(const std::string& s) { return QString::fromUtf8(s.data(),qsizetype(s.size())); }
 std::filesystem::path path(const QUrl& u) { return std::filesystem::path(u.toLocalFile().toStdWString()); }
 QVariantList list(const std::vector<desktop::Stock>& stocks) {
@@ -328,17 +332,17 @@ void PreviewController::accept(Reply reply) {
         // The worker may finish an earlier choice after the next click. Keep
         // both the displayed frame and the newest desired controls; never flash
         // the retired result or restore its settings over the user's last edit.
-        status_=dirty()?QStringLiteral("正在更新预览…"):QStringLiteral("预览已是当前选择");
+        status_=dirty()?L("Updating the preview"):L("The preview already matches the current selection");
     } else if(failed_) {
         status_=reply.error;
         if(frame_&&reply.operation!="export"&&reply.operation!="batch-export")restoreSettings();
     } else if(reply.operation=="init") {
         ready_=true;catalog_=std::move(reply.catalog);films_=list(catalog_.films);papers_=list(catalog_.papers);
-        restoreSettings();emit catalogChanged();status_=QStringLiteral("就绪 · 打开 RAW 开始");
+        restoreSettings();emit catalogChanged();status_=L("Ready · open a RAW to begin");
     } else if(reply.operation=="layer2") {
         // The fast path's job only re-sequences the publication behind the
         // worker queue; the pixels come from the retained frame below.
-        publishFromFrame(QStringLiteral("预览已更新"));
+        publishFromFrame(L("Preview updated"));
     } else if(reply.operation=="latitude") {
         // The analysis never renders, so nothing on screen moves: only the
         // parsed reply is published. A malformed reply is a failure like any
@@ -348,8 +352,8 @@ void PreviewController::accept(Reply reply) {
         if(!reply.latitude_json.isEmpty()&&document.isObject()) {
             latitude_=document.object().toVariantMap();
             emit latitudeChanged();
-            status_=QStringLiteral("宽容度分析完成");
-        } else {failed_=true;status_=QStringLiteral("宽容度分析返回了无效结果");}
+            status_=L("Latitude analysis finished");
+        } else {failed_=true;status_=L("The latitude analysis returned an invalid result");}
     } else if(reply.frame) {
         // Allocate the presentation wrapper before publishing any new UI state.
         try {
@@ -392,12 +396,11 @@ void PreviewController::accept(Reply reply) {
         if(!failed_) {
             restoreSettings();
             updateThumbnail();
-            status_=QStringLiteral("渲染完成 %1 秒%2")
-                .arg(frame_->timings.render_ms/1000,0,'f',2)
-                .arg(frame_->reprint()?QStringLiteral(" · 已复用胶片"):QString());
+            status_=L("Render finished in %@ s%@",{QString::number(frame_->timings.render_ms/1000,'f',2),
+                frame_->reprint()?L(" · negative reused"):QString()});
             emit frameChanged();emit geometryChanged();if(reply.operation=="open")emit sourceOpened();
         }
-    } else if(reply.operation=="export") status_=QStringLiteral("已导出当前画面");
+    } else if(reply.operation=="export") status_=L("Exported the current frame");
     else if(reply.operation=="batch-export")status_=reply.message;
     if(failed_&&reply.operation=="open"&&reply.library_index>=0&&reply.library_index<int(library_.size()))
         library_[reply.library_index].error=status_;
@@ -481,7 +484,7 @@ void PreviewController::changed(const QString& editKey){
     if(gesture_index_>=0&&gesture_key_!=editKey)endEditGesture();
     saveActiveSettings(true);
     ++settings_revision_;auto_apply_.stop();schedulePreview();
-    if(frame_)status_=QStringLiteral("正在更新预览…");
+    if(frame_)status_=L("Updating the preview");
     failed_=false;emit settingsChanged();emit stateChanged();
 }
 void PreviewController::setFilmIndex(int v){if(!settingsEditable()||v<0||v>=films_.size()||v==film_index_)return;film_index_=v;changed("filmIndex");}
@@ -515,7 +518,7 @@ void PreviewController::openItem(int index) {
     const auto item=library_.at(index);const auto p=path(item.url);
     const auto gen=++generation_;
     submit([p,item,gen,index](auto& host){Reply r;r.generation=gen;r.operation="open";r.library_index=index;r.geometry=item.geometry;r.layer2=item.layer2;
-        try{r.frame=host.open_raw(p,item.mode,item.settings);}catch(const std::exception& e){r.error=text(e.what());}return r;},QStringLiteral("正在解码并渲染 RAW…"),"open");
+        try{r.frame=host.open_raw(p,item.mode,item.settings);}catch(const std::exception& e){r.error=text(e.what());}return r;},L("Decoding and rendering the RAW…"),"open");
 }
 void PreviewController::apply() {
     if(!frame_||busy_||dialog_open_)return;
@@ -542,7 +545,7 @@ void PreviewController::apply() {
             r.frame=active&&active->source==shown->source&&active->decode_mode==mode&&!wbChanged
                 ?host.render(s):host.open_raw(shown->source,mode,s);
         }catch(const std::exception& e){r.error=text(e.what());}return r;},
-        wbChanged?QStringLiteral("正在按白平衡重新解码…"):QStringLiteral("正在更新胶片效果…"),"render");
+        wbChanged?L("Re-decoding with the white balance…"):L("Updating the film effects…"),"render");
 }
 void PreviewController::exportTiff(const QUrl& url) {
     exportImage(url,0,95,0);
@@ -556,14 +559,14 @@ void PreviewController::exportImage(const QUrl& url,int format,int quality,int m
     if(const auto* item=activePairItem()) {
         if(!QFileInfo(item->pair_sources[0].toLocalFile()).isFile()||
             !QFileInfo(item->pair_sources[1].toLocalFile()).isFile()) {
-            failed_=true;status_=QStringLiteral("源照片缺失，无法导出半幅对");
+            failed_=true;status_=L("A source photo is missing; the half-frame pair cannot be exported");
             emit stateChanged();return;
         }
     }
     const auto p=path(url);const auto held=frame_;const auto gen=++generation_;const auto geometry=geometry_;const auto resources=resources_;
     const auto layer2=layer2_; // the grade as the user saw it at submit time
     submit([p,held,gen,geometry,resources,layer2,format,quality,maxLongEdge](auto&){Reply r;r.generation=gen;r.operation="export";
-        try{output::exportFrame(held,p,geometry,exportOptions(format,quality,maxLongEdge),resources,layer2);}catch(const std::exception& e){r.error=text(e.what());}return r;},QStringLiteral("正在导出当前画面…"),"export");
+        try{output::exportFrame(held,p,geometry,exportOptions(format,quality,maxLongEdge),resources,layer2);}catch(const std::exception& e){r.error=text(e.what());}return r;},L("Exporting the current frame…"),"export");
 }
 
 QVariantMap PreviewController::adjustments() const {
@@ -890,7 +893,7 @@ void PreviewController::changedLayer2(const QString& editKey) {
     saveActiveSettings(true);
     ++layer2_revision_;
     scheduleLayer2();
-    if(frame_)status_=QStringLiteral("正在更新预览…");
+    if(frame_)status_=L("Updating the preview");
     failed_=false;emit settingsChanged();emit stateChanged();
 }
 void PreviewController::scheduleLayer2() {
@@ -901,7 +904,7 @@ void PreviewController::scheduleLayer2() {
     const auto gen=generation_;const auto revision=layer2_revision_;
     submit([gen,revision](desktop::PreviewHost&){Reply r;r.generation=gen;
         r.settings_revision=revision;r.operation="layer2";return r;},
-        QStringLiteral("正在更新预览…"),"layer2");
+        L("Updating the preview"),"layer2");
 }
 void PreviewController::requestLatitude() {
     // The engine's analysis reads the open session and never renders, so it
@@ -917,7 +920,7 @@ void PreviewController::requestLatitude() {
     submit([gen](desktop::PreviewHost& host){Reply r;r.generation=gen;r.operation="latitude";
         try{r.latitude_json=text(host.sceneLatitude());}
         catch(const std::exception& e){r.error=text(e.what());}return r;},
-        QStringLiteral("正在分析宽容度…"),"latitude");
+        L("Analysing the latitude…"),"latitude");
 }
 void PreviewController::refreshBeforeImage() {
     // The before half is the current film/paper print WITHOUT Layer 2 —
@@ -940,7 +943,7 @@ void PreviewController::setCompareEnabled(bool enabled) {
     compare_enabled_=enabled;
     // Toggling the comparison republishes the retained print: the before view
     // only exists while the comparison is on and the grade is non-neutral.
-    if(frame_)publishFromFrame(QStringLiteral("预览已更新"));
+    if(frame_)publishFromFrame(L("Preview updated"));
     emit compareEnabledChanged();
 }
 void PreviewController::publishFromFrame(const QString& status) {
@@ -1168,8 +1171,8 @@ void PreviewController::syncSelectedSettings(bool includeCrop) {
         item.settings=next.settings;item.mode=next.mode;item.geometry=next.geometry;item.layer2=next.layer2;item.pending_save=true;
         item.thumbnail={};item.error.clear();++count;
     }
-    status_=QStringLiteral("已将当前参数同步至 %1 张照片%2").arg(count)
-        .arg(includeCrop?QStringLiteral("（含裁切）"):QStringLiteral("（各自保留裁切）"));
+    status_=L("Synced the current settings to %@ photos%@",{count,
+        includeCrop?L(" (crop included)"):L(" (each keeps its crop)")});
     scheduleSave();emit libraryChanged();emit historyChanged();emit stateChanged();
 }
 // --- The half-frame pair: item, jobs, per-hole edits (PAIR-WIRING §5) -----
@@ -1393,7 +1396,7 @@ void PreviewController::submitPairOpen(int index) {
         try {r.frame=pairOpenFrame(host,sources,pair,cache,positive,&r.meter_updates);}
         catch(const std::exception& e){r.error=text(e.what());}
         return r;
-    },QStringLiteral("正在组装半幅对…"),"open");
+    },L("Composing the half-frame pair…"),"open");
 }
 void PreviewController::submitPairWire(int index) {
     const auto snapshot=library_.at(index);
@@ -1428,7 +1431,7 @@ void PreviewController::submitPairWire(int index) {
         }
         catch(const std::exception& e){r.error=text(e.what());}
         return r;
-    },QStringLiteral("正在更新半幅对…"),"render");
+    },L("Updating the half-frame pair…"),"render");
 }
 void PreviewController::restorePairHistory(bool redo) {
     if(!ready_||busy_||dialog_open_)return;
@@ -1446,7 +1449,7 @@ void PreviewController::restorePairHistory(bool redo) {
     item->pair=target;
     item->thumbnail={};item->pending_save=true;scheduleSave();
     failed_=false;
-    status_=redo?QStringLiteral("已重做半幅对调整"):QStringLiteral("已撤销半幅对调整");
+    status_=redo?L("Redid the pair's adjustment"):L("Undid the pair's adjustment");
     emit pairChanged();emit libraryChanged();emit historyChanged();emit stateChanged();
     submitPairOpen(active_index_);
 }
@@ -1555,7 +1558,7 @@ void PreviewController::restoreHistory(bool redo) {
         if(gradeChangedNow||geometryChangedNow)computeHistogram();
         loadSettings(target.settings,target.mode);saveActiveSettings();
         ++settings_revision_;auto_apply_.stop();schedulePreview();updateThumbnail();
-        failed_=false;status_=redo?QStringLiteral("已重做当前照片调整"):QStringLiteral("已撤销当前照片调整");
+        failed_=false;status_=redo?L("Redid the photo's adjustment"):L("Undid the photo's last adjustment");
         if(geometryChangedNow)emit geometryChanged();
         if(geometryChangedNow||gradeChangedNow)emit frameChanged();
         emit settingsChanged();emit stateChanged();emit historyChanged();
@@ -1590,10 +1593,10 @@ QString PreviewController::persistenceWarning() const {
     return warnings.join("\n");
 }
 QString PreviewController::savedStatus() const {
-    if(!persistenceWarning().isEmpty())return QStringLiteral("部分设置未保存，请查看下方提示");
-    for(const auto& item:library_)if(item.pending_save)return QStringLiteral("正在自动保存设置…");
-    if(active_index_>=0&&library_[active_index_].has_stored)return QStringLiteral("当前照片设置已自动保存");
-    return QStringLiteral("调整将自动保存，重新打开照片时恢复");
+    if(!persistenceWarning().isEmpty())return L("Some settings did not save; see the note below");
+    for(const auto& item:library_)if(item.pending_save)return L("Auto-saving the settings…");
+    if(active_index_>=0&&library_[active_index_].has_stored)return L("The photo's settings saved automatically");
+    return L("Adjustments save automatically and return when the photo reopens");
 }
 // Flips are stored in output axes. Rotating the displayed image also swaps
 // those axes; without this a mirrored photo would turn the opposite way.
@@ -1637,8 +1640,8 @@ void PreviewController::exportBatch(const QUrl& folder,int format,int quality,in
                         // the open frame's; the batch driver re-opens RAWs,
                         // which a pair does not have. Refused, not skipped.
                         ++errors;
-                        details.append(QStringLiteral("半幅对 %1：暂不支持批量导出").arg(
-                            QFileInfo(item.pair_sources[0].toLocalFile()).fileName()));
+                        details.append(L("Half-frame pair %@: batch export is not supported yet",{
+                            QFileInfo(item.pair_sources[0].toLocalFile()).fileName()}));
                     }
                     else if(std::filesystem::exists(target))++skipped;
                     else {
@@ -1652,10 +1655,11 @@ void PreviewController::exportBatch(const QUrl& folder,int format,int quality,in
                 ++processed;
                 QMetaObject::invokeMethod(this,[this,gen,processed]{if(generation_==gen){batch_progress_=processed;emit stateChanged();}},Qt::QueuedConnection);
             }
-            r.message=QStringLiteral("%1：导出 %2 张，跳过已有 %3 张，失败 %4 张")
-                .arg(cancel->load()?QStringLiteral("批量导出已取消"):QStringLiteral("批量导出完成")).arg(done).arg(skipped).arg(errors);
+            r.message=L("%@: exported %@, skipped %@, failed %@",{
+                cancel->load()?L("Batch export cancelled"):L("Batch export finished"),
+                QString::number(done),QString::number(skipped),QString::number(errors)});
             if(errors)r.error=r.message+"\n"+details.join("\n");
         }catch(const std::exception& e){r.error=text(e.what());}
         return r;
-    },QStringLiteral("正在批量导出…"),"batch-export");
+    },L("Batch exporting…"),"batch-export");
 }
