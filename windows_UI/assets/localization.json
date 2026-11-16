@@ -7431,6 +7431,16 @@
    "zh-Hans": "如 '26 11 15",
    "zh-Hant": "如 '26 11 15",
    "ja": "例: '26 11 15"
+  },
+  "Adobe RGB (1998)": {
+   "zh-Hans": "Adobe RGB (1998)",
+   "zh-Hant": "Adobe RGB (1998)",
+   "ja": "Adobe RGB (1998)"
+  },
+  "The current frame or the selected photos · %@\nThe crop and effects are written into the file.": {
+   "zh-Hans": "当前画面或所选照片 · %@\n裁切与效果一起写入文件。",
+   "zh-Hant": "當前畫面或所選照片 · %@\n裁切與效果一起寫入文件。",
+   "ja": "現在の画面または選択した写真 · %@\n切り取りと効果もファイルに書き込まれます。"
   }
  }
 }

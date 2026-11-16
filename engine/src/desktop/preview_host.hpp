@@ -153,6 +153,29 @@ struct Stock {
 };
 struct Catalog { std::vector<Stock> films, papers; };
 
+// The numbers `spk_output_transform` hands back for one destination
+// (RFC-018 §5.2): the chromatically adapted linear matrix, the two
+// transfer-function modes numbered as the engine's kernels number them
+// (`cctf_mode_for`: 0 sRGB/Display P3, 1 ProPhoto RGB, 2 Adobe RGB (1998),
+// 3 BT.709/BT.2020, 4 identity), and the destination's CAM16-UCS setup with
+// its C_max table copied out of the engine's cache. The kernel that consumes
+// it is the frontend's (`ColourTransform`); the lightness gate travels
+// because a kernel that merely read the neutralised `k[15..17]` without it
+// would not be applying an identity.
+struct OutputTransformData {
+    std::string source_space, target_space;
+    std::uint32_t source_cctf_mode = 4;
+    std::uint32_t target_cctf_mode = 4;
+    std::string algorithm;  // "cam16ucs", or "off" when the caller skipped the step
+    bool lightness_compression_active = false;
+    double matrix[9] = {};  // source linear RGB -> target linear RGB, row-major
+    double m_to_xyz[9] = {};
+    double m_to_rgb[9] = {};
+    double k[22] = {};
+    std::uint32_t cmax_rows = 0, cmax_cols = 0;
+    std::vector<float> cmax;  // rows * cols, float32 exactly as the engine narrowed them
+};
+
 // Wall-clock calls, including CPU result readback in render_ms. total_ms is
 // the complete host call, not a sum of nested measurements. Engine creation
 // and TIFF export are separate operations. Re-renders have zero decode/open
@@ -176,6 +199,13 @@ public:
     // Resolved from the selected film's catalog metadata, not a separate
     // user setting. Slide film is viewed directly without the paper stage.
     bool scan_film = false;
+    // The session's resolved working space, read from the open reply's
+    // params.io (CONTRACT-frontend-backend §1.2) rather than from what this
+    // host sent: the space the frame's RGBA16 is encoded in, and the source
+    // an export's output transform converts from. The encoding flag rides
+    // with it for the same reason.
+    std::string output_color_space = "sRGB";
+    bool output_cctf_encoding = true;
     io::RawMetadata metadata;
     io::RawDecodeTimings decode_timings;
     Timings timings;
@@ -254,6 +284,19 @@ public:
     // spk_last_error's text. The reply is the raw JSON object with "medium",
     // "scene", "suggested" and "fit" keys.
     std::string sceneLatitude(const std::string& request_json = "") const;
+    // RFC-018 §5.2's fetch: the numbers one conversion out of the working
+    // space travels with, parsed into `OutputTransformData`. A fetch, never a
+    // render -- `spk_output_transform` takes the engine, not a session, so
+    // this works any time this host exists, with or without an open one, and
+    // touches no pixels. `gamut_compress_json` defaults to the export
+    // transform's setting (the Mac's `withoutLightness`): the chroma knee
+    // without the lightness stage the engine already applied. Unknown spaces
+    // fail by name, never by falling back. Throws std::runtime_error on
+    // engine failure or a reply that does not fit, with spk_last_error's
+    // text.
+    OutputTransformData outputTransform(
+        const std::string& src_cs, const std::string& dst_cs,
+        const std::string& gamut_compress_json = R"({"lightness_compression_active": false})") const;
     // Where the film's gates sit on the canvas the last render drew
     // (`spk_overscan_geometry`): valid only with a film edge, and for a
     // half-frame pair the reply's "gates" array holds both. The reply is the

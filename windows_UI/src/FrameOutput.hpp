@@ -13,10 +13,22 @@
 namespace spk::desktop::output {
 
 enum class Format { TIFF16, PNG8, PNG16, JPEG8 };
+// The file's colour space: the ICC profile the pixels are tagged with. The
+// names are the engine's (`spk_output_transform`'s destinations); the Mac's
+// export sheet offers the same four (`ExportRecipe.Colour`).
+enum class ColourSpace { Srgb, DisplayP3, AdobeRgb, ProPhotoRgb };
 struct ExportOptions {
     Format format = Format::TIFF16;
     int jpegQuality = 95;
     int maxLongEdge = 0; // zero preserves the cropped size; never upscale
+    ColourSpace colourSpace = ColourSpace::Srgb;
+    // The conversion out of the session's working space into this space, as
+    // fetched per destination from the engine (`PreviewHost::outputTransform`)
+    // and applied by the CPU core (`ColourTransform`). Null means the pixels
+    // are already encoded in this space -- the session's own space, whose
+    // fetch would be an identity -- and the pass is skipped, keeping the
+    // default export byte-identical to the picture.
+    const desktop::OutputTransformData* transform = nullptr;
 };
 
 struct Geometry {
@@ -43,13 +55,16 @@ QImage displayImage(const QImage& full8, const Geometry& geometry);
 QImage displayFrame(const FramePtr& frame, const Geometry& geometry,
                     const layer2::Adjustments& adjustments = {});
 
-// The source is opaque, already encoded sRGB RGBA64. Processing order is
-// the Layer 2 grade on the full original (neutral adjustments skip the pass
-// entirely, leaving the pixels byte-identical) -> original-space crop ->
-// bilinear straighten with zoom-to-fill (fixed crop dimensions) -> clockwise
-// quarter turns -> output-axis flips -> optional downsize -> output depth.
-// Identity and orthogonal geometry are lossless; straightening interpolates
-// 16-bit samples without a colour transform.
+// The source is opaque RGBA16 encoded in the session's working space. The
+// processing order is the Layer 2 grade on the full original (neutral
+// adjustments skip the pass entirely, leaving the pixels byte-identical) ->
+// the output transform into the export's colour space, still on the full
+// picture, exactly as the Mac's export transforms the whole render before it
+// turns or crops anything -> original-space crop -> bilinear straighten with
+// zoom-to-fill (fixed crop dimensions) -> clockwise quarter turns ->
+// output-axis flips -> optional downsize -> output depth. Identity and
+// orthogonal geometry are lossless; straightening interpolates 16-bit
+// samples without a further colour transform.
 QImage exportImage(const QImage& fullRgba64, QRectF normalizedCrop,
                    const ExportOptions& options,
                    const layer2::Adjustments& adjustments = {});

@@ -1,4 +1,5 @@
 #include "FrameOutput.hpp"
+#include "ColourTransform.hpp"
 #include "io/image_writer.hpp"
 #include <QColorSpace>
 #include <QDir>
@@ -46,6 +47,11 @@ void validateOptions(const ExportOptions& options) {
     case Format::TIFF16: case Format::PNG8: case Format::PNG16: case Format::JPEG8: break;
     default: fail(QStringLiteral("Unsupported export format"));
     }
+    switch(options.colourSpace) {
+    case ColourSpace::Srgb: case ColourSpace::DisplayP3:
+    case ColourSpace::AdobeRgb: case ColourSpace::ProPhotoRgb: break;
+    default: fail(QStringLiteral("Unsupported export colour space"));
+    }
     if(options.jpegQuality < 1 || options.jpegQuality > 100)
         fail(QStringLiteral("JPEG quality must be between 1 and 100"));
     if(options.maxLongEdge < 0)
@@ -70,6 +76,43 @@ QColorSpace profile(const fs::path& resources) {
     const auto space=QColorSpace::fromIccProfile(bytes);
     if(!space.isValid())fail(QStringLiteral("The bundled sRGB ICC profile is invalid"));
     return space;
+}
+
+// The export's ICC tag, per colour space: the pinned sRGB resource for sRGB
+// (provenance recorded, and every existing file's byte for byte), and a
+// profile Qt builds from its own named preset for the other three. Qt's
+// generation is checked before anything is written with it.
+QColorSpace exportSpace(ColourSpace space,const fs::path& resources) {
+    if(space==ColourSpace::Srgb)return profile(resources);
+    const QColorSpace named=[space] {
+        switch(space) {
+        case ColourSpace::DisplayP3:return QColorSpace(QColorSpace::DisplayP3);
+        case ColourSpace::AdobeRgb:return QColorSpace(QColorSpace::AdobeRgb);
+        case ColourSpace::ProPhotoRgb:return QColorSpace(QColorSpace::ProPhotoRgb);
+        case ColourSpace::Srgb:break;
+        }
+        return QColorSpace(QColorSpace::SRgb);
+    }();
+    if(!named.isValid())
+        fail(QStringLiteral("Qt does not know the export's colour space profile"));
+    return named;
+}
+
+// The profile's bytes, for the engine TIFF writer's unchanged embedding. The
+// sRGB bytes are the pinned resource's, read as the writer itself would.
+QByteArray exportIccBytes(ColourSpace space,const fs::path& resources) {
+    if(space==ColourSpace::Srgb) {
+        QFile file(pathText(resources / "io" / "sRGB.icc"));
+        if(!file.open(QIODevice::ReadOnly) || file.size() < 132 || file.size() > 4*1024*1024)
+            fail(QStringLiteral("Cannot read the bundled sRGB ICC profile"));
+        const auto bytes=file.readAll();
+        if(bytes.size()!=file.size())fail(QStringLiteral("Cannot read the complete sRGB ICC profile"));
+        return bytes;
+    }
+    const auto bytes=exportSpace(space,resources).iccProfile();
+    if(bytes.isEmpty() || !QColorSpace::fromIccProfile(bytes).isValid())
+        fail(QStringLiteral("Qt produced no usable ICC profile for this export colour space"));
+    return bytes;
 }
 void publish(const fs::path& partial,const fs::path& destination) {
 #ifdef _WIN32
@@ -228,7 +271,12 @@ QImage exportImage(const QImage& fullRgba64,const Geometry& geometry,const Expor
         fail(QStringLiteral("Export requires an RGBA16 frame"));
     // The grade is the print's: it lands on the full original, before any
     // geometry, exactly as the canvas shader and the Mac's layer2 kernel do.
-    const QImage print=gradedImage64(fullRgba64,adjustments);
+    // The output transform is the last colour step, also on the full
+    // picture: the Mac transforms the whole render and turns/crops the
+    // finished picture afterwards (`EngineHost.deliver`), so the grade never
+    // lands on a converted pixel and the crop cuts a converted one.
+    QImage print=gradedImage64(fullRgba64,adjustments);
+    if(options.transform)print=colour::apply_rgba64(print,*options.transform);
     validateGeometry(print.size(),geometry);
     const auto rect=cropPixels(print.size(),geometry.crop);
     // Validate only the exported region: padding is not part of the image.
@@ -287,15 +335,20 @@ void exportImageFile(const QImage& fullRgba64,const fs::path& destination,
     if(target.exists() || target.isSymLink())fail(QStringLiteral("The export file already exists"));
     if(!target.absoluteDir().exists())fail(QStringLiteral("The export folder does not exist"));
     auto pixels=exportImage(fullRgba64,geometry,options,adjustments);
-    pixels.setColorSpace(profile(resources));
+    pixels.setColorSpace(exportSpace(options.colourSpace,resources));
     QTemporaryDir staging(target.absoluteDir().filePath(QStringLiteral(".spektralab-export-XXXXXX")));
     if(!staging.isValid())fail(QStringLiteral("Cannot create an export temporary file in this folder"));
     const auto partial=nativePath(staging.filePath(QStringLiteral("output.partial")));
     if(options.format==Format::TIFF16) {
         std::string error;
-        if(!io::write_srgb_tiff(partial,reinterpret_cast<const std::uint16_t*>(pixels.constBits()),
+        // One writer for all four spaces: the profile travels as bytes, the
+        // pinned sRGB resource's for sRGB and Qt's named-preset profile for
+        // the others, embedded unchanged either way.
+        const auto icc=exportIccBytes(options.colourSpace,resources);
+        if(!io::write_rgb16_tiff(partial,reinterpret_cast<const std::uint16_t*>(pixels.constBits()),
                 std::uint32_t(pixels.width()),std::uint32_t(pixels.height()),
-                std::uint32_t(pixels.bytesPerLine()/8),resources/"io"/"sRGB.icc",error))
+                std::uint32_t(pixels.bytesPerLine()/8),
+                reinterpret_cast<const std::uint8_t*>(icc.constData()),std::size_t(icc.size()),error))
             throw std::runtime_error(error);
     } else {
         const auto format=options.format==Format::JPEG8?QByteArray("jpeg"):QByteArray("png");

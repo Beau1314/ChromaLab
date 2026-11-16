@@ -409,14 +409,39 @@ Json changed_params(const RenderSettings& before, const RenderSettings& after, b
     return delta;
 }
 
+// The session's resolved working space (CONTRACT §1.2): the open reply's
+// params is the authority on what the frame's RGBA16 is encoded in -- a
+// caller that overrides `output_color_space` owns the consequences, and the
+// app's transform reads the *resolved* space out of the reply. The wire's
+// params are the schema's flat names, not an io-nested tree. The host has
+// no JSON lifetime to share, so the two fields are copied out and the reply
+// freed before anything can throw.
+void resolved_working_space(char* reply_json,
+                            std::string& output_color_space, bool& output_cctf_encoding) {
+    require(reply_json != nullptr, "Open reply carries no JSON");
+    const std::string reply(reply_json);
+    spk_string_free(reply_json);
+    Json parsed;
+    std::string error;
+    require(Json::parse(reply, parsed, error), "Open reply: " + error);
+    const Json& params = parsed.at("params");
+    const std::string space = params.at("output_color_space").as_string();
+    require(!space.empty(), "Open reply carries no resolved output colour space");
+    output_color_space = space;
+    output_cctf_encoding = params.at("output_cctf_encoding").as_bool();
+}
+
 SessionPtr open_session(spk_engine* engine, const io::DecodedRaw& decoded,
-                        const RenderSettings& settings, bool scan_film) {
+                        const RenderSettings& settings, bool scan_film,
+                        std::string& output_color_space, bool& output_cctf_encoding) {
     const spk_image input{decoded.rgb.data(), decoded.width, decoded.height, 3};
     const auto params = opening_params(settings, scan_film).dump();
-    // No reply is needed here; the host has no allocator or JSON lifetime to
-    // share with the UI, and the C API validates the complete delta itself.
-    SessionPtr session(spk_open(engine, &input, params.c_str(), nullptr), &spk_session_release);
+    // The reply is read once for the resolved io (above) and freed; nothing
+    // else in the host shares JSON with the C API.
+    char* reply_json = nullptr;
+    SessionPtr session(spk_open(engine, &input, params.c_str(), &reply_json), &spk_session_release);
     require(bool(session), "Open image: " + std::string(spk_last_error(engine)));
+    resolved_working_space(reply_json, output_color_space, output_cctf_encoding);
     return session;
 }
 
@@ -541,7 +566,8 @@ FramePtr PreviewHost::open_raw(const fs::path& source, DecodeMode mode, const Re
     next->metadata = decoded.metadata;
     next->decode_timings = decoded.timings;
     t = Clock::now();
-    auto session = open_session(impl_->engine.get(), decoded, settings, scan_film);
+    auto session = open_session(impl_->engine.get(), decoded, settings, scan_film,
+                                next->output_color_space, next->output_cctf_encoding);
     next->timings.open_ms = elapsed(t);
     t = Clock::now();
     const auto status = spk_render(session.get(), "full", &next->result_);
@@ -574,9 +600,11 @@ FramePtr PreviewHost::open_pair(const float* piece, std::uint32_t width, std::ui
     const spk_image input{piece, width, height, 3};
     auto t = Clock::now();
     const auto params = opening_params(settings, scan_film).dump();
-    SessionPtr session(spk_open(impl_->engine.get(), &input, params.c_str(), nullptr),
+    char* pair_reply = nullptr;
+    SessionPtr session(spk_open(impl_->engine.get(), &input, params.c_str(), &pair_reply),
                        &spk_session_release);
     require(bool(session), "Open pair piece: " + std::string(spk_last_error(impl_->engine.get())));
+    resolved_working_space(pair_reply, next->output_color_space, next->output_cctf_encoding);
     next->timings.open_ms = elapsed(t);
     t = Clock::now();
     const auto status = spk_render(session.get(), "full", &next->result_);
@@ -608,6 +636,10 @@ FramePtr PreviewHost::render(const RenderSettings& settings) {
     next->scan_film = scan_film;
     next->metadata = impl_->frame->metadata;
     next->decode_timings = impl_->frame->decode_timings;
+    // The working space is the open reply's (this host's deltas never touch
+    // it); a rebuilt session re-reads it below, a reused one carries it.
+    next->output_color_space = impl_->frame->output_color_space;
+    next->output_cctf_encoding = impl_->frame->output_cctf_encoding;
     const auto delta = changed_params(impl_->frame->settings, settings, scan_film);
     try {
         auto t = Clock::now();
@@ -615,7 +647,8 @@ FramePtr PreviewHost::render(const RenderSettings& settings) {
             // C API settings changes may fail after applying part of their
             // state. Never reuse such a session; rebuild from the retained
             // decoded input on the next request, without decoding the file.
-            impl_->session = open_session(impl_->engine.get(), impl_->decoded, settings, scan_film);
+            impl_->session = open_session(impl_->engine.get(), impl_->decoded, settings, scan_film,
+                                          next->output_color_space, next->output_cctf_encoding);
             next->timings.open_ms = elapsed(t);
         } else if (!delta.fields().empty()) {
             const auto text = delta.dump();
@@ -665,6 +698,59 @@ std::string PreviewHost::overscanGeometry() const {
     std::string reply(json);
     spk_string_free(json);
     return reply;
+}
+
+OutputTransformData PreviewHost::outputTransform(const std::string& src_cs,
+                                                 const std::string& dst_cs,
+                                                 const std::string& gamut_compress_json) const {
+    // A fetch, not a render: only the engine is touched, and the reply's
+    // table pointer is copied out before this returns (the engine owns it,
+    // and this wrapper keeps nothing alive behind the caller's struct).
+    const char* gamut = gamut_compress_json.empty() ? nullptr : gamut_compress_json.c_str();
+    char* json = nullptr;
+    const float* cmax = nullptr;
+    std::uint32_t cmax_count = 0;
+    const auto status = spk_output_transform(impl_->engine.get(), src_cs.c_str(), dst_cs.c_str(),
+                                             gamut, &json, &cmax, &cmax_count);
+    require(status == SPK_OK && json,
+            "Output transform: " + std::string(spk_last_error(impl_->engine.get())));
+    const std::string reply(json);
+    spk_string_free(json);
+    OutputTransformData data;
+    Json parsed;
+    std::string error;
+    require(Json::parse(reply, parsed, error), "Output transform reply: " + error);
+    data.source_space = parsed.at("source_color_space").as_string();
+    data.target_space = parsed.at("target_color_space").as_string();
+    const Json& source_mode = parsed.at("source_cctf_mode");
+    const Json& target_mode = parsed.at("target_cctf_mode");
+    require(source_mode.is_number() && target_mode.is_number(),
+            "Output transform reply carries no transfer-function modes");
+    data.source_cctf_mode = std::uint32_t(source_mode.as_double());
+    data.target_cctf_mode = std::uint32_t(target_mode.as_double());
+    const auto nine = [](const Json& v, double (&out)[9], const char* what) {
+        require(v.is_array() && v.items().size() == 9,
+                std::string("Output transform reply: ") + what + " is not nine numbers");
+        for (std::size_t i = 0; i < 9; ++i) out[i] = v.items()[i].as_double();
+    };
+    nine(parsed.at("matrix"), data.matrix, "matrix");
+    const Json& compress = parsed.at("gamut_compress");
+    data.algorithm = compress.at("algorithm").as_string();
+    data.lightness_compression_active = compress.at("lightness_compression_active").as_bool();
+    nine(compress.at("m_to_xyz"), data.m_to_xyz, "m_to_xyz");
+    nine(compress.at("m_to_rgb"), data.m_to_rgb, "m_to_rgb");
+    const Json& k = compress.at("k");
+    require(k.is_array() && k.items().size() == 22, "Output transform reply: k is not 22 scalars");
+    for (std::size_t i = 0; i < 22; ++i) data.k[i] = k.items()[i].as_double();
+    const Json& rows = compress.at("cmax_rows");
+    const Json& cols = compress.at("cmax_cols");
+    require(rows.is_number() && cols.is_number(), "Output transform reply carries no C_max shape");
+    data.cmax_rows = std::uint32_t(rows.as_double());
+    data.cmax_cols = std::uint32_t(cols.as_double());
+    require(cmax != nullptr && cmax_count == data.cmax_rows * data.cmax_cols && cmax_count > 0,
+            "Output transform reply's C_max table does not fit its shape");
+    data.cmax.assign(cmax, cmax + cmax_count);
+    return data;
 }
 
 double PreviewHost::solveExposure(const spk_image& input, const std::string& params_delta_json) const {

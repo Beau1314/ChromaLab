@@ -31,37 +31,43 @@ void le32(std::vector<uint8_t>& data, size_t at, uint32_t n) {
     for (size_t i = 0; i < 4; ++i) data[at + i] = uint8_t(n >> (8 * i));
 }
 
+// Structural validation only: the same checks either entry point applies to
+// whatever profile bytes it was handed. RGB/XYZ and structural validity do
+// not prove which colour space the profile describes -- the caller picks a
+// pinned, provenance-recorded resource or a profile it built itself.
+bool validate_profile(const uint8_t* data, size_t size, std::string& error) {
+    if (size < 132 || size > 4 * 1024 * 1024) {
+        error = "ICC profile must contain 132 bytes to 4 MiB"; return false;
+    }
+    if (be32(data) != size || std::memcmp(data + 36, "acsp", 4) ||
+        std::memcmp(data + 16, "RGB ", 4) || std::memcmp(data + 20, "XYZ ", 4)) {
+        error = "ICC profile is not a complete RGB-to-XYZ profile"; return false;
+    }
+    const uint32_t tags = be32(data + 128);
+    if (tags > (size - 132) / 12) {
+        error = "ICC tag table exceeds its profile"; return false;
+    }
+    for (uint32_t i = 0; i < tags; ++i) {
+        const uint8_t* tag = data + 132 + size_t(i) * 12;
+        const uint32_t at = be32(tag + 4), length = be32(tag + 8);
+        if (at < 128 || at > size || length < 8 || length > size - at) {
+            error = "ICC tag payload exceeds its profile"; return false;
+        }
+    }
+    return true;
+}
+
 bool load_profile(const std::filesystem::path& path, std::vector<uint8_t>& bytes,
                   std::string& error) {
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream) { error = "cannot open the explicit sRGB ICC resource"; return false; }
     const auto size = stream.tellg();
-    if (size < 132 || size > 4 * 1024 * 1024) {
-        error = "ICC resource must contain 132 bytes to 4 MiB"; return false;
-    }
     bytes.resize(size_t(size));
     stream.seekg(0);
     if (!stream.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()))) {
         error = "cannot read the complete sRGB ICC resource"; return false;
     }
-    if (be32(bytes.data()) != bytes.size() || std::memcmp(bytes.data() + 36, "acsp", 4) ||
-        std::memcmp(bytes.data() + 16, "RGB ", 4) || std::memcmp(bytes.data() + 20, "XYZ ", 4)) {
-        error = "ICC resource is not a complete RGB-to-XYZ profile"; return false;
-    }
-    const uint32_t tags = be32(bytes.data() + 128);
-    if (tags > (bytes.size() - 132) / 12) {
-        error = "ICC tag table exceeds its resource"; return false;
-    }
-    for (uint32_t i = 0; i < tags; ++i) {
-        const uint8_t* tag = bytes.data() + 132 + size_t(i) * 12;
-        const uint32_t at = be32(tag + 4), length = be32(tag + 8);
-        if (at < 128 || at > bytes.size() || length < 8 || length > bytes.size() - at) {
-            error = "ICC tag payload exceeds its resource"; return false;
-        }
-    }
-    // RGB/XYZ and structural validity alone do not prove the profile is sRGB.
-    // The host selects the pinned, provenance-recorded sRGB resource.
-    return true;
+    return validate_profile(bytes.data(), bytes.size(), error);
 }
 
 #ifdef _WIN32
@@ -126,10 +132,10 @@ private:
 
 struct Field { uint16_t tag, type; uint32_t count, value; };
 
-bool write_srgb_tiff_impl(const std::filesystem::path& destination, const uint16_t* rgba,
-                          uint32_t width, uint32_t height, uint32_t row_stride_px,
-                          const std::filesystem::path& srgb_icc_path,
-                          void** native_handle, std::string& error) {
+bool write_rgb16_tiff_impl(const std::filesystem::path& destination, const uint16_t* rgba,
+                           uint32_t width, uint32_t height, uint32_t row_stride_px,
+                           const uint8_t* profile, size_t profile_size,
+                           void** native_handle, std::string& error) {
     error.clear();
 #ifndef _WIN32
     error = "the native TIFF file writer currently requires Windows";
@@ -139,14 +145,15 @@ bool write_srgb_tiff_impl(const std::filesystem::path& destination, const uint16
         if (!rgba || !width || !height || row_stride_px < width || destination.empty()) {
             error = "invalid TIFF image pointer, dimensions, row stride, or destination"; return false;
         }
+        if (!profile || !validate_profile(profile, profile_size, error)) {
+            if (error.empty()) error = "invalid ICC profile pointer"; return false;
+        }
         const uint64_t pixels = uint64_t(width) * height;
         if (uint64_t(row_stride_px) * height > std::numeric_limits<size_t>::max() / 8 ||
             pixels > std::numeric_limits<uint32_t>::max() / 6) {
             error = "image exceeds the addressable input or classic TIFF 4 GiB limit"; return false;
         }
         const uint64_t image_bytes = pixels * 6;
-        std::vector<uint8_t> profile;
-        if (!load_profile(srgb_icc_path, profile, error)) return false;
 
         constexpr uint16_t field_count = 17;
         const uint32_t rows_per_strip = std::min(height, 64u);
@@ -168,8 +175,8 @@ bool write_srgb_tiff_impl(const std::filesystem::path& destination, const uint16
         constexpr char software[] = "SpektraLab Windows host";
         const uint32_t software_at = payload(sizeof software);
         std::memcpy(header.data() + software_at, software, sizeof software);
-        const uint32_t icc_at = payload(profile.size());
-        std::memcpy(header.data() + icc_at, profile.data(), profile.size());
+        const uint32_t icc_at = payload(profile_size);
+        std::memcpy(header.data() + icc_at, profile, profile_size);
         const uint32_t offsets_at = strip_count > 1 ? payload(size_t(strip_count) * 4) : 0;
         const uint32_t counts_at = strip_count > 1 ? payload(size_t(strip_count) * 4) : 0;
         while (header.size() % 4) header.push_back(0);
@@ -194,7 +201,7 @@ bool write_srgb_tiff_impl(const std::filesystem::path& destination, const uint16
             {279, 4, strip_count, strip_count > 1 ? counts_at : uint32_t(image_bytes)},
             {282, 5, 1, resolution}, {283, 5, 1, resolution}, {284, 3, 1, 1},
             {296, 3, 1, 1}, {305, 2, sizeof software, software_at}, {339, 3, 3, samples},
-            {34675, 7, uint32_t(profile.size()), icc_at}
+            {34675, 7, uint32_t(profile_size), icc_at}
         }};
         header[0] = header[1] = 'I';
         le16(header, 2, 42); le32(header, 4, 8); le16(header, 8, field_count);
@@ -238,11 +245,20 @@ bool write_srgb_tiff_impl(const std::filesystem::path& destination, const uint16
 
 }  // namespace
 
+bool write_rgb16_tiff(const std::filesystem::path& destination, const uint16_t* rgba,
+                      uint32_t width, uint32_t height, uint32_t row_stride_px,
+                      const uint8_t* icc_profile, size_t icc_size, std::string& error) {
+    return write_rgb16_tiff_impl(destination, rgba, width, height, row_stride_px,
+                                 icc_profile, icc_size, nullptr, error);
+}
+
 bool write_srgb_tiff(const std::filesystem::path& destination, const uint16_t* rgba,
                      uint32_t width, uint32_t height, uint32_t row_stride_px,
                      const std::filesystem::path& srgb_icc_path, std::string& error) {
-    return write_srgb_tiff_impl(destination, rgba, width, height, row_stride_px,
-                               srgb_icc_path, nullptr, error);
+    std::vector<uint8_t> profile;
+    if (!load_profile(srgb_icc_path, profile, error)) return false;
+    return write_rgb16_tiff_impl(destination, rgba, width, height, row_stride_px,
+                                 profile.data(), profile.size(), nullptr, error);
 }
 
 bool write_srgb_tiff_held(const std::filesystem::path& destination, const uint16_t* rgba,
@@ -250,8 +266,10 @@ bool write_srgb_tiff_held(const std::filesystem::path& destination, const uint16
                           const std::filesystem::path& srgb_icc_path,
                           void*& native_handle, std::string& error) {
     native_handle = nullptr;
-    return write_srgb_tiff_impl(destination, rgba, width, height, row_stride_px,
-                               srgb_icc_path, &native_handle, error);
+    std::vector<uint8_t> profile;
+    if (!load_profile(srgb_icc_path, profile, error)) return false;
+    return write_rgb16_tiff_impl(destination, rgba, width, height, row_stride_px,
+                                 profile.data(), profile.size(), &native_handle, error);
 }
 
 }  // namespace spk::io

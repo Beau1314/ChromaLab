@@ -259,10 +259,18 @@ QImage visibleImage(const desktop::FramePtr& frame,const QImage& full,const outp
         return output::displayImage(full,geometry.crop);
     return output::displayFrame(frame,geometry,layer2);
 }
-output::ExportOptions exportOptions(int format,int quality,int maxEdge) {
-    if(format<0||format>3||quality<1||quality>100||maxEdge<0||maxEdge>100000)
+// The export dialog's four destinations, in its order: the engine's own
+// names (`spk_output_transform`'s dst_cs; the Mac's ExportRecipe.Colour).
+// The session's working space is the source, read from the frame (the open
+// reply's resolved io), never assumed.
+constexpr const char* kExportColourNames[] = {"sRGB", "Display P3", "Adobe RGB (1998)", "ProPhoto RGB"};
+
+output::ExportOptions exportOptions(int format,int quality,int maxEdge,int colourSpace=0) {
+    if(format<0||format>3||quality<1||quality>100||maxEdge<0||maxEdge>100000||
+       colourSpace<0||colourSpace>3)
         throw std::runtime_error("Invalid export options");
-    return {static_cast<output::Format>(format),quality,maxEdge};
+    return {static_cast<output::Format>(format),quality,maxEdge,
+            static_cast<output::ColourSpace>(colourSpace)};
 }
 }
 QImage PreviewController::imageFromFrame(const desktop::FramePtr& frame) {
@@ -550,7 +558,7 @@ void PreviewController::apply() {
 void PreviewController::exportTiff(const QUrl& url) {
     exportImage(url,0,95,0);
 }
-void PreviewController::exportImage(const QUrl& url,int format,int quality,int maxLongEdge) {
+void PreviewController::exportImage(const QUrl& url,int format,int quality,int maxLongEdge,int colourSpace) {
     if(!frame_||busy_||!url.isLocalFile())return;
     // PAIR-WIRING §6.4: a pair whose source has disappeared is refused, not
     // exported from the shown piece alone -- the piece would be the only
@@ -565,8 +573,23 @@ void PreviewController::exportImage(const QUrl& url,int format,int quality,int m
     }
     const auto p=path(url);const auto held=frame_;const auto gen=++generation_;const auto geometry=geometry_;const auto resources=resources_;
     const auto layer2=layer2_; // the grade as the user saw it at submit time
-    submit([p,held,gen,geometry,resources,layer2,format,quality,maxLongEdge](auto&){Reply r;r.generation=gen;r.operation="export";
-        try{output::exportFrame(held,p,geometry,exportOptions(format,quality,maxLongEdge),resources,layer2);}catch(const std::exception& e){r.error=text(e.what());}return r;},L("Exporting the current frame…"),"export");
+    submit([p,held,gen,geometry,resources,layer2,format,quality,maxLongEdge,colourSpace](auto& host){Reply r;r.generation=gen;r.operation="export";
+        try{
+            auto options=exportOptions(format,quality,maxLongEdge,colourSpace);
+            // The conversion out of the working space, fetched once for this
+            // destination (a fetch, not a render; the host holds the engine,
+            // so no open session is needed). The session's own space needs
+            // no fetch: its numbers would be an identity, and skipping the
+            // pass keeps the default export the picture itself.
+            desktop::OutputTransformData transform;
+            const std::string working=held->output_color_space;
+            const std::string target=kExportColourNames[std::size_t(colourSpace)];
+            if(target!=working) {
+                transform=host.outputTransform(working,target);
+                options.transform=&transform;
+            }
+            output::exportFrame(held,p,geometry,options,resources,layer2);
+        }catch(const std::exception& e){r.error=text(e.what());}return r;},L("Exporting the current frame…"),"export");
 }
 
 QVariantMap PreviewController::adjustments() const {
@@ -1607,7 +1630,7 @@ void PreviewController::setFlipVertical(bool value){auto next=geometry_;next.fli
 void PreviewController::setStraightenDegrees(double value){auto next=geometry_;next.straightenDegrees=value;setGeometry(next,"straightenDegrees");}
 void PreviewController::resetGeometry(){setGeometry(output::Geometry{});}
 
-void PreviewController::exportBatch(const QUrl& folder,int format,int quality,int maxLongEdge) {
+void PreviewController::exportBatch(const QUrl& folder,int format,int quality,int maxLongEdge,int colourSpace) {
     if(!ready_||busy_||!folder.isLocalFile()||!selectedCount())return;
     saveActiveSettings();
     std::vector<LibraryItem> items;
@@ -1618,11 +1641,25 @@ void PreviewController::exportBatch(const QUrl& folder,int format,int quality,in
     const auto held=frame_;const auto resources=resources_;const auto destination=path(folder);
     const auto gen=++generation_;cancel_batch_=std::make_shared<std::atomic_bool>(false);
     const auto cancel=cancel_batch_;batch_progress_=0;batch_total_=int(items.size());
-    submit([this,items=std::move(items),held,resources,destination,gen,cancel,format,quality,maxLongEdge](auto& host){
+    submit([this,items=std::move(items),held,resources,destination,gen,cancel,format,quality,maxLongEdge,colourSpace](auto& host){
         Reply r;r.generation=gen;r.operation="batch-export";
         int done=0,skipped=0,errors=0,processed=0;QStringList details;
         try {
-            const auto options=exportOptions(format,quality,maxLongEdge);
+            auto options=exportOptions(format,quality,maxLongEdge,colourSpace);
+            // One fetch per destination for the whole batch (the Mac's
+            // `setups[target]` discipline), taken from the shown frame's
+            // resolved working space; the batch re-opens every other photo
+            // with the same wire, so their working spaces are the same one.
+            desktop::OutputTransformData transform;
+            if(held) {
+                const std::string target=kExportColourNames[std::size_t(colourSpace)];
+                if(target!=held->output_color_space) {
+                    transform=host.outputTransform(held->output_color_space,target);
+                    options.transform=&transform;
+                }
+            } else if(colourSpace!=0) {
+                throw std::runtime_error("Batch export colour needs an open photograph");
+            }
             if(!std::filesystem::is_directory(destination))throw std::runtime_error("Export destination is not a folder");
             const QString extension=format==0?".tif":format==3?".jpg":".png";
             QSet<QString> names;

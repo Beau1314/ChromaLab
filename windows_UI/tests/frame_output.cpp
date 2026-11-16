@@ -2,6 +2,7 @@
 // below is independent of the writer and Qt's image plugins. No RAW/GPU needed.
 #include "FrameOutput.hpp"
 #include "Layer2.hpp"
+#include "ColourTransform.hpp"
 #include <QColorSpace>
 #include <QCoreApplication>
 #include <QDir>
@@ -210,6 +211,97 @@ void verifyGeometry(const QImage& original,const QString& folder,const fs::path&
 }
 }
 
+void verifyColourSpaces(const QImage& original,const QString& folder,const fs::path& resources,
+                        const QByteArray& srgb) {
+    namespace colour=spk::desktop::colour;
+    spk::desktop::PreviewHost host(resources);
+    // The engine fetch is the data, the CPU core is the arithmetic (pinned by
+    // the numeric gate); this is the export's wiring: the transform runs on
+    // the full picture before any geometry, and the file carries the right
+    // profile's bytes. No RAW fixture -- the engine opens on the bundled
+    // resources alone, like pair_host.
+    struct Space {
+        output::ColourSpace space;
+        QColorSpace::NamedColorSpace named;
+        const char* engine;
+        const char* file;
+        QColorSpace::Primaries primaries;
+        QColorSpace::TransferFunction transfer;
+        float gamma;  // the pure-gamma curve's value; 0 = not a gamma
+    };
+    const Space spaces[]={
+        {output::ColourSpace::DisplayP3,QColorSpace::DisplayP3,"Display P3","space-p3",
+         QColorSpace::Primaries::DciP3D65,QColorSpace::TransferFunction::SRgb,0},
+        {output::ColourSpace::AdobeRgb,QColorSpace::AdobeRgb,"Adobe RGB (1998)","space-adobe",
+         QColorSpace::Primaries::AdobeRgb,QColorSpace::TransferFunction::Gamma,563.f/256.f},
+        {output::ColourSpace::ProPhotoRgb,QColorSpace::ProPhotoRgb,"ProPhoto RGB","space-prophoto",
+         QColorSpace::Primaries::ProPhotoRgb,QColorSpace::TransferFunction::ProPhotoRgb,0},
+    };
+    const output::Geometry combined{QRectF(1.0/9,1.0/7,6.0/9,4.0/7),1,true,false,17.5};
+    for(const auto& item:spaces) {
+        const auto setup=host.outputTransform("sRGB",item.engine);
+        check(setup.target_space==item.engine,"the fetch lost the destination's name");
+        const auto expected=colour::apply_rgba64(original,setup);
+        const auto icc=QColorSpace(item.named).iccProfile();
+        check(!icc.isEmpty(),"Qt produced no ICC profile for an export space");
+        const auto options=[&] {
+            output::ExportOptions options;
+            options.format=output::Format::TIFF16;
+            options.colourSpace=item.space;
+            options.transform=&setup;
+            return options;
+        }();
+        // 1. TIFF16: the file's samples are the transformed pixels and the
+        //    embedded profile is exactly the bytes Qt named.
+        const auto tiffPath=QDir(folder).filePath(QString("%1-16.tif").arg(item.file));
+        output::exportImageFile(original,native(tiffPath),{0,0,1,1},options,resources);
+        verifyTiff(tiffPath,expected,icc);
+        // 2. The transform is the last colour step, before geometry: the
+        //    output equals geometry applied to the already transformed full
+        //    original (the same pin the Layer 2 order test uses).
+        compare64(output::exportImage(original,combined,options),
+                  output::exportImage(expected,combined,{}));
+        cleanPartials(folder);
+        // 3. PNG16: a lossless round trip over Qt's own encoder, with the
+        //    profile read back whole and describing the right space.
+        auto pngOptions=options;pngOptions.format=output::Format::PNG16;
+        const auto pngPath=QDir(folder).filePath(QString("%1-16.png").arg(item.file));
+        output::exportImageFile(original,native(pngPath),{0,0,1,1},pngOptions,resources);
+        const auto png=load(pngPath,icc);
+        compare64(png,expected);
+        check(png.colorSpace().primaries()==item.primaries,"PNG ICC names the wrong primaries");
+        // Qt's own ProPhoto profile carries its curve as a table, which
+        // parses back as Custom rather than the named ProPhotoRgb; the
+        // primaries plus the exact bytes above are the identity here.
+        const auto read=png.colorSpace().transferFunction();
+        check(read==item.transfer||(item.space==output::ColourSpace::ProPhotoRgb&&
+                                    read==QColorSpace::TransferFunction::Custom),
+              "PNG ICC names the wrong curve");
+        if(item.gamma)check(std::abs(png.colorSpace().gamma()-item.gamma)<0.01f,"PNG ICC gamma moved");
+        cleanPartials(folder);
+        // 4. JPEG8: lossy, so only the tagging and the size are pinned.
+        auto jpegOptions=options;jpegOptions.format=output::Format::JPEG8;
+        const auto jpegPath=QDir(folder).filePath(QString("%1-8.jpg").arg(item.file));
+        output::exportImageFile(original,native(jpegPath),{0,0,1,1},jpegOptions,resources);
+        const auto jpeg=load(jpegPath,icc);
+        check(jpeg.size()==original.size(),"JPEG size changed");
+        check(jpeg.colorSpace().primaries()==item.primaries,"JPEG ICC names the wrong primaries");
+        cleanPartials(folder);
+    }
+    // 5. The session's own space keeps today's export exactly: no transform
+    //    runs, and the profile stays the pinned bundled sRGB resource.
+    const auto plain=QDir(folder).filePath("space-plain16.tif");
+    output::ExportOptions keep;keep.format=output::Format::TIFF16;
+    output::exportImageFile(original,native(plain),{0,0,1,1},keep,resources);
+    verifyTiff(plain,original,srgb);
+    cleanPartials(folder);
+    // 6. An out-of-range colour space is refused like an out-of-range format.
+    output::ExportOptions badSpace;
+    badSpace.colourSpace=static_cast<output::ColourSpace>(999);
+    rejects([&]{output::exportImage(original,{0,0,1,1},badSpace);},"invalid colour space accepted");
+    cleanPartials(folder);
+}
+
 int main(int argc,char** argv) {
     QCoreApplication app(argc,argv);
     try {
@@ -378,6 +470,11 @@ int main(int argc,char** argv) {
             cleanPartials(folder);
         }
 
+        // The four-space colour management (task 6.2): transform-before-
+        // geometry wiring and per-space ICC tagging, through the real engine
+        // fetch on the bundled resources.
+        verifyColourSpaces(original,folder,resources,icc);
+
         output::ExportOptions bad;bad.jpegQuality=101;
         rejects([&]{output::exportImage(original,crop,bad);},"invalid quality accepted");
         bad={};bad.maxLongEdge=-1;rejects([&]{output::exportImage(original,crop,bad);},"invalid resize accepted");
@@ -416,7 +513,7 @@ int main(int argc,char** argv) {
         }
         cleanPartials(folder);
         check(QByteArray(reinterpret_cast<const char*>(original.constBits()),original.sizeInBytes())==originalBytes,"crop/export mutated source pixels");
-        std::printf("PASS crop/geometry-order/quarter-turns/flips/straighten/zoom-fill/16-bit-interpolation/display/PNG8/PNG16/TIFF16/ICC/JPEG/resize/no-overwrite/race/cleanup/extensions/source-immutability/layer2-print-grade/layer2-neutral-byte-identity/layer2-grade-before-geometry\n");
+        std::printf("PASS crop/geometry-order/quarter-turns/flips/straighten/zoom-fill/16-bit-interpolation/display/PNG8/PNG16/TIFF16/ICC/JPEG/resize/no-overwrite/race/cleanup/extensions/source-immutability/layer2-print-grade/layer2-neutral-byte-identity/layer2-grade-before-geometry/colour-spaces-p3-adobe-prophoto/colour-transform-before-geometry/icc-per-space\n");
         return 0;
     } catch(const std::exception& e) {std::fprintf(stderr,"FAIL %s\n",e.what());return 1;}
 }

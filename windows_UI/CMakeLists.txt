@@ -27,6 +27,9 @@ qt_standard_project_setup(REQUIRES 6.8)
 qt_add_executable(SpektraLabQt WIN32
     src/main.cpp src/PreviewController.hpp src/PreviewController.cpp
     src/FrameOutput.hpp src/FrameOutput.cpp
+    # The output transform's CPU core (task 6.2): the one conversion out of
+    # the working space, per destination, with the engine's own numbers.
+    src/ColourTransform.hpp src/ColourTransform.cpp
     src/EditStore.hpp src/EditStore.cpp
     src/PairPiece.hpp src/PairPiece.cpp
     src/Layer2.hpp src/Layer2.cpp
@@ -84,10 +87,24 @@ add_dependencies(spektralab_qt_resources spektralab_vulkan_resources)
 add_dependencies(SpektraLabQt spektralab_qt_resources)
 
 if(BUILD_TESTING)
-    # The export path grades the print with Layer 2 before geometry, so every
-    # target compiling FrameOutput.cpp also compiles Layer2.cpp.
+    # The output transform's numeric gate (task 6.2): the CPU core against an
+    # independent transcription of the Mac kernel's arithmetic, plus the
+    # engine fetch (identity pairs, the four destinations' grey, the "off"
+    # algorithm's neutralised k and the unknown space's named failure). Tier 1
+    # needs no engine; tier 2 opens one on the bundled resources, like
+    # pair_host -- no RAW fixture.
+    qt_add_executable(spk_qt_colour_transform_test tests/colour_transform.cpp
+        src/ColourTransform.cpp)
+    target_include_directories(spk_qt_colour_transform_test PRIVATE src)
+    target_compile_features(spk_qt_colour_transform_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_colour_transform_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
+    add_test(NAME spk_qt_colour_transform COMMAND spk_qt_colour_transform_test
+        "$<TARGET_FILE_DIR:SpektraLabQt>/resources")
+    # The export path grades the print with Layer 2 and transforms its colour
+    # before geometry, so every target compiling FrameOutput.cpp also compiles
+    # Layer2.cpp and ColourTransform.cpp.
     qt_add_executable(spk_qt_frame_output_test tests/frame_output.cpp
-        src/FrameOutput.cpp src/Layer2.cpp)
+        src/FrameOutput.cpp src/Layer2.cpp src/ColourTransform.cpp)
     target_include_directories(spk_qt_frame_output_test PRIVATE src)
     target_compile_features(spk_qt_frame_output_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_frame_output_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
@@ -95,7 +112,7 @@ if(BUILD_TESTING)
 
     qt_add_executable(spk_qt_library_workflow_test tests/library_workflow.cpp
         src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
-        src/PairPiece.cpp src/Layer2.cpp src/EditStore.cpp src/Localization.cpp)
+        src/PairPiece.cpp src/Layer2.cpp src/ColourTransform.cpp src/EditStore.cpp src/Localization.cpp)
     target_include_directories(spk_qt_library_workflow_test PRIVATE src)
     target_compile_features(spk_qt_library_workflow_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_library_workflow_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml)
@@ -250,7 +267,8 @@ if(BUILD_TESTING)
             get_filename_component(qt_test_compiler_directory "${CMAKE_CXX_COMPILER}" DIRECTORY)
             list(APPEND qt_test_runtime_path "PATH=path_list_prepend:${qt_test_compiler_directory}")
         endif()
-        set_tests_properties(spk_qt_frame_output spk_qt_edit_store spk_qt_layer2 spk_qt_histogram
+        set_tests_properties(spk_qt_frame_output spk_qt_colour_transform spk_qt_edit_store
+            spk_qt_layer2 spk_qt_histogram
             spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host
             spk_qt_sources_store spk_qt_library_model spk_qt_thumbnail_store
             spk_qt_settings_clip spk_qt_localization PROPERTIES
@@ -258,7 +276,8 @@ if(BUILD_TESTING)
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp
         src/PreviewController.hpp src/PreviewController.cpp src/FrameOutput.cpp
-        src/PairPiece.cpp src/Layer2.cpp src/EditStore.cpp src/FrameCanvas.hpp src/FrameCanvas.cpp
+        src/PairPiece.cpp src/Layer2.cpp src/ColourTransform.cpp src/EditStore.cpp
+        src/FrameCanvas.hpp src/FrameCanvas.cpp
         src/Localization.cpp)
     target_include_directories(spk_qt_editing_workflow_test PRIVATE src)
     target_compile_features(spk_qt_editing_workflow_test PRIVATE cxx_std_20)

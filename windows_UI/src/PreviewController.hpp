@@ -314,8 +314,14 @@ public:
     Q_INVOKABLE void flushEdits();
     Q_INVOKABLE void apply();
     Q_INVOKABLE void exportTiff(const QUrl& path);
-    Q_INVOKABLE void exportImage(const QUrl& path, int format, int quality, int maxLongEdge);
-    Q_INVOKABLE void exportBatch(const QUrl& folder, int format, int quality, int maxLongEdge);
+    // `colourSpace` indexes the export dialog's four destinations (0 sRGB,
+    // 1 Display P3, 2 Adobe RGB (1998), 3 ProPhoto RGB): the engine's
+    // transform is fetched once per export and the file tagged with its
+    // space's profile (FrameOutput's ExportOptions).
+    Q_INVOKABLE void exportImage(const QUrl& path, int format, int quality, int maxLongEdge,
+                                 int colourSpace = 0);
+    Q_INVOKABLE void exportBatch(const QUrl& folder, int format, int quality, int maxLongEdge,
+                                 int colourSpace = 0);
     Q_INVOKABLE void cancelExport();
     Q_INVOKABLE void resetSettings();
     Q_INVOKABLE void setDialogOpen(bool open);

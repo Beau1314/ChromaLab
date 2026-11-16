@@ -27,6 +27,11 @@ ApplicationWindow {
     property int exportFormat: 0
     property int exportQuality: 95
     property int exportLongEdge: 0
+    // The export's colour space, indexed into the engine's four destinations
+    // (0 sRGB, 1 Display P3, 2 Adobe RGB (1998), 3 ProPhoto RGB). The names
+    // are the engine's own, looked up through L() like the Mac's sheet.
+    property int exportColour: 0
+    readonly property var exportColourNames: ["sRGB", "Display P3", "Adobe RGB (1998)", "ProPhoto RGB"]
     // The one window's mode (§8): 图库 swaps the left column to the library
     // sidebar and the canvas to the grid; 冲洗/编辑 are the develop page this
     // window has always been (the filmstrip stays their browser; the full
@@ -140,14 +145,14 @@ ApplicationWindow {
         defaultSuffix: window.exportFormat === 3 ? "jpg" : window.exportFormat === 0 ? "tif" : "png"
         currentFolder: preview.sourceFolder
         onVisibleChanged: window.updateDialogState()
-        onAccepted: preview.exportImage(selectedFile, window.exportFormat, window.exportQuality, window.exportLongEdge)
+        onAccepted: preview.exportImage(selectedFile, window.exportFormat, window.exportQuality, window.exportLongEdge, window.exportColour)
     }
     FolderDialog {
         id: batchDialog
         title: Localization.epoch && Localization.L("Choose the batch-export folder · existing files are skipped")
         currentFolder: preview.sourceFolder
         onVisibleChanged: window.updateDialogState()
-        onAccepted: preview.exportBatch(selectedFolder, window.exportFormat, window.exportQuality, window.exportLongEdge)
+        onAccepted: preview.exportBatch(selectedFolder, window.exportFormat, window.exportQuality, window.exportLongEdge, window.exportColour)
     }
     Shortcut { sequences: [StandardKey.Open]; enabled: window.canBrowse; onActivated: openDialog.open() }
     // The develop keys stand down in 图库 (they would operate the previously
@@ -1908,11 +1913,20 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             Text { text: Localization.epoch && Localization.L("Export photos"); color: Theme.text; font.pixelSize: 20; font.bold: true }
-            Note { text: Localization.epoch && Localization.L("The current frame or the selected photos · sRGB\nThe crop and effects are written into the file.") }
+            Note { text: Localization.epoch && Localization.L("The current frame or the selected photos · %@\nThe crop and effects are written into the file.", [Localization.L(window.exportColourNames[window.exportColour])]) }
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line; opacity: 0.5 }
             RowLayout {
                 Text { text: Localization.epoch && Localization.L("Format"); color: Theme.text; Layout.preferredWidth: 76 }
                 ComboBox { Layout.fillWidth: true; model: Localization.epoch && [Localization.L("TIFF · 16-bit"), Localization.L("PNG · 8-bit"), Localization.L("PNG · 16-bit"), Localization.L("JPEG · 8-bit")]; currentIndex: window.exportFormat; onActivated: window.exportFormat = currentIndex }
+            }
+            RowLayout {
+                Text { text: Localization.epoch && Localization.L("Colour"); color: Theme.text; Layout.preferredWidth: 76 }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: Localization.epoch && window.exportColourNames.map(function (name) { return Localization.L(name) })
+                    currentIndex: window.exportColour
+                    onActivated: window.exportColour = currentIndex
+                }
             }
             RowLayout {
                 visible: window.exportFormat === 3
