@@ -20,6 +20,9 @@ Item {
     readonly property int inset: 6
     property real cellSize: 112
     signal openRequested(string path)
+    // 放到印相台 (task 6.4): the context menu's carry, with the whole
+    // selection (the right-clicked row selects itself first).
+    signal carryRequested(var uuids)
 
     function zoomIn() { cellSize = Math.min(256, Math.max(64, Math.round(cellSize * 1.25))) }
     function zoomOut() { cellSize = Math.max(64, Math.min(256, Math.round(cellSize / 1.25))) }
@@ -257,15 +260,34 @@ Item {
 
                 MouseArea {
                     anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onClicked: function(mouse) {
                         grid.forceActiveFocus()
                         grid.currentIndex = tile.index
+                        if (mouse.button === Qt.RightButton) {
+                            // a right-click on an unselected row selects it alone,
+                            // so the menu's carry speaks of what the menu showed
+                            if (!tile.selected) library.selectOnly(tile.index)
+                            tileMenu.open()
+                            return
+                        }
                         if (mouse.modifiers & Qt.ShiftModifier) library.selectRange(tile.index)
                         else if (mouse.modifiers & Qt.ControlModifier) library.toggleSelected(tile.index)
                         else library.selectOnly(tile.index)
                     }
                     onDoubleClicked: gridPage.openRequested(tile.path)
+                }
+            }
+
+            // The tile's context menu (task 6.4): the one entry carries the
+            // selection to the light table (the mode switch and the notice
+            // are Main.qml's).
+            Menu {
+                id: tileMenu
+                MenuItem {
+                    objectName: "carryToLightTableItem"
+                    text: Localization.epoch && Localization.L("Put on Light Table")
+                    onTriggered: gridPage.carryRequested(library.selectedUuids())
                 }
             }
 

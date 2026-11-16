@@ -343,6 +343,20 @@ public:
     Q_INVOKABLE void openInDevelop(const QString& path);
 
     // --- pure helpers (assertable without a helper process) --------------------------------
+    /// The light table's frames (task 6.4): the rows that pass the admission
+    /// filter (`MacLightTableCarry.takes`: a develop record, or a film edge
+    /// on; the Windows library keeps no pair rows — a pair is a develop-page
+    /// record over two sources, so the filter's pair arm carries no library
+    /// rows here) with their true millimetre size (`LightTableSizing`'s arms
+    /// over the engine's own format table: film edge canvas estimate, or a
+    /// bare develop at its film_format_mm at the shown aspect). A frame the
+    /// join cannot size — no pixels decoded yet, or nothing known — carries
+    /// no size and does not qualify: never a guess. Each entry is
+    /// {uuid, path, mmw, mmh, image}; `image` is the library's cached
+    /// thumbnail at 1024 (empty while its decode is still in flight; the page
+    /// shows the film's true-mm silhouette until it lands). Empty `uuids`
+    /// means every listed row.
+    Q_INVOKABLE QVariantList lightTableFrames(const QStringList& uuids = {});
     /// The sidebar's flat rows: the helper's collections.list verbatim, the
     /// root excluded, each row tagged fixed/user/folders (CatalogSourcesStore's
     /// treeInput partition) in that order, with id/title/kind/imageCount/

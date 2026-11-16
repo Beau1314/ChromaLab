@@ -1,4 +1,5 @@
 #include "LibraryModel.hpp"
+#include "LightTableModel.hpp"
 #include "Localization.hpp"
 
 #include <QCoreApplication>
@@ -1279,6 +1280,58 @@ void LibraryModel::refreshFacets() {
             setError(counted.errorMessage);
     }
     emit facetsChanged();
+}
+
+// The light table's frames (task 6.4): the admission filter and the true-mm
+// sizes over this model's own rows. The pixels are the thumbnail store's
+// decodes — the same ones the grid shows — so a row the grid has not decoded
+// yet carries no size here; the page's next sync (after the decode lands)
+// carries it. The film-edge arm prices the canvas with the engine's own
+// format table (Carry::filmFormat); the bare-develop arm scales the shown
+// crop by the record's film_format_mm. Never a guess: an unsizable frame is
+// simply not offered to the table.
+QVariantList LibraryModel::lightTableFrames(const QStringList& uuids) {
+    namespace lt = spk::desktop::lighttable;
+    QVariantList out;
+    for (const Row& row : rows_) {
+        if (!uuids.isEmpty() && !uuids.contains(row.row.uuid())) continue;
+        if (row.row.trashed()) continue;
+        const QString path = row.row.path();
+        if (path.isEmpty()) continue;
+        // the uncut frame's pixels (EXIF applied): the aspect the sizes price
+        const QImage original = getThumbnail(path, 256);
+        if (original.isNull()) continue;
+        const spk::desktop::Catalog* catalog =
+            catalog_provider_ ? catalog_provider_() : nullptr;
+        static const spk::desktop::Catalog empty;
+        const auto loaded = edit_store_.load(QUrl::fromLocalFile(path),
+                                             catalog ? *catalog : empty);
+        lt::Carry::Spec spec;
+        spec.developed = loaded.state.has_value();
+        if (spec.developed) {
+            spec.filmEdgeActive = loaded.state->settings.overscan_active;
+            spec.filmEdgeMode = QString::fromStdString(loaded.state->settings.overscan_mode);
+            spec.filmEdgeFormat = QString::fromStdString(loaded.state->settings.overscan_format);
+            spec.filmFormatMM = loaded.state->settings.film_format_mm;
+            // the shown picture: the crop fraction of the original, then the
+            // quarter turns (odd turns swap the axes)
+            spec.displayPx = QSizeF(loaded.state->geometry.crop.width() * original.width(),
+                                    loaded.state->geometry.crop.height() * original.height());
+            if (loaded.state->geometry.quarterTurns % 2 == 1) spec.displayPx.transpose();
+        }
+        spec.originalPx = QSizeF(original.width(), original.height());
+        if (!lt::Carry::takes(spec.developed, spec.filmEdgeActive, spec.pair)) continue;
+        const std::optional<QSizeF> mm = lt::Carry::frameSizeMM(spec);
+        if (!mm.has_value()) continue;
+        QVariantMap frame;
+        frame.insert(QStringLiteral("uuid"), row.row.uuid());
+        frame.insert(QStringLiteral("path"), path);
+        frame.insert(QStringLiteral("mmw"), mm->width());
+        frame.insert(QStringLiteral("mmh"), mm->height());
+        frame.insert(QStringLiteral("image"), getThumbnail(path, 1024));
+        out.append(frame);
+    }
+    return out;
 }
 
 QVariantMap LibraryModel::developFor(const ImageRow& row) {

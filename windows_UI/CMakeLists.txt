@@ -44,7 +44,12 @@ qt_add_executable(SpektraLabQt WIN32
     src/ThumbnailStore.hpp src/ThumbnailStore.cpp
     # The settings clipboard's pure group semantics (task 4.4), shared by the
     # model's copy/paste and its own test.
-    src/SettingsClipboard.hpp src/SettingsClipboard.cpp)
+    src/SettingsClipboard.hpp src/SettingsClipboard.cpp
+    # The light table (task 6.4): the statement-for-statement port of the
+    # Mac's LightTableModel.swift — the mm world, the viewport, the 1:1
+    # guards, the admission filter, the true-mm sizes and the
+    # lighttable.json store.
+    src/LightTableModel.hpp src/LightTableModel.cpp)
 target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
 target_include_directories(SpektraLabQt PRIVATE src)
 target_link_libraries(SpektraLabQt PRIVATE
@@ -56,6 +61,10 @@ qt_add_qml_module(SpektraLabQt URI SpektraLab VERSION 1.0
         # The library page (task 4.4): the sidebar's three tabs and the
         # lazy grid over the library rows model.
         qml/LibrarySidebar.qml qml/LibraryGridPage.qml
+        # The light table page (task 6.4): the full-window pad over the
+        # table model — the films at their true millimetres, the zoom and
+        # 1:1 toolbar, and the Add flow's target.
+        qml/LightTablePage.qml
     # The localization core (task 6.0): L() over the Mac's catalog, exposed
     # to QML as the Localization singleton (same-module, no import needed —
     # Theme sets that convention). Its sources compile here, into the module
@@ -171,10 +180,13 @@ if(BUILD_TESTING)
     qt_add_executable(spk_qt_library_model_test tests/library_model.cpp
         src/LibraryModel.cpp src/CatalogSourcesStore.cpp src/LibraryHost.cpp
         src/EditStore.cpp src/Layer2.cpp src/ThumbnailStore.cpp
-        src/SettingsClipboard.cpp src/Localization.cpp)
+        src/SettingsClipboard.cpp src/Localization.cpp
+        # The light table's carry join (task 6.4) rides the model's
+        # lightTableFrames.
+        src/LightTableModel.cpp)
     target_include_directories(spk_qt_library_model_test PRIVATE src)
     target_compile_features(spk_qt_library_model_test PRIVATE cxx_std_20)
-    target_link_libraries(spk_qt_library_model_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml)
+    target_link_libraries(spk_qt_library_model_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
     add_test(NAME spk_qt_library_model COMMAND spk_qt_library_model_test
         "${SPKLIB_HOST_EXECUTABLE}")
     # The persistent thumbnail store (task 4.3): paint-decode-persist over
@@ -258,6 +270,21 @@ if(BUILD_TESTING)
     target_link_libraries(spk_qt_pair_piece_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_pair_piece COMMAND spk_qt_pair_piece_test
         "$<TARGET_FILE_DIR:SpektraLabQt>/resources")
+    # The light table's arithmetic core (task 6.4): the statement-for-statement
+    # port of the Mac's LightTableModel.swift held against the same numbers its
+    # self-test holds — constants, rounding, film geometry, placement, the pile,
+    # tidy/random/scatter, relayout, hit testing, the viewport (fit, zoom 1-8,
+    # the anchor zoomAt, the rubber band), the 1:1 px/mm guards, the admission
+    # filter, the true-mm sizes and the lighttable.json store (schema 2 round
+    # trip, schema 1, the corrupt-file set-aside, the debounced atomic write).
+    # Pure QtCore/QtGui over a temp directory; Quick is linked only because
+    # attachWindow reads a QQuickWindow's screen.
+    qt_add_executable(spk_qt_lighttable_test tests/lighttable.cpp
+        src/LightTableModel.cpp)
+    target_include_directories(spk_qt_lighttable_test PRIVATE src)
+    target_compile_features(spk_qt_lighttable_test PRIVATE cxx_std_20)
+    target_link_libraries(spk_qt_lighttable_test PRIVATE Qt6::Core Qt6::Gui Qt6::Quick)
+    add_test(NAME spk_qt_lighttable COMMAND spk_qt_lighttable_test)
     if(WIN32)
         # Specify each test's DLL search path: CTest on this Windows host can
         # restore the pre-launch PATH between tests. Ambient PATH alone makes
@@ -271,7 +298,7 @@ if(BUILD_TESTING)
             spk_qt_layer2 spk_qt_histogram
             spk_qt_wb_math spk_qt_pair_host spk_qt_pair_piece spk_qt_library_host
             spk_qt_sources_store spk_qt_library_model spk_qt_thumbnail_store
-            spk_qt_settings_clip spk_qt_localization PROPERTIES
+            spk_qt_settings_clip spk_qt_localization spk_qt_lighttable PROPERTIES
             ENVIRONMENT_MODIFICATION "${qt_test_runtime_path}")
     endif()
     qt_add_executable(spk_qt_editing_workflow_test tests/editing_workflow.cpp

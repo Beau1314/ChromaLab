@@ -38,7 +38,25 @@ ApplicationWindow {
     // shared-browser unification is future work).
     property string appMode: "develop"
     readonly property bool libraryMode: appMode === "library"
+    // The light table (task 6.4): the third page, full-window except the
+    // mode row this column keeps.
+    readonly property bool lighttableMode: appMode === "lighttable"
     onAppModeChanged: if (window.libraryMode && libraryPage.item !== null) libraryPage.item.takeFocus()
+    // The grid's 放到印相台: carry the selection's frames through the
+    // model's admission filter and true-mm sizes, then open the page. A
+    // carry that lays nothing says so on the page's strip (the Mac's Add
+    // sheet explains the one rule: developed, film edge or pair; a frame
+    // the join cannot size yet — pixels still undecoded — waits for the
+    // page's next sync).
+    function carryToLightTable(uuids) {
+        const frames = library.lightTableFrames(uuids)
+        const placed = lightTable.carry(frames)
+        window.appMode = "lighttable"
+        if (lightTablePage.item !== null)
+            lightTablePage.item.notice = placed === 0
+                ? Localization.L("Only pictures developed in SpektraLab go on the Light Table.")
+                : ""
+    }
     // The active library item is a half-frame pair (its `pair` map is filled).
     // The pair's own look sections stay live; the shared photo sections that
     // pairWireOf overrides are guarded against it below.
@@ -551,6 +569,7 @@ ApplicationWindow {
                         ModeButton { objectName: "modeLibraryButton"; label: Localization.epoch && Localization.L("Library"); mode: "library" }
                         ModeButton { objectName: "modeDevelopButton"; label: Localization.epoch && Localization.L("Develop"); mode: "develop" }
                         ModeButton { objectName: "modeEditButton"; label: Localization.epoch && Localization.L("Edit"); mode: "edit" }
+                        ModeButton { objectName: "modeLightTableButton"; label: Localization.epoch && Localization.L("Light Table"); mode: "lighttable" }
                         // The language picker: each language names itself, so
                         // the rows are the same string in all four UI
                         // languages and deliberately bypass L(). The char
@@ -593,7 +612,7 @@ ApplicationWindow {
                 }
                 // The develop rail: 冲洗/编辑's column content, unchanged.
                 ScrollView {
-                    visible: !window.libraryMode
+                    visible: !(window.libraryMode || window.lighttableMode)
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                     ColumnLayout {
                         width: parent.width; spacing: 0
@@ -780,7 +799,7 @@ ApplicationWindow {
                 // 冲洗/编辑's page (the develop surface this window has
                 // always been); 图库 replaces the column with the grid page
                 // beside it.
-                visible: !window.libraryMode
+                visible: !(window.libraryMode || window.lighttableMode)
                 anchors.fill: parent; spacing: 0
                 Rectangle {
                     Layout.fillWidth: true; implicitHeight: Theme.topHeight; color: Theme.card
@@ -980,9 +999,22 @@ ApplicationWindow {
                     library.openInDevelop(path)
                     window.appMode = "develop"
                 }
+                // 放到印相台 (task 6.4): the grid's context menu carries the
+                // selection into the light table.
+                onCarryRequested: function(uuids) { window.carryToLightTable(uuids) }
+            }
+            // The light table page (task 6.4): the full-window pad. Its
+            // tools live in the page's own header; the left column keeps
+            // only the mode row in this mode.
+            LightTablePage {
+                id: lightTablePage
+                objectName: "lightTablePageItem"
+                anchors.fill: parent
+                visible: window.lighttableMode
             }
         }
         Rectangle {
+            visible: !window.lighttableMode
             Layout.preferredWidth: Theme.rightWidth; Layout.fillHeight: true; color: Theme.card
             ColumnLayout {
                 anchors.fill: parent; spacing: 0

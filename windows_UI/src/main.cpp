@@ -1,6 +1,7 @@
 #include "PreviewController.hpp"
 #include "FrameCanvas.hpp"
 #include "LibraryModel.hpp"
+#include "LightTableModel.hpp"
 #include "Localization.hpp"
 #include <QCommandLineParser>
 #include <QCryptographicHash>
@@ -385,6 +386,7 @@ int main(int argc,char** argv) {
                        {"library-host","spklib-host executable for the library helper","file"},
                        {"library-store","Libraries root the helper creates catalogs and sessions in","directory"},
                        {"library-registry","Override the sources.json registry path (tests use an isolated directory)","file"},
+                       {"light-table-store","Override the lighttable.json store path","file"},
                        {"self-test","Run real RAW frontend checks and save a report in a NEW directory","directory"},
                        {"reject","Unsupported RAW for the failed-open check","file"}});
     parser.process(app);
@@ -429,8 +431,18 @@ int main(int argc,char** argv) {
     // signal, not a pointer, so the model stays engine-free.
     QObject::connect(&libraryModel,&spk::desktop::library::LibraryModel::openRequested,
         &controller,[&controller](const QUrl& url){controller.openRaw(url);});
+    // The light table (task 6.4): the mm world, its viewport and its store.
+    // The file sits beside the app's own data, like the Mac's lighttable.json
+    // sits beside library.json; the self-test keeps its own under the test
+    // output, and --light-table-store overrides for an isolated run.
+    spk::desktop::lighttable::TableModel lightTableModel;
+    const QString lightTableStore=testing?QDir(testOutput).absoluteFilePath("lighttable.json"):
+        parser.isSet("light-table-store")?QFileInfo(parser.value("light-table-store")).absoluteFilePath():
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/lighttable.json";
+    lightTableModel.open(lightTableStore);
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("preview",&controller);
     engine.rootContext()->setContextProperty("library",&libraryModel);
+    engine.rootContext()->setContextProperty("lightTable",&lightTableModel);
     QObject::connect(&engine,&QQmlApplicationEngine::objectCreationFailed,&app,[]{QCoreApplication::exit(2);},Qt::QueuedConnection);
     engine.loadFromModule("SpektraLab","Main");
     if(engine.rootObjects().isEmpty())return 2;
@@ -439,9 +451,16 @@ int main(int argc,char** argv) {
     // the grid instantiate (and any QML error reaches the runner's stderr)
     // without a click; SPK_SMOKE_SNAPSHOT captures one window grab beside
     // the runner's evidence. Production never reads either variable.
-    if(qEnvironmentVariable("SPK_SMOKE_MODE")=="library" && !engine.rootObjects().isEmpty()) {
+    // The smoke harness's page switch (task 4.4; the light table joined in
+    // task 6.4): an offscreen runner sets SPK_SMOKE_MODE=library or
+    // =lighttable so the window opens on that page — the page instantiates
+    // (and any QML error reaches the runner's stderr) without a click;
+    // SPK_SMOKE_SNAPSHOT captures one window grab beside the runner's
+    // evidence. Production never reads either variable.
+    const QString smokeMode=qEnvironmentVariable("SPK_SMOKE_MODE");
+    if((smokeMode=="library"||smokeMode=="lighttable") && !engine.rootObjects().isEmpty()) {
         QObject* window=engine.rootObjects().first();
-        window->setProperty("appMode",QStringLiteral("library"));
+        window->setProperty("appMode",smokeMode);
         const QString snapshot=qEnvironmentVariable("SPK_SMOKE_SNAPSHOT");
         if(!snapshot.isEmpty())
             QTimer::singleShot(1500,window,[window,snapshot]{
