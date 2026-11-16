@@ -469,3 +469,33 @@ an entry that excepts nothing any more fails the check); or an `L()` key is
 not in the catalog. There is no stale rule here, unlike the Mac's: the catalog
 deliberately keeps the Mac's whole catalog, of which this frontend has
 migrated only a part so far.
+
+## Phase 6 export colour and the HEIF boundary (tasks 6.2–6.3)
+
+Task 6.2 brought the colour-managed export over: the develop's export sheet
+offers the four colour spaces (sRGB with the bundled profile, Display P3,
+Adobe RGB (1998), ProPhoto RGB), the engine's `spk_output_transform` reply
+drives a CPU port of the Mac's output kernel, the transform lands on the full
+graded print before geometry, and every export carries the chosen ICC profile
+(exact bytes for TIFF16, Qt's embedding for PNG and JPEG). The Mac's other
+export format, HEIF (8-bit HEIC with ICC, ImageIO), is **deferred on
+Windows**, and the export dialog has no HEIF row as a consequence. The
+assessment behind that: this tree's Qt 6.11.3 ships no HEIF codec at all —
+`plugins/imageformats` holds only qgif/qico/qjpeg/qsvg, and a probe built
+against the SDK's own DLLs lists `heif`/`heic` in neither
+QImageWriter's nor QImageReader's supported formats, so the format cannot
+even be read here. Writing HEIF needs libheif with an HEVC encoder, and the
+Mac-parity encoder is x265, whose licence is GPL-2.0-only — incompatible with
+this port's GPL-3.0-or-later, a distribution blocker independent of effort
+(the decode-side libde265 is LGPL-3.0 and fine). Building the full chain
+(x265 + libde265 + libheif + the matching qtimageformats plugin) under MinGW
+was estimated at well over a day of build and integration risk before that
+licence question even lands, past the deferral bar. The alternatives were
+rejected for cause: encoding through Windows' WIC depends on the Store's HEIF
+image and HEVC video extensions being installed (the HEVC one paid), so the
+format's presence would vary per machine; libheif's AV1 route is
+licence-clean but builds an even heavier chain and produces AV1-HEIF, which
+macOS ImageIO does not treat as the Mac's HEVC-based HEIC — no Mac parity to
+test against. If HEIF lands later, it goes through the same
+`formatAvailable` gate the other formats use, so a machine that gains a
+working codec needs no further code change.
