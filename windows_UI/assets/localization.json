@@ -686,6 +686,11 @@
       "zh-Hans": "为这一格添加照片",
       "zh-Hant": "為這一格加入照片"
     },
+    "Add a watched folder…": {
+      "ja": "監視フォルダーを追加…",
+      "zh-Hans": "添加监视文件夹…",
+      "zh-Hant": "新增監看資料夾…"
+    },
     "Add from Library": {
       "ja": "ライブラリから追加",
       "zh-Hans": "从图库添加",
@@ -3881,6 +3886,26 @@
       "zh-Hans": "新建配方",
       "zh-Hant": "新增配方"
     },
+    "New catalog": {
+      "ja": "新規カタログ",
+      "zh-Hans": "新建目录",
+      "zh-Hant": "新增目錄"
+    },
+    "New catalog · session · folder": {
+      "ja": "新規カタログ · セッション · フォルダー",
+      "zh-Hans": "新建目录 · 会话 · 文件夹",
+      "zh-Hant": "新增目錄 · 會話 · 資料夾"
+    },
+    "New catalog, new session or a watched folder": {
+      "ja": "新規カタログ、新規セッション、監視フォルダー",
+      "zh-Hans": "新建目录、会话或监视文件夹",
+      "zh-Hant": "新增目錄、會話或監看資料夾"
+    },
+    "New catalog…": {
+      "ja": "新規カタログ…",
+      "zh-Hans": "新建目录…",
+      "zh-Hant": "新增目錄…"
+    },
     "New frames": {
       "ja": "新しい写真",
       "zh-Hans": "新照片",
@@ -3900,6 +3925,16 @@
       "ja": "新規書き出し設定",
       "zh-Hans": "新建配方",
       "zh-Hant": "新增配方"
+    },
+    "New session": {
+      "ja": "新規セッション",
+      "zh-Hans": "新建会话",
+      "zh-Hant": "新增會話"
+    },
+    "New session…": {
+      "ja": "新規セッション…",
+      "zh-Hans": "新建会话…",
+      "zh-Hant": "新增會話…"
     },
     "Next": {
       "ja": "次へ",
@@ -6120,6 +6155,11 @@
       "ja": "動作記録はこのMacに7日間保存されます。「動作記録をZIPで書き出す」で、送るためのファイルを受け取れます。",
       "zh-Hans": "日志在这台 Mac 上保存 7 天。“导出日志压缩包”会把它交给你自行发送。",
       "zh-Hant": "日誌在這台 Mac 上保存 7 天。「輸出日誌壓縮檔」會把它交給你自行傳送。"
+    },
+    "The name cannot be empty": {
+      "ja": "名前は空にできません",
+      "zh-Hans": "名称不能为空",
+      "zh-Hant": "名稱不能為空"
     },
     "The number before it: %@": {
       "ja": "以前の番号：%@",

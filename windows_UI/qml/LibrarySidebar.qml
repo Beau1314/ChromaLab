@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 // The library sidebar (task 4.4; MAC-LIBRARY-UI §3): three tabs — 库 (the
 // source picker, then the collections outline with counts), 过滤 (the facet
@@ -381,6 +382,112 @@ Rectangle {
                     }
                     InfoRow { label: Localization.epoch && Localization.L("Path"); value: sidebar.infoRow.path === undefined ? "" : String(sidebar.infoRow.path) }
                 }
+            }
+        }
+
+        // The "+" bar (§3): the way to make a catalog, a session or a watched
+        // folder — the empty grid's hint sends the user here, so it sits at
+        // the bottom of the sidebar in every tab.
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 32
+            color: Theme.card
+            Rectangle { width: parent.width; height: 1; color: Theme.line; opacity: 0.35; anchors.top: parent.top }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 8
+                ToolButton {
+                    id: plusButton
+                    objectName: "libraryPlusButton"
+                    text: "+"
+                    font.pixelSize: 16
+                    implicitHeight: 24
+                    implicitWidth: 28
+                    onClicked: plusMenu.popup()
+                    ToolTip.visible: hovered
+                    ToolTip.text: Localization.epoch && Localization.L("New catalog, new session or a watched folder")
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: Localization.epoch && Localization.L("New catalog · session · folder")
+                    color: Theme.muted; font.pixelSize: 10
+                    MouseArea { anchors.fill: parent; onClicked: plusMenu.popup() }
+                }
+            }
+            Menu {
+                id: plusMenu
+                MenuItem {
+                    objectName: "plusNewCatalog"
+                    text: Localization.epoch && Localization.L("New catalog…")
+                    onTriggered: { nameDialog.kind = "catalog"; nameField.text = ""; nameDialog.open() }
+                }
+                MenuItem {
+                    objectName: "plusNewSession"
+                    text: Localization.epoch && Localization.L("New session…")
+                    onTriggered: { nameDialog.kind = "session"; nameField.text = ""; nameDialog.open() }
+                }
+                MenuItem {
+                    objectName: "plusAddFolder"
+                    text: Localization.epoch && Localization.L("Add a watched folder…")
+                    onTriggered: watchedFolderDialog.open()
+                }
+            }
+            Popup {
+                id: nameDialog
+                property string kind: "catalog"
+                width: 280
+                padding: 14
+                modal: true
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                background: Rectangle { color: Theme.card; border.color: Theme.line; radius: 6 }
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 10
+                    Text {
+                        text: nameDialog.kind === "catalog"
+                              ? Localization.epoch && Localization.L("New catalog")
+                              : Localization.epoch && Localization.L("New session")
+                        color: Theme.text; font.pixelSize: 13; font.bold: true
+                    }
+                    TextField {
+                        id: nameField
+                        objectName: "libraryNameField"
+                        Layout.fillWidth: true
+                        font.pixelSize: 12
+                        placeholderText: Localization.epoch && Localization.L("Name")
+                        onAccepted: createButton.clicked()
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: nameField.text.trim().length === 0
+                        text: Localization.epoch && Localization.L("The name cannot be empty")
+                        color: "#ffb39f"; font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Item { Layout.fillWidth: true }
+                        ActionButton { text: Localization.epoch && Localization.L("Cancel"); implicitHeight: 25; onClicked: nameDialog.close() }
+                        ActionButton {
+                            id: createButton
+                            objectName: "libraryCreateButton"
+                            text: Localization.epoch && Localization.L("Create"); implicitHeight: 25
+                            enabled: nameField.text.trim().length > 0
+                            onClicked: {
+                                var ok = nameDialog.kind === "catalog"
+                                         ? library.createCatalog(nameField.text.trim())
+                                         : library.createSession(nameField.text.trim())
+                                if (ok) nameDialog.close()
+                            }
+                        }
+                    }
+                }
+            }
+            FolderDialog {
+                id: watchedFolderDialog
+                onAccepted: library.addFolder(selectedFolder)
             }
         }
 
