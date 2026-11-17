@@ -275,6 +275,10 @@ public:
     /// reference into the selected source. Returns the added count, or -1
     /// when no source is open (the caller shows the empty-library hint).
     Q_INVOKABLE int importDroppedUrls(const QVariantList& urls);
+    /// The grid's 删除: images.trash(true) per uuid — the helper's
+    /// reversible flag, never a file deletion. Returns the trashed count,
+    /// or -1 with a status error when nothing is open.
+    Q_INVOKABLE int trashImages(const QStringList& uuids);
     /// folders.sync over every watched folder, then a full re-list (see the
     /// header's FOLDER SYNC note). Returns {added, moved, removed, restored,
     /// offline}; offline is true when any watched folder was not there.

@@ -830,7 +830,7 @@ ApplicationWindow {
                         ActionButton { text: Localization.epoch && Localization.L("Import RAW"); enabled: window.canBrowse; onClicked: openDialog.open(); implicitHeight: 27 }
                         ActionButton { text: Localization.epoch && Localization.L("Export"); enabled: preview.hasFrame && !preview.busy && !window.cropMode; onClicked: window.openExport(); implicitHeight: 27 }
                         ActionButton { text: Localization.epoch && Localization.L("Crop image"); accented: window.cropMode; enabled: window.canEditCrop; onClicked: window.cropMode ? window.finishCrop() : window.startCrop(); implicitHeight: 27 }
-                        ActionButton { objectName: "compareButton"; text: Localization.epoch && Localization.L("Compare"); accented: preview.compareEnabled; enabled: preview.hasFrame && !window.cropMode; onClicked: preview.compareEnabled = !preview.compareEnabled; implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("The ungraded print on the left, the current edit on the right · V") }
+                        ActionButton { objectName: "compareButton"; text: Localization.epoch && Localization.L("Compare"); accented: preview.compareEnabled; enabled: preview.hasFrame && !window.cropMode; onClicked: preview.compareEnabled = !preview.compareEnabled; implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("The plain decode on the left, the developed print on the right · V") }
                         ActionButton { objectName: "undoButton"; text: Localization.epoch && Localization.L("Undo"); enabled: preview.settingsEditable && preview.canUndo && !window.cropMode; onClicked: preview.undo(); implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("Undo the photo's last adjustment · Ctrl+Z") }
                         ActionButton { objectName: "redoButton"; text: Localization.epoch && Localization.L("Redo"); enabled: preview.settingsEditable && preview.canRedo && !window.cropMode; onClicked: preview.redo(); implicitHeight: 27; ToolTip.visible: hovered; ToolTip.text: Localization.epoch && Localization.L("Redo the photo's adjustment · Ctrl+Shift+Z / Ctrl+Y") }
                         Item { Layout.fillWidth: true }
@@ -1027,6 +1027,7 @@ ApplicationWindow {
                 // 放到印相台 (task 6.4): the grid's context menu carries the
                 // selection into the light table.
                 onCarryRequested: function(uuids) { window.carryToLightTable(uuids) }
+                onDeleteRequested: function(uuids) { library.trashImages(uuids) }
             }
             // The light table page (task 6.4): the full-window pad. Its
             // tools live in the page's own header; the left column keeps

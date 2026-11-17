@@ -372,6 +372,11 @@ private:
         // grade (the print downscaled before grading), and a 450 ms idle
         // timer submits the same job at full resolution.
         bool full=true;
+        // The open/re-open replies carry the compare's "数码原片" half: the
+        // plain decode (no film, no paper) at the preview size, cut to the
+        // photo's geometry on the UI side. Null when it could not be made.
+        QImage before_plain;
+        std::uint32_t before_w=0,before_h=0;
     // Only the latitude reply carries one: the engine's raw JSON, parsed
     // into the `latitude` property on accept.
     QString latitude_json;
@@ -428,6 +433,9 @@ private:
     QImage image_;
     QImage full_image_;
     QImage before_image_;
+    // The plain decode at the preview size (the compare's before half),
+    // fetched in the open job and cut to the geometry on the UI side.
+    QImage before_plain_;
     bool compare_enabled_=false;
     QVariantList histogram_;
     QVariantMap latitude_;

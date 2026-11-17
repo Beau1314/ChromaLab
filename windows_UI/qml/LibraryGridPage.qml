@@ -50,6 +50,7 @@ Item {
     // 放到印相台 (task 6.4): the context menu's carry, with the whole
     // selection (the right-clicked row selects itself first).
     signal carryRequested(var uuids)
+    signal deleteRequested(var uuids)
 
     function zoomIn() { cellSize = Math.min(256, Math.max(64, Math.round(cellSize * 1.25))) }
     function zoomOut() { cellSize = Math.max(64, Math.min(256, Math.round(cellSize / 1.25))) }
@@ -316,6 +317,11 @@ Item {
                     objectName: "openInDevelopItem"
                     text: Localization.epoch && Localization.L("Open in Develop")
                     onTriggered: gridPage.openRequested(tile.path)
+                }
+                MenuItem {
+                    objectName: "deleteItem"
+                    text: Localization.epoch && Localization.L("Delete")
+                    onTriggered: gridPage.deleteRequested(library.selectedUuids())
                 }
                 MenuItem {
                     objectName: "carryToLightTableItem"

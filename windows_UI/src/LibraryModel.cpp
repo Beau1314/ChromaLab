@@ -861,6 +861,21 @@ int LibraryModel::importDroppedUrls(const QVariantList& urls) {
     return out.value(QStringLiteral("added")).toInt();
 }
 
+int LibraryModel::trashImages(const QStringList& uuids) {
+    // The helper's trash is a reversible flag on the row (never a file
+    // deletion); the default images.list excludes trashed rows, so the
+    // grid loses them and the rows survive in the source.
+    if (uuids.isEmpty()) return 0;
+    auto reply = host_.imagesTrash(library_, uuids, spk::desktop::library::TrashFlag::of(true));
+    if (!reply.ok) {
+        setError(reply.errorCode.isEmpty() ? L("The library helper is not running")
+                                           : reply.errorCode);
+        return -1;
+    }
+    refresh();
+    return int(uuids.size());
+}
+
 QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& mode) {
     QVariantMap out;
     out.insert(QStringLiteral("added"), 0);

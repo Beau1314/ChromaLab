@@ -539,6 +539,39 @@ const Catalog& PreviewHost::catalog() const noexcept { return impl_->catalog; }
 double PreviewHost::engine_create_ms() const noexcept { return impl_->engine_create_ms; }
 FramePtr PreviewHost::current() const noexcept { return impl_->frame; }
 
+std::vector<std::uint8_t> PreviewHost::plain_decode_preview(int preview_long_edge,
+                                                            std::uint32_t* out_width,
+                                                            std::uint32_t* out_height) const {
+    // The retained decode: linear ProPhoto RGB float, the RAW's own pixels.
+    const auto& d = impl_->decoded;
+    if (d.rgb.empty() || d.width == 0 || d.height == 0)
+        throw std::runtime_error("Nothing is decoded to compare against");
+    // Working->display numbers; the decoded pixels are LINEAR, so the
+    // source decode step is identity (mode 4) regardless of the reply's
+    // encoded-space default.
+    auto setup = outputTransform("ProPhoto RGB", "sRGB");
+    setup.source_cctf_mode = 4;
+    const double k = preview_long_edge > 0
+        ? std::min(1.0, double(preview_long_edge) / double(std::max(d.width, d.height)))
+        : 1.0;
+    const std::uint32_t ow = std::max(1u, std::uint32_t(d.width * k + 0.5));
+    const std::uint32_t oh = std::max(1u, std::uint32_t(d.height * k + 0.5));
+    std::vector<std::uint8_t> out(size_t(ow) * oh * 3, 0);
+    for (std::uint32_t y = 0; y < oh; ++y) {
+        const std::uint32_t sy = std::min(std::uint32_t(double(y) / k), d.height - 1);
+        auto* dst = out.data() + size_t(y) * ow * 3;
+        for (std::uint32_t x = 0; x < ow; ++x) {
+            const std::uint32_t sx = std::min(std::uint32_t(double(x) / k), d.width - 1);
+            const float* src = d.rgb.data() + (size_t(sy) * d.width + sx) * 3;
+            for (int c = 0; c < 3; ++c)
+                dst[x * 3 + c] = std::uint8_t(std::clamp(src[c], 0.0f, 1.0f) * 255.0f + 0.5f);
+        }
+    }
+    if (out_width) *out_width = ow;
+    if (out_height) *out_height = oh;
+    return out;
+}
+
 FramePtr PreviewHost::open_raw(const fs::path& source, DecodeMode mode, const RenderSettings& settings) {
     const auto started = Clock::now();
     const bool scan_film = validate_settings(settings, impl_->catalog);

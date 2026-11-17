@@ -970,19 +970,13 @@ void PreviewController::requestLatitude() {
         L("Analysing the latitude…"),"latitude");
 }
 void PreviewController::refreshBeforeImage() {
-    // The before half is the current film/paper print WITHOUT Layer 2 —
-    // "冲洗后、编辑前". It is only worth computing while the comparison is
-    // on and the grade actually differs from that print; otherwise the two
-    // halves would be identical and the canvas shows the graded image alone.
-    if(!frame_||!compare_enabled_||l2::isNeutral(layer2_)){before_image_={};return;}
+    // The before half is the plain decode — the RAW's own pixels, no film,
+    // no paper — cut to the photo's geometry, so the two halves align. The
+    // comparison therefore shows what the whole pipeline (develop + edit)
+    // changed, not only the last drag; the fetch rode the open job.
+    if(!frame_||!compare_enabled_||before_plain_.isNull()){before_image_={};return;}
     try {
-        // The ungraded full skips the grade entirely (the raw wrapper) and the
-        // visible before image walks the same geometry path as the graded one,
-        // with the grade held at neutral — only the grade differs between the
-        // halves. A failure here (for example an allocation failure) leaves
-        // the before half empty, which the canvas displays as after-only.
-        const auto ungraded=image_factory_(frame_);
-        before_image_=visibleImage(frame_,ungraded,geometry_,l2::Adjustments{});
+        before_image_=output::exportImage(before_plain_,geometry_,{});
     } catch(const std::exception&){before_image_={};}
 }
 void PreviewController::setCompareEnabled(bool enabled) {

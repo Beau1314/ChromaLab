@@ -3786,6 +3786,11 @@
       "zh-Hans": "将 %@ 张照片移到废纸篓？",
       "zh-Hant": "將 %@ 張照片移到垃圾桶？"
     },
+    "Move %@ to the library's trash (recoverable)": {
+      "ja": "%@枚をライブラリのゴミ箱へ（復元できます）",
+      "zh-Hans": "将 %@ 张移入库回收站（可恢复）",
+      "zh-Hant": "將 %@ 張移入庫回收站（可復原）"
+    },
     "Move Down": {
       "ja": "下へ移動",
       "zh-Hans": "下移",
@@ -3825,6 +3830,11 @@
       "ja": "ゴミ箱に入れる",
       "zh-Hans": "移到废纸篓",
       "zh-Hant": "移到垃圾桶"
+    },
+    "Moved to the library's trash: recoverable there": {
+      "ja": "ライブラリのゴミ箱に移動しました：そこで復元できます",
+      "zh-Hans": "已移入库回收站：可在此恢复",
+      "zh-Hant": "已移入庫回收站：可在此復原"
     },
     "Movie": {
       "ja": "ムービー",
@@ -6141,6 +6151,11 @@
       "zh-Hans": "宽容度分析返回了无效结果",
       "zh-Hant": "寬容度分析返回了無效結果"
     },
+    "The library helper is not running": {
+      "ja": "ライブラリヘルパーが起動していません",
+      "zh-Hans": "图库助手未在运行",
+      "zh-Hant": "圖庫助手未在執行"
+    },
     "The library is empty": {
       "ja": "ライブラリは空です",
       "zh-Hans": "库是空的",
@@ -6285,6 +6300,11 @@
       "ja": "フィルムの目安",
       "zh-Hans": "胶片参考线",
       "zh-Hant": "底片參考線"
+    },
+    "The plain decode on the left, the developed print on the right · V": {
+      "ja": "左はRAWデコード、右は現在のプリント · V",
+      "zh-Hans": "左侧为数码原片，右侧为当前冲印结果 · V",
+      "zh-Hant": "左側為數碼原片，右側為當前沖印結果 · V"
     },
     "The preview already matches the current selection": {
       "ja": "プレビューはすでに現在の選択どおりです",
