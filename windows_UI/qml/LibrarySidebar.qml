@@ -440,6 +440,10 @@ Rectangle {
                 width: 280
                 padding: 14
                 modal: true
+                // Centre on the window: the popup's default anchors to the
+                // "+" bar at the screen's bottom-left corner, where a
+                // downward dialog runs off the screen.
+                anchors.centerIn: Overlay.overlay
                 closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                 background: Rectangle { color: Theme.card; border.color: Theme.line; radius: 6 }
                 ColumnLayout {
