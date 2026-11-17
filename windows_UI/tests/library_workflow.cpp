@@ -282,8 +282,13 @@ int main(int argc,char** argv) {
             check(QDir().mkpath(mixed),"Cannot create mixed batch directory");
             controller.exportBatch(QUrl::fromLocalFile(mixed),1,95,64);
             idle(controller,"batch containing supported and unsupported RAW files",true);
-            check(controller.failed()&&controller.status().contains(QStringLiteral("失败"))&&
-                  controller.status().contains(rejected.completeBaseName()),
+            // The status must name the failed file beside the failure word —
+            // in whatever language the run derived (the gate runs in the
+            // host's derived language, so assert the behaviour bilingually).
+            const QString statusText=controller.status();
+            check(controller.failed()&&
+                  (statusText.contains(QStringLiteral("失败"))||statusText.contains(QStringLiteral("failed")))&&
+                  statusText.contains(rejected.completeBaseName()),
                   "Mixed batch concealed the unsupported RAW failure");
             check(controller.batchProgress()==3,"Mixed batch did not account for every selected file");
             check(controller.frame()==lastFrame&&samePixels(controller.previewImage(),lastPreview),

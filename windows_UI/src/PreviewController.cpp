@@ -409,7 +409,12 @@ void PreviewController::accept(Reply reply) {
             emit frameChanged();emit geometryChanged();if(reply.operation=="open")emit sourceOpened();
         }
     } else if(reply.operation=="export") status_=L("Exported the current frame");
-    else if(reply.operation=="batch-export")status_=reply.message;
+    // A failed batch must name what failed: the summary line alone ("…:
+    // exported 2, skipped 0, failed 1") never says which file, and the
+    // per-file reasons ride in the error's details. The workflow gate pins
+    // that the status carries the rejected file's name beside the failure
+    // word — the gate could never run before a real RAW fixture arrived.
+    else if(reply.operation=="batch-export")status_=(failed_&&!reply.error.isEmpty())?reply.error:reply.message;
     if(failed_&&reply.operation=="open"&&reply.library_index>=0&&reply.library_index<int(library_.size()))
         library_[reply.library_index].error=status_;
     // A failed pair job (open or wire) loses the host's live pair session:
