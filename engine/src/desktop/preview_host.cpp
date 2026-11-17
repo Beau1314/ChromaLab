@@ -520,9 +520,12 @@ struct PreviewHost::Impl {
 
 PreviewHost::PreviewHost(const fs::path& resources) : impl_(std::make_unique<Impl>()) {
     impl_->resources = fs::absolute(resources);
+    // The engine's file opens go through spk::file_path, which turns the
+    // UTF-8 directory into a wide path on Windows — a non-ASCII install
+    // folder (a user name, a project name) is supported end to end. The
+    // old ASCII gate here predated that helper and silently greyed out
+    // the whole app for anyone launching it from one.
     const auto path = utf8(impl_->resources);
-    require(std::all_of(path.begin(), path.end(), [](unsigned char c) { return c < 128; }),
-            "Engine resources directory currently requires an ASCII path");
     require(fs::is_directory(impl_->resources), "Engine resources directory is missing");
     impl_->catalog = read_catalog(impl_->resources);
     const auto started = Clock::now();

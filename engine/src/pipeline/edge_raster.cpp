@@ -18,6 +18,7 @@
 
 #include "line_pool.hpp"
 #include "pipeline.hpp"
+#include "../core/file_path.hpp"  // wide-path opens: a non-ASCII install folder must load its own fonts
 
 #ifdef __APPLE__
 #include <Accelerate/Accelerate.h>
@@ -346,7 +347,7 @@ std::vector<LoadedFace> g_loaded;
 
 bool load_face(const Face& sub, LoadedFace& out, std::string& error) {
     const std::string path = g_font_dir + "/fonts/" + sub.file;
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    std::ifstream file(spk::file_path(path), std::ios::binary | std::ios::ate);
     if (!file) { error = "font file missing: " + path; return false; }
     const std::streamoff length = file.tellg();
     if (length <= 0) { error = "font file empty: " + path; return false; }
