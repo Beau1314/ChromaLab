@@ -841,6 +841,26 @@ void LibraryModel::setProgress(const QString& phase, int done, int total) {
     emit progressChanged();
 }
 
+int LibraryModel::importDroppedUrls(const QVariantList& urls) {
+    // A drop imports by reference into the open source; with no source the
+    // grid's empty state already says what to do first.
+    if (!importActive_ && selectedSourceId().isEmpty()) {
+        setError(L("Create a catalog or session, then import photos"));
+        return -1;
+    }
+    QVariantList paths;
+    for (const auto& u : urls) {
+        const QString local = QUrl(u.toString()).toLocalFile();
+        if (!local.isEmpty() && QFileInfo::exists(local)) paths.append(local);
+    }
+    if (paths.isEmpty()) {
+        setError(L("Nothing droppable in the drag — use image files"));
+        return -1;
+    }
+    const auto out = importFiles(paths, QStringLiteral("reference"));
+    return out.value(QStringLiteral("added")).toInt();
+}
+
 QVariantMap LibraryModel::importFiles(const QVariantList& items, const QString& mode) {
     QVariantMap out;
     out.insert(QStringLiteral("added"), 0);

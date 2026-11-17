@@ -271,6 +271,10 @@ public:
     /// Imports album's uuid when anything was added, error the failure reason.
     Q_INVOKABLE QVariantMap importFiles(const QVariantList& items,
                                         const QString& mode = {});
+    /// The grid page's drop: file URLs (or plain paths) imported by
+    /// reference into the selected source. Returns the added count, or -1
+    /// when no source is open (the caller shows the empty-library hint).
+    Q_INVOKABLE int importDroppedUrls(const QVariantList& urls);
     /// folders.sync over every watched folder, then a full re-list (see the
     /// header's FOLDER SYNC note). Returns {added, moved, removed, restored,
     /// offline}; offline is true when any watched folder was not there.

@@ -16,6 +16,33 @@ import SpektraLab.Native 1.0
 Item {
     id: gridPage
 
+    // Dropping photos anywhere on the library page imports them into the
+    // open catalog/session — the develop canvas's DropArea only covers 冲洗.
+    // The overlay flashes while a drag hovers so the target is visible.
+    property bool dragHover: false
+    DropArea {
+        anchors.fill: parent
+        enabled: library.selectedSourceId !== "" && !library.busy
+        keys: ["text/uri-list"]
+        onEntered: function(drop) { gridPage.dragHover = drop.hasUrls }
+        onExited: gridPage.dragHover = false
+        onDropped: function(drop) {
+            gridPage.dragHover = false
+            if (drop.hasUrls) library.importDroppedUrls(drop.urls)
+        }
+    }
+    Rectangle {
+        anchors.fill: parent
+        color: "#22000000"
+        visible: gridPage.dragHover
+        border.color: Theme.accent; border.width: 2
+        Text {
+            anchors.centerIn: parent
+            text: Localization.epoch && Localization.L("Release to import into the library")
+            color: Theme.text; font.pixelSize: 16; font.bold: true
+        }
+    }
+
     readonly property int gutter: 2
     readonly property int inset: 6
     property real cellSize: 112
