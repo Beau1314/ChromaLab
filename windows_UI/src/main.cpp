@@ -458,11 +458,33 @@ int main(int argc,char** argv) {
     // SPK_SMOKE_SNAPSHOT captures one window grab beside the runner's
     // evidence. Production never reads either variable.
     const QString smokeMode=qEnvironmentVariable("SPK_SMOKE_MODE");
+    const QString smokeOpen=qEnvironmentVariable("SPK_SMOKE_OPEN");
     if((smokeMode=="library"||smokeMode=="lighttable"||smokeMode=="develop") && !engine.rootObjects().isEmpty()) {
         QObject* window=engine.rootObjects().first();
         window->setProperty("appMode",smokeMode);
         const QString snapshot=qEnvironmentVariable("SPK_SMOKE_SNAPSHOT");
-        if(!snapshot.isEmpty())
+        // SPK_SMOKE_OPEN reproduces the grid's double-click end to end: emit
+        // the page's openRequested signal (the same one the delegate's
+        // double-click emits) for the given file, then grab the window —
+        // the develop page must show the opened photograph.
+        if(!smokeOpen.isEmpty()) {
+            QTimer::singleShot(2000,window,[window,&controller,smokeOpen,snapshot]{
+                const QObject* page=window->findChild<QObject*>("libraryPageItem");
+                if(!page){qWarning("SMOKE-OPEN: library page not found");return;}
+                const bool emitted=QMetaObject::invokeMethod(const_cast<QObject*>(page),"openRequested",Q_ARG(QString,smokeOpen));
+                qWarning("SMOKE-OPEN emitted=%d appMode=%s",emitted?1:0,window->property("appMode").toString().toUtf8().constData());
+                QTimer::singleShot(7000,window,[&controller,window,snapshot,emitted]{
+                    qWarning("SMOKE-OPEN result hasFrame=%d busy=%d status=[%s] mode=%s",
+                             controller.hasFrame()?1:0,controller.busy()?1:0,
+                             controller.status().toUtf8().constData(),
+                             window->property("appMode").toString().toUtf8().constData());
+                    const QImage grab=qobject_cast<QQuickWindow*>(window)?
+                        qobject_cast<QQuickWindow*>(window)->grabWindow():QImage();
+                    if(!snapshot.isEmpty()&&!grab.isNull())grab.save(snapshot,"PNG");
+                    QCoreApplication::exit(0);
+                });
+            });
+        } else if(!snapshot.isEmpty())
             QTimer::singleShot(1500,window,[window,snapshot]{
                 const QImage grab=qobject_cast<QQuickWindow*>(window)?
                     qobject_cast<QQuickWindow*>(window)->grabWindow():QImage();

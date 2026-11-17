@@ -313,6 +313,11 @@ Item {
             Menu {
                 id: tileMenu
                 MenuItem {
+                    objectName: "openInDevelopItem"
+                    text: Localization.epoch && Localization.L("Open in Develop")
+                    onTriggered: gridPage.openRequested(tile.path)
+                }
+                MenuItem {
                     objectName: "carryToLightTableItem"
                     text: Localization.epoch && Localization.L("Put on Light Table")
                     onTriggered: gridPage.carryRequested(library.selectedUuids())
