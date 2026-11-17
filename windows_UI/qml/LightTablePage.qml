@@ -232,6 +232,31 @@ Item {
             // the desk round everything
             Rectangle { anchors.fill: parent; color: "#4b4b49" }
 
+            // A carry that laid nothing explains itself here — the strip's
+            // one small line was invisible in practice (the empty-carry
+            // read as "no reaction"). The banner holds until the next
+            // carry places a film.
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 14
+                width: Math.min(parent.width - 60, 560)
+                implicitHeight: bannerText.implicitHeight + 20
+                radius: 6
+                color: "#e0c98a"
+                visible: page.notice.length > 0
+                z: 20
+                Text {
+                    id: bannerText
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    text: page.notice
+                    color: "#2b2a28"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             // the aluminium frame round the lit area
             Rectangle {
                 color: "#b9b6b0"

@@ -52,10 +52,12 @@ ApplicationWindow {
         const frames = library.lightTableFrames(uuids)
         const placed = lightTable.carry(frames)
         window.appMode = "lighttable"
-        if (lightTablePage.item !== null)
-            lightTablePage.item.notice = placed === 0
-                ? Localization.L("Only pictures developed in SpektraLab go on the Light Table.")
-                : ""
+        // The page is a direct child (no Loader): setting `.item.notice`
+        // wrote to undefined and threw, so the refusal never reached the
+        // user — an empty table read as "no reaction".
+        lightTablePage.notice = placed === 0
+            ? Localization.L("Only pictures developed in SpektraLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.")
+            : ""
     }
     // The active library item is a half-frame pair (its `pair` map is filled).
     // The pair's own look sections stay live; the shared photo sections that

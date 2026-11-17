@@ -4296,6 +4296,11 @@
       "zh-Hans": "只有在 SpektraLab 中冲洗过的图像才能放到观片台上。",
       "zh-Hant": "只有在 SpektraLab 中沖洗過的影像才能放到觀片台上。"
     },
+    "Only pictures developed in SpektraLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.": {
+      "ja": "SpektraLabで現像した写真だけが引き伸ばし台に載ります。先に「現像」で写真を開くか、フィルム縁か2コマ組を与えてください。台は実寸（ミリ）で載せるため、現像記録のサイズが必要です。",
+      "zh-Hans": "只有经 SpektraLab 显影的照片才能上印相台：先在「冲洗」中打开照片，或给它胶片边缘/半幅对——印相台按真实毫米摆放，需要冲洗记录的尺寸。",
+      "zh-Hant": "只有經 SpektraLab 顯影的照片才能上觀片台：先在「沖洗」中打開照片，或給它膠片邊緣/半幅對——觀片台按真實毫米擺放，需要顯影記錄的尺寸。"
+    },
     "Only pictures developed in SpektraLab with a film size (a film edge, or a pair) go on the Light Table.": {
       "ja": "ライトテーブルに置けるのは、SpektraLab で現像し、フィルムのサイズ（フィルムの縁、またはハーフ判の2コマ組）があるイメージだけです。",
       "zh-Hans": "只有在 SpektraLab 中冲洗过、且有胶片尺寸（片边或半格组）的图像才能放到观片台上。",

@@ -64,7 +64,7 @@ Item {
     }
 
     // The colour-label dots, MacColorLabel's seven.
-    readonly property var labelColors: [,
+    readonly property var labelColors: [
         "#e1574e", "#e6954f", "#e3c14f", "#6bbd5f", "#5588d8", "#d967ad", "#9067c9"]
 
     ColumnLayout {
@@ -202,6 +202,7 @@ Item {
                 required property var develop
                 required property bool selected
                 required property bool hasThumbnail
+                required property var thumbnail
 
                 width: grid.cellWidth
                 height: grid.cellHeight
@@ -258,7 +259,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: tile.colorTag > 0
                         width: 9; height: 9; radius: 4.5
-                        color: tile.colorTag <= 7 ? gridPage.labelColors[tile.colorTag] : "transparent"
+                        color: tile.colorTag > 0 && tile.colorTag <= 7 ? gridPage.labelColors[tile.colorTag] : "transparent"
                         border.color: Theme.line
                         border.width: tile.colorTag > 7 ? 1 : 0
                     }
