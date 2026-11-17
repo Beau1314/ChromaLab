@@ -459,7 +459,7 @@ int main(int argc,char** argv) {
     // evidence. Production never reads either variable.
     const QString smokeMode=qEnvironmentVariable("SPK_SMOKE_MODE");
     const QString smokeOpen=qEnvironmentVariable("SPK_SMOKE_OPEN");
-    if((smokeMode=="library"||smokeMode=="lighttable"||smokeMode=="develop") && !engine.rootObjects().isEmpty()) {
+    if((smokeMode=="library"||smokeMode=="lighttable"||smokeMode=="develop"||smokeMode=="edit") && !engine.rootObjects().isEmpty()) {
         QObject* window=engine.rootObjects().first();
         window->setProperty("appMode",smokeMode);
         const QString snapshot=qEnvironmentVariable("SPK_SMOKE_SNAPSHOT");

@@ -38,6 +38,7 @@ ApplicationWindow {
     // shared-browser unification is future work).
     property string appMode: "develop"
     readonly property bool libraryMode: appMode === "library"
+    readonly property bool editMode: appMode === "edit"
     // The light table (task 6.4): the third page, full-window except the
     // mode row this column keeps.
     readonly property bool lighttableMode: appMode === "lighttable"
@@ -916,7 +917,10 @@ ApplicationWindow {
                             cursorShape: Qt.SplitHCursor
                             function retarget(mouseX) {
                                 var b = compareOverlay.box
-                                canvas.comparePosition = Math.max(0, Math.min(1, (mouseX - b.x) / b.width))
+                                // mouse.x is local to this 16px strip — map it
+                                // into the overlay's space before dividing.
+                                var p = mapToItem(compareOverlay, mouseX, 0)
+                                canvas.comparePosition = Math.max(0, Math.min(1, (p.x - b.x) / b.width))
                             }
                             onPressed: function(mouse) { retarget(mouse.x) }
                             onPositionChanged: function(mouse) { if (pressed) retarget(mouse.x) }
@@ -1043,7 +1047,7 @@ ApplicationWindow {
             ColumnLayout {
                 id: railColumn
                 anchors.fill: parent; anchors.rightMargin: 12; spacing: 0
-                Text { text: Localization.epoch && Localization.L("Parameters · pre-develop"); color: Theme.text; font.pixelSize: 14; font.bold: true; Layout.leftMargin: 14; Layout.preferredHeight: Theme.topHeight; verticalAlignment: Text.AlignVCenter }
+                Text { text: Localization.epoch && (window.editMode ? Localization.L("Edit · the finished print") : Localization.L("Parameters · pre-develop")); color: Theme.text; font.pixelSize: 14; font.bold: true; Layout.leftMargin: 14; Layout.preferredHeight: Theme.topHeight; verticalAlignment: Text.AlignVCenter }
                 ScrollView {
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                     ColumnLayout {
@@ -1394,7 +1398,7 @@ ApplicationWindow {
                             }
                             Note { text: Localization.epoch && Localization.L("Analyse only reads the current develop and does not change the picture; Apply mapping places the scene with the committed curve, and Commit fit writes the solved highlight/shadow pull-backs.") }
                         }
-                        Section {
+                        Section { visible: window.editMode;
                             title: Localization.epoch && Localization.L("Edit · Light")
                             Layer2Adjustment { label: Localization.epoch && Localization.L("Exposure"); setting: "exposure"; from: -5; to: 5; step: 0.05; decimals: 2; suffix: " EV" }
                             Layer2Adjustment { label: Localization.epoch && Localization.L("Brightness"); setting: "brightness"; from: -100; to: 100; step: 1; decimals: 0 }
@@ -1406,7 +1410,7 @@ ApplicationWindow {
                             ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset light"); enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.setLayer2Zero(["exposure", "brightness", "contrast", "highlights", "shadows", "blackPoint", "whitePoint"]) }
                             Note { text: Localization.epoch && Localization.L("Graded adjustments act on the developed picture: live, without triggering a re-render, and pixel-identical to the export.") }
                         }
-                        Section {
+                        Section { visible: window.editMode;
                             title: Localization.epoch && Localization.L("Edit · Colour")
                             Layer2Adjustment { label: Localization.epoch && Localization.L("Temperature"); setting: "temperature"; from: -100; to: 100; step: 1; decimals: 0 }
                             Layer2Adjustment { label: Localization.epoch && Localization.L("Tint"); setting: "tint"; from: -100; to: 100; step: 1; decimals: 0 }
@@ -1417,19 +1421,19 @@ ApplicationWindow {
                             title: Localization.epoch && Localization.L("Curve")
                             CurveEditor {}
                         }
-                        Section {
+                        Section { visible: window.editMode;
                             title: Localization.epoch && Localization.L("Edit · Colour balance")
                             ColorBalance {}
                             ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset colour balance"); enabled: preview.settingsEditable && preview.hasFrame; onClicked: window.resetColorBalance() }
                         }
-                        Section {
+                        Section { visible: window.editMode;
                             title: Localization.epoch && Localization.L("Edit · Vignette")
                             Layer2Adjustment { label: Localization.epoch && Localization.L("Amount"); setting: "vignetteAmount"; readKey: "vignette.amount"; from: -100; to: 100; step: 1; decimals: 0 }
                             Layer2Adjustment { label: Localization.epoch && Localization.L("Midpoint"); setting: "vignetteMidpoint"; readKey: "vignette.midpoint"; fallback: 50; from: 0; to: 100; step: 1; decimals: 0 }
                             ActionButton { Layout.fillWidth: true; text: Localization.epoch && Localization.L("Reset vignette"); enabled: preview.settingsEditable && preview.hasFrame; onClicked: { preview.setLayer2("vignetteAmount", 0); preview.setLayer2("vignetteMidpoint", 50) } }
                             Note { text: Localization.epoch && Localization.L("Negative values darken the picture's edges, positive values brighten; the midpoint decides where in the picture the vignette begins.") }
                         }
-                        Section {
+                        Section { visible: !window.editMode;
                             id: cameraSection
                             title: Localization.epoch && Localization.L("Input / camera")
                             Note {
@@ -1519,7 +1523,7 @@ ApplicationWindow {
                             }
                             Note { text: Localization.epoch && Localization.L("White balance acts on the RAW decode and a change re-decodes the photo; As Shot backfills the as-shot white balance the decode reported. With the meter off, the film exposure places the scene directly.") }
                         }
-                        Section {
+                        Section { visible: !window.editMode;
                             title: Localization.epoch && Localization.L("Film format & effects")
                             RowLayout {
                                 Text { text: Localization.epoch && Localization.L("Format long edge"); color: Theme.text; font.pixelSize: 11 }
@@ -1582,7 +1586,7 @@ ApplicationWindow {
                             Note { visible: preview.filmIsPositive; text: Localization.epoch && Localization.L("Slide film is scanned directly — there is no negative, so the digital intermediate does not apply."); color: Theme.accent }
                             Note { text: Localization.epoch && Localization.L("The digital intermediate renders the negative's positive image in Cineon log encoding, replacing the paper print; blue compensation rotates the hue inside the film-fitted blue window.") }
                         }
-                        Section {
+                        Section { visible: !window.editMode;
                             id: rawSection
                             title: Localization.epoch && Localization.L("RAW decode")
                             // A pair opens no RAW of its own: each hole reads
@@ -1645,7 +1649,7 @@ ApplicationWindow {
                         // changed() and re-renders the session (开 is a
                         // shoot-layer field, so its edits re-develop the film
                         // and the picture's size becomes the film canvas's).
-                        Section {
+                        Section { visible: !window.editMode;
                             id: overscanSection
                             title: Localization.epoch && Localization.L("Film rebate")
                             readonly property bool osOn: preview.overscan.on === undefined ? false : preview.overscan.on
@@ -1826,7 +1830,7 @@ ApplicationWindow {
                         // film edge (画面内 placement works on the bare
                         // frame). lcd/dots are the engine's own faces; the
                         // data face prints the shooting data beside the date.
-                        Section {
+                        Section { visible: !window.editMode;
                             id: dateSection
                             title: Localization.epoch && Localization.L("Date back")
                             readonly property bool dtOn: preview.dateImprint.on === undefined ? false : preview.dateImprint.on

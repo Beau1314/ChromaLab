@@ -368,6 +368,10 @@ private:
         // Only the open reply carries one: it installs the opened photo's
         // stored grade before the graded publication below.
         spk::desktop::layer2::Adjustments layer2;
+        // The layer-2 fast path's quality tier: a drag publishes the preview
+        // grade (the print downscaled before grading), and a 450 ms idle
+        // timer submits the same job at full resolution.
+        bool full=true;
     // Only the latitude reply carries one: the engine's raw JSON, parsed
     // into the `latitude` property on accept.
     QString latitude_json;
@@ -400,10 +404,15 @@ private:
     // decode fields, refuses the headroom decode, and skips no-op values.
     void setWbEdit(double kelvin, double tint, const QString& editKey);
     // Layer 2 fast path: grade the retained print without the engine.
-    QImage gradedDisplayImage(const spk::desktop::FramePtr&, const spk::desktop::layer2::Adjustments&) const;
+    // previewLongEdge: 0 grades the print at its own resolution; a positive
+    // value downscales first (the layer-2 slider's preview tier).
+    QImage gradedDisplayImage(const spk::desktop::FramePtr&, const spk::desktop::layer2::Adjustments&, int previewLongEdge = 0) const;
     void changedLayer2(const QString& editKey={});
     void scheduleLayer2();
-    void publishFromFrame(const QString& status);
+    // fullQuality grades the print at its own resolution; the preview tier
+    // downscales to kLayer2PreviewEdge first (a 22-megapixel CPU grade is
+    // ~400 ms, which a slider drag cannot afford per move).
+    void publishFromFrame(const QString& status,bool fullQuality=true);
     // The before visible image: the ungraded print through the same geometry
     // path as image_. Recomputed on every publication while the comparison
     // is on and the grade differs from the ungraded print.
@@ -477,6 +486,9 @@ private:
     std::filesystem::path resources_;
     spk::desktop::editing::Store edit_store_;
     QTimer save_timer_;
+    // Layer 2's full-resolution settle: armed by every layer-2 change, fires
+    // once the dragging rests, and submits the full-quality republication.
+    QTimer full_layer2_timer_;
     int gesture_index_=-1;
     QString gesture_key_;
     bool gesture_recorded_=false;

@@ -297,6 +297,14 @@ PreviewController::PreviewController(std::filesystem::path resources,QObject* pa
     computeHistogram();
     save_timer_.setSingleShot(true);save_timer_.setInterval(350);
     connect(&save_timer_,&QTimer::timeout,this,&PreviewController::flushEdits);
+    full_layer2_timer_.setSingleShot(true);full_layer2_timer_.setInterval(450);
+    connect(&full_layer2_timer_,&QTimer::timeout,this,[this]{
+        if(!frame_||busy_||dialog_open_)return;
+        const auto gen=generation_;const auto revision=layer2_revision_;
+        submit([gen,revision](desktop::PreviewHost&){Reply r;r.generation=gen;
+            r.settings_revision=revision;r.operation="layer2";r.full=true;return r;},
+            L("Updating the preview"),"layer2");
+    });
     worker_=std::thread([this,resources=std::move(resources)]{workerLoop(resources);});
 }
 PreviewController::~PreviewController() {
@@ -350,7 +358,7 @@ void PreviewController::accept(Reply reply) {
     } else if(reply.operation=="layer2") {
         // The fast path's job only re-sequences the publication behind the
         // worker queue; the pixels come from the retained frame below.
-        publishFromFrame(L("Preview updated"));
+        publishFromFrame(L("Preview updated"),reply.full);
     } else if(reply.operation=="latitude") {
         // The analysis never renders, so nothing on screen moves: only the
         // parsed reply is published. A malformed reply is a failure like any
@@ -894,11 +902,21 @@ void PreviewController::commitLatitudeFit() {
 
 // --- Layer 2: the scan-side grade on the controller's fast path ---------------
 
-QImage PreviewController::gradedDisplayImage(const desktop::FramePtr& frame,const l2::Adjustments& adjustments) const {
+QImage PreviewController::gradedDisplayImage(const desktop::FramePtr& frame,const l2::Adjustments& adjustments,int previewLongEdge) const {
     // A neutral grade stays byte-identical: applyImage would still run its
     // per-pixel chain, so it is skipped outright and the factory's
     // external-buffer wrapper is returned zero-copy.
     auto image=image_factory_(frame);
+    if(previewLongEdge>0) {
+        const int longEdge=std::max(image.width(),image.height());
+        if(longEdge>previewLongEdge) {
+            const double k=double(previewLongEdge)/double(longEdge);
+            // The scale returns a fresh deep copy, so the grade below writes
+            // into private pixels and the retained frame stays pristine.
+            image=image.scaled(int(image.width()*k),int(image.height()*k),
+                               Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+        }
+    }
     if(!image.isNull()&&!l2::isNeutral(adjustments)) {
         // The copy is required before the first write: the factory wraps the
         // frame's display bytes in a non-const external-buffer QImage whose
@@ -933,6 +951,7 @@ void PreviewController::scheduleLayer2() {
     submit([gen,revision](desktop::PreviewHost&){Reply r;r.generation=gen;
         r.settings_revision=revision;r.operation="layer2";return r;},
         L("Updating the preview"),"layer2");
+    full_layer2_timer_.start();
 }
 void PreviewController::requestLatitude() {
     // The engine's analysis reads the open session and never renders, so it
@@ -974,12 +993,20 @@ void PreviewController::setCompareEnabled(bool enabled) {
     if(frame_)publishFromFrame(L("Preview updated"));
     emit compareEnabledChanged();
 }
-void PreviewController::publishFromFrame(const QString& status) {
+void PreviewController::publishFromFrame(const QString& status,bool fullQuality) {
     if(!frame_)return;
     try {
-        auto next=gradedDisplayImage(frame_,layer2_);
-        auto visible=visibleImage(frame_,next,geometry_,layer2_);
-        full_image_=std::move(next);image_=std::move(visible);
+        // The preview tier downscales the print before grading: the grade's
+        // coordinates are normalized, so the semantics survive the scale,
+        // and a slider drag cannot afford a 22-megapixel CPU grade per
+        // move. The full tier (the idle timer's job, every open and render)
+        // restores the print's own resolution and updates full_image_.
+        constexpr int kLayer2PreviewEdge=2560;
+        auto next=gradedDisplayImage(frame_,layer2_,fullQuality?0:kLayer2PreviewEdge);
+        auto visible=fullQuality
+            ?visibleImage(frame_,next,geometry_,layer2_)
+            :output::displayImage(next,geometry_);
+        if(fullQuality)full_image_=std::move(next);image_=std::move(visible);
         refreshBeforeImage();
         computeHistogram();
     } catch(const std::exception& e){failed_=true;status_=text(e.what());emit stateChanged();return;}
