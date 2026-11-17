@@ -467,20 +467,47 @@ int main(int argc,char** argv) {
         // the page's openRequested signal (the same one the delegate's
         // double-click emits) for the given file, then grab the window —
         // the develop page must show the opened photograph.
+        const bool smokeCompare=qEnvironmentVariable("SPK_SMOKE_COMPARE")=="1";
         if(!smokeOpen.isEmpty()) {
-            QTimer::singleShot(2000,window,[window,&controller,smokeOpen,snapshot]{
+            QTimer::singleShot(6000,window,[window,&controller,smokeOpen,snapshot,smokeCompare]{
                 const QObject* page=window->findChild<QObject*>("libraryPageItem");
                 if(!page){qWarning("SMOKE-OPEN: library page not found");return;}
                 const bool emitted=QMetaObject::invokeMethod(const_cast<QObject*>(page),"openRequested",Q_ARG(QString,smokeOpen));
                 qWarning("SMOKE-OPEN emitted=%d appMode=%s",emitted?1:0,window->property("appMode").toString().toUtf8().constData());
-                QTimer::singleShot(7000,window,[&controller,window,snapshot,emitted]{
+                QTimer::singleShot(10000,window,[&controller,window,snapshot,emitted,smokeCompare]{
                     qWarning("SMOKE-OPEN result hasFrame=%d busy=%d status=[%s] mode=%s",
                              controller.hasFrame()?1:0,controller.busy()?1:0,
                              controller.status().toUtf8().constData(),
                              window->property("appMode").toString().toUtf8().constData());
+                    if(smokeCompare) {
+                        // The compare probe: enable the split, apply one
+                        // Layer 2 edit, and report whether the two halves of
+                        // the published preview differ.
+                        controller.setCompareEnabled(true);
+                        controller.setLayer2("exposure",1.0);
+                        QTimer::singleShot(1500,window,[&controller,window,snapshot]{
+                            controller.setLayer2("exposure",0.0);
+                            const QImage grab=qobject_cast<QQuickWindow*>(window)?
+                                qobject_cast<QQuickWindow*>(window)->grabWindow():QImage();
+                            if(!grab.isNull()) {
+                                const int mid=grab.width()/2;
+                                const QImage left=grab.copy(0,0,mid,grab.height()).convertToFormat(QImage::Format_RGB32);
+                                const QImage right=grab.copy(mid,0,grab.width()-mid,grab.height()).convertToFormat(QImage::Format_RGB32);
+                                long diff=0;
+                                for(int y=0;y<left.height();++y)
+                                    for(int x=0;x<left.width();++x)
+                                        if(left.pixel(x,y)!=right.pixel(x,y))++diff;
+                                const long total=long(left.width())*left.height();
+                                qWarning("COMPARE-DIAG differing-pixels=%ld of %ld (%.1f%%)",diff,total,100.0*diff/total);
+                            }
+                            if(!snapshot.isEmpty()&&!grab.isNull())grab.save(snapshot,"PNG");
+                            QCoreApplication::exit(0);
+                        });
+                        return;
+                    }
                     const QImage grab=qobject_cast<QQuickWindow*>(window)?
                         qobject_cast<QQuickWindow*>(window)->grabWindow():QImage();
-                    if(!snapshot.isEmpty()&&!grab.isNull())grab.save(snapshot,"PNG");
+                    if(!grab.isNull())grab.save(snapshot,"PNG");
                     QCoreApplication::exit(0);
                 });
             });

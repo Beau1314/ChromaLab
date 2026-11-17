@@ -376,6 +376,9 @@ void PreviewController::accept(Reply reply) {
             // The opened photo's grade only commits with its successful
             // publication; a failure leaves the previous photo intact.
             auto nextLayer2=reply.operation=="open"?std::move(reply.layer2):layer2_;
+            // The compare's plain-decode half rode the open reply: store it
+            // before the publication, which cuts it to the geometry.
+            if(!reply.before_plain.isNull())before_plain_=std::move(reply.before_plain);
             auto next=gradedDisplayImage(reply.frame,nextLayer2);
             if(next.isNull())throw std::runtime_error("Cannot create the display image");
             const auto geometry=reply.operation=="open"?reply.geometry:geometry_;
@@ -518,7 +521,8 @@ void PreviewController::openRaw(const QUrl& url) {
     // can be coalesced during a render, but cannot retarget an in-flight open.
     if(!ready_||busy_||!url.isLocalFile())return;
     saveActiveSettings();
-    const int index=addFile(url);if(index<0)return;
+    const int index=addFile(url);
+    if(index<0)return;
     // A known photo restores its own saved settings. A genuinely new photo
     // still starts with the current preset; opening never overwrites a sidecar.
     openItem(index);
@@ -976,7 +980,7 @@ void PreviewController::refreshBeforeImage() {
     // changed, not only the last drag; the fetch rode the open job.
     if(!frame_||!compare_enabled_||before_plain_.isNull()){before_image_={};return;}
     try {
-        before_image_=output::exportImage(before_plain_,geometry_,{});
+        before_image_=output::displayImage(before_plain_,geometry_);
     } catch(const std::exception&){before_image_={};}
 }
 void PreviewController::setCompareEnabled(bool enabled) {
