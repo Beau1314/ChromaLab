@@ -435,6 +435,13 @@ int main(int argc,char** argv) {
     // signal, not a pointer, so the model stays engine-free.
     QObject::connect(&libraryModel,&spk::desktop::library::LibraryModel::openRequested,
         &controller,[&controller](const QUrl& url){controller.openRaw(url);});
+    // The develop join reads the controller's catalog through the provider;
+    // before the engine's init job lands it holds the empty catalog, and a
+    // join priced then is blocked ("unavailable stock") for good — the grid's
+    // tiles read 无预览 and the carry's admission refuses every row, which is
+    // the user's dead 放到观片台. The catalog's arrival refreshes the join.
+    QObject::connect(&controller,&PreviewController::initialized,
+        &libraryModel,[&libraryModel]{libraryModel.refresh();});
     // The light table (task 6.4): the mm world, its viewport and its store.
     // The file sits beside the app's own data, like the Mac's lighttable.json
     // sits beside library.json; the self-test keeps its own under the test
@@ -472,17 +479,69 @@ int main(int argc,char** argv) {
         // double-click emits) for the given file, then grab the window —
         // the develop page must show the opened photograph.
         const bool smokeCompare=qEnvironmentVariable("SPK_SMOKE_COMPARE")=="1";
+        const bool smokeCarry=qEnvironmentVariable("SPK_SMOKE_CARRY")=="1";
+        if(smokeCarry&&!smokeOpen.isEmpty()) {
+            // SPK_SMOKE_CARRY reproduces the grid's 放到观片台 end to end: an
+            // isolated library (with --library-store) or the user's own
+            // registry, the develop edit saved, then the model's
+            // lightTableFrames + the table's carry — the chain the user's
+            // "no reaction" report priced. Every step prints one line: the
+            // first non-number is the broken joint.
+            QTimer::singleShot(2500,window,[&libraryModel,smokeOpen]{
+                const bool started=libraryModel.start();
+                bool catalog=false,folder=false;
+                if(!QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+                       .isEmpty()&&QFileInfo::exists(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+                       +"/MacLibrary/sources.json")) {
+                    // The user's own registry: the probe reads it as-is.
+                } else {
+                    catalog=libraryModel.createCatalog(QStringLiteral("carry-probe"),
+                        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/carry-probe");
+                    folder=libraryModel.addFolder(QFileInfo(smokeOpen).absolutePath());
+                    const auto sync=libraryModel.synchronize();
+                    qWarning("CARRY-LIB start=%d catalog=%d folder=%d synced=%s",started?1:0,catalog?1:0,folder?1:0,
+                             sync.value(QStringLiteral("added")).toString().toUtf8().constData());
+                }
+            });
+        }
         if(!smokeOpen.isEmpty()) {
-            QTimer::singleShot(6000,window,[window,&controller,smokeOpen,snapshot,smokeCompare]{
+            QTimer::singleShot(6000,window,[&libraryModel,&lightTableModel,&controller,window,smokeOpen,snapshot,smokeCompare,smokeCarry]{
                 const QObject* page=window->findChild<QObject*>("libraryPageItem");
                 if(!page){qWarning("SMOKE-OPEN: library page not found");return;}
                 const bool emitted=QMetaObject::invokeMethod(const_cast<QObject*>(page),"openRequested",Q_ARG(QString,smokeOpen));
                 qWarning("SMOKE-OPEN emitted=%d appMode=%s",emitted?1:0,window->property("appMode").toString().toUtf8().constData());
-                QTimer::singleShot(25000,window,[&controller,window,snapshot,emitted,smokeCompare]{
+                QTimer::singleShot(25000,window,[&controller,&libraryModel,&lightTableModel,window,snapshot,emitted,smokeCompare,smokeCarry]{
                     qWarning("SMOKE-OPEN result hasFrame=%d busy=%d status=[%s] mode=%s",
                              controller.hasFrame()?1:0,controller.busy()?1:0,
                              controller.status().toUtf8().constData(),
                              window->property("appMode").toString().toUtf8().constData());
+                    if(smokeCarry) {
+                        // The develop side: one graded edit, then a forced
+                        // flush — the record the library's admission reads.
+                        controller.setExposureEv(-0.3);
+                        controller.flushEdits();
+                        const int rows=libraryModel.rowCount();
+                        const auto frames=libraryModel.lightTableFrames({});
+                        qWarning("CARRY-DIAG rows=%d frames=%d",rows,int(frames.size()));
+                        for(const QVariant& entry:frames) {
+                            const auto frame=entry.toMap();
+                            qWarning("CARRY-FRAME uuid=%s mm=%.1fx%.1f image=%d",
+                                     frame.value("uuid").toString().toUtf8().constData(),
+                                     frame.value("mmw").toDouble(),frame.value("mmh").toDouble(),
+                                     frame.value("image").value<QImage>().isNull()?0:1);
+                        }
+                        for(int i=0;i<rows;++i) {
+                            const auto info=libraryModel.rowInfo(libraryModel.uuidAt(i));
+                            const QImage tile=libraryModel.getThumbnail(info.value("path").toString(),256);
+                            qWarning("CARRY-ROW path=%s develop-state=%s tile-ready=%dx%d",
+                                     info.value("path").toString().toUtf8().constData(),
+                                     info.value("develop").toMap().value("state").toString().toUtf8().constData(),
+                                     tile.width(),tile.height());
+                        }
+                        const int placed=lightTableModel.carry(frames);
+                        qWarning("CARRY-DIAG placed=%d",placed);
+                        window->setProperty("appMode","lighttable");
+                    }
                     if(smokeCompare) {
                         // The compare probe: enable the split, apply one
                         // Layer 2 edit, and report whether the two halves of

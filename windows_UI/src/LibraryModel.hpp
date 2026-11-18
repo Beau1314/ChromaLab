@@ -308,6 +308,10 @@ public:
     Q_INVOKABLE void selectAllRows();
     /// The selection in row order — copy/paste's targets.
     Q_INVOKABLE QStringList selectedUuids() const;
+    /// The row's uuid for a full source path (the develop page's 放到观片台
+    /// maps the shown frame back to its library row). Empty when no row
+    /// carries the path.
+    Q_INVOKABLE QString uuidForPath(const QString& path) const;
     /// One row's display fields for the sidebar's Info tab: fileName, kind,
     /// rating, colorTag, capturedLocal, path, uuid and the develop map.
     /// Empty when the uuid is not on the grid.

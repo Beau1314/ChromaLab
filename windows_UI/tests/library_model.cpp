@@ -22,6 +22,7 @@
 // because the CMake invocation always passes the cached host path on this
 // machine.
 #include "LibraryModel.hpp"
+#include "LightTableModel.hpp"
 
 #include <QCoreApplication>
 #include <QDeadlineTimer>
@@ -563,6 +564,26 @@ void testModelWorkflow(const QString& helperPath) {
     check(developOf(library, 1).value(QLatin1String("state")).toString() ==
               QLatin1String("notDeveloped"),
           "an unedited row reads notDeveloped");
+
+    // --- the grid's 放到观片台 (the user's no-reaction report) ----------------------
+    // The admission chain end to end: the record the editor persists, the row
+    // the helper serves, the model's lightTableFrames sizing, and the table's
+    // carry. The walk had been model-math-only before fixtures existed; this
+    // prices every joint of the one path the user reported dead.
+    {
+        const auto carried = library.lightTableFrames({uuidOf(library, 0)});
+        check(carried.size() == 1, "the developed row is priced by its uuid");
+        const auto frame = carried.first().toMap();
+        check(frame.value(QLatin1String("mmw")).toDouble() > 0 &&
+                  frame.value(QLatin1String("mmh")).toDouble() > 0,
+              "the carry prices the develop's true millimetres");
+        check(!frame.value(QLatin1String("image")).value<QImage>().isNull(),
+              "the carry carries the tile image");
+        spk::desktop::lighttable::TableModel table;
+        check(table.carry(carried) == 1, "the carried frame lands on the table");
+        const auto refused = library.lightTableFrames({uuidOf(library, 1)});
+        check(refused.isEmpty(), "the unedited row is refused by the admission filter");
+    }
 
     // --- an album, collection.add and selecting it --------------------------------
     check(library.createAlbum(QString::fromUtf8("精选")), "createAlbum acks");
@@ -1302,6 +1323,77 @@ void testClipboardSubsetTicks(const QString& helperPath) {
                 "the copy carries exactly the ticked groups, unticked fields stay all held\n");
 }
 
+// The RAW tier of the grid's 放到观片台 (the user's no-reaction report over
+// real CR2 fixtures): the async row tile over a real decode, then the
+// admission chain — the record the editor saves, lightTableFrames, the
+// table's carry. A row whose tile never arrives is refused for good, and
+// that refusal reads as "no reaction" in the grid.
+void testRawCarryWalk(const QString& helperPath, const QString& rawPath) {
+    QTemporaryDir scratch;
+    check(scratch.isValid(), "temporary scratch root unavailable");
+    // The engine's default stocks: a develop record saved by the editor
+    // carries them and the join resolves them through the provider — the
+    // stand-in prices the real process's catalog timing (a join priced
+    // before the engine's init lands reads an empty catalog and blocks).
+    const spk::desktop::Catalog catalog{
+        {{"kodak_portra_400", "Kodak Portra 400", false},
+         {"kodak_portra_endura", "Kodak Portra Endura", false}},
+        {{"kodak_portra_endura", "Kodak Portra Endura", false}}};
+    model::LibraryModel::Deps deps;
+    deps.helper.helperPath = helperPath;
+    deps.helper.storePath = scratch.filePath(QString::fromUtf8("store"));
+    deps.registryPath = scratch.filePath(QString::fromUtf8("sources.json"));
+    deps.editDirectory = scratch.filePath(QString::fromUtf8("edits"));
+    deps.thumbnailDirectory = scratch.filePath(QString::fromUtf8("thumbs"));
+    deps.catalog = [&catalog] { return &catalog; };
+    model::LibraryModel library(deps);
+    check(library.start(), (std::string("start: ") +
+                            library.lastError().toStdString()).c_str());
+    check(library.createCatalog(QString::fromUtf8("raw-carry"), scratch.filePath(QString::fromUtf8("lib"))),
+          (std::string("createCatalog: ") + library.lastError().toStdString()).c_str());
+    check(library.addFolder(QFileInfo(rawPath).absolutePath()),
+          (std::string("addFolder: ") + library.lastError().toStdString()).c_str());
+    library.synchronize();
+    // The helper lists asynchronously; poll until the CR2 row lands.
+    int cr2Row = -1;
+    for (int spin = 0; spin < 300 && cr2Row < 0; ++spin) {
+        QEventLoop wait;QTimer::singleShot(100, &wait, &QEventLoop::quit);wait.exec();
+        library.refresh();
+        for (int r = 0; r < library.rowCount() && cr2Row < 0; ++r) {
+            const QString path = cell(library, r, model::LibraryModel::PathRole).toString();
+            if (QFileInfo(path).suffix().compare(QLatin1String("cr2"), Qt::CaseInsensitive) == 0)
+                cr2Row = r;
+        }
+    }
+    check(cr2Row >= 0, "the CR2 fixture row lands in the catalog");
+    // The async row tile: ask once (the ask starts the decode), then pump the
+    // event loop until the thumbnail arrives — or report it never did.
+    const QString rawFile = cell(library, cr2Row, model::LibraryModel::PathRole).toString();
+    library.getThumbnail(rawFile, 256);
+    QImage tile;
+    for (int spin = 0; spin < 100 && tile.isNull(); ++spin) {
+        QEventLoop wait;QTimer::singleShot(100, &wait, &QEventLoop::quit);wait.exec();
+        tile = cell(library, cr2Row, model::LibraryModel::ThumbnailRole).value<QImage>();
+    }
+    check(!tile.isNull(), "the RAW row's tile arrives (the placeholder or the decode)");
+    // The develop record, saved the way the editor does, joins the row and
+    // prices the carry.
+    editing::Store store(scratch.filePath(QString::fromUtf8("edits")));
+    store.save(QUrl::fromLocalFile(rawFile), editing::State{});
+    library.refresh();
+    const auto carried = library.lightTableFrames({cell(library, cr2Row, model::LibraryModel::UuidRole).toString()});
+    check(carried.size() == 1, "the developed CR2 is priced by its uuid");
+    const auto frame = carried.first().toMap();
+    check(frame.value(QLatin1String("mmw")).toDouble() > 0 &&
+              frame.value(QLatin1String("mmh")).toDouble() > 0,
+          "the carry prices the CR2's true millimetres");
+    check(!frame.value(QLatin1String("image")).value<QImage>().isNull(),
+          "the carry carries the CR2 tile image");
+    spk::desktop::lighttable::TableModel table;
+    check(table.carry(carried) == 1, "the carried CR2 lands on the table");
+    std::printf("raw carry walk: async tile, develop join, admission, sizing, carry all held\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1318,6 +1410,10 @@ int main(int argc, char** argv) {
             testImportSyncWorkflow(QString::fromUtf8(argv[1]));
             testClipboardWorkflow(QString::fromUtf8(argv[1]));
             testClipboardSubsetTicks(QString::fromUtf8(argv[1]));
+            if (argc > 2 && QFileInfo(argv[2]).isFile())
+                testRawCarryWalk(QString::fromUtf8(argv[1]), QString::fromUtf8(argv[2]));
+            else
+                std::printf("raw carry walk skipped: no RAW fixture given\n");
         } else {
             std::printf("model workflow skipped: no spklib-host given "
                         "(pure tier still verified)\n");

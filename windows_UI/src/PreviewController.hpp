@@ -29,6 +29,7 @@ class PreviewController final : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY stateChanged)
     Q_PROPERTY(QString fileName READ fileName NOTIFY frameChanged)
     Q_PROPERTY(QUrl sourceFolder READ sourceFolder NOTIFY frameChanged)
+    Q_PROPERTY(QString currentSource READ currentSource NOTIFY frameChanged)
     Q_PROPERTY(QImage previewImage READ previewImage NOTIFY frameChanged)
     // Split compare: the ungraded print ("冲洗后、编辑前" — the current
     // film/paper print WITHOUT Layer 2) that pairs with previewImage. It is
@@ -155,6 +156,10 @@ public:
     QString status() const { return status_; }
     QString fileName() const;
     QUrl sourceFolder() const;
+    // The full source path of the shown frame: the 放到观片台 carry maps it
+    // back to the library row's uuid (the carry's admission keys on uuids,
+    // not paths).
+    QString currentSource() const { return frame_?QString::fromStdWString(frame_->source.wstring()):QString(); }
     QImage previewImage() const { return image_; }
     QImage beforeImage() const { return before_image_; }
     bool compareEnabled() const { return compare_enabled_; }

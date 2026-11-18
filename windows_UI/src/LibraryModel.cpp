@@ -234,6 +234,11 @@ int LibraryModel::rowIndexForPath(const QString& path) const {
     return -1;
 }
 
+QString LibraryModel::uuidForPath(const QString& path) const {
+    const int index = rowIndexForPath(path);
+    return index >= 0 ? rows_[std::size_t(index)].row.uuid() : QString();
+}
+
 void LibraryModel::notifySelectionChanged() {
     if (!rows_.empty()) {
         const QModelIndex first = createIndex(0, 0);
@@ -1333,8 +1338,12 @@ QVariantList LibraryModel::lightTableFrames(const QStringList& uuids) {
         if (row.row.trashed()) continue;
         const QString path = row.row.path();
         if (path.isEmpty()) continue;
-        // the uncut frame's pixels (EXIF applied): the aspect the sizes price
-        const QImage original = getThumbnail(path, 256);
+        // The uncut frame's pixels (EXIF applied): the aspect the sizes price.
+        // A synchronous, read-only decode — the row tile fills asynchronously
+        // (getThumbnail returns the empty "pending" image until dataChanged),
+        // and an async ask here refused every row whose tile had not yet
+        // arrived, which is the user's "放到观片台没有反应".
+        const QImage original = thumbnails_.decode(path, 256);
         if (original.isNull()) continue;
         const spk::desktop::Catalog* catalog =
             catalog_provider_ ? catalog_provider_() : nullptr;
@@ -1363,7 +1372,7 @@ QVariantList LibraryModel::lightTableFrames(const QStringList& uuids) {
         frame.insert(QStringLiteral("path"), path);
         frame.insert(QStringLiteral("mmw"), mm->width());
         frame.insert(QStringLiteral("mmh"), mm->height());
-        frame.insert(QStringLiteral("image"), getThumbnail(path, 1024));
+        frame.insert(QStringLiteral("image"), thumbnails_.decode(path, 1024));
         out.append(frame);
     }
     return out;

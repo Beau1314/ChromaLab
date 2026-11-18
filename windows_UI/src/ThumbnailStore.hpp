@@ -77,6 +77,15 @@ public:
     /// Synchronous; see the header note on threads.
     QImage get(const QString& path, int maxPixel);
 
+    /// The same decode without touching either cache tier — a pure, read-only
+    /// raster decode (a RAW falls to its placeholder). For callers that must
+    /// hold a picture NOW and cannot wait for the async row tile: the carry's
+    /// admission sizes the frame from the decode, and an asynchronous ask
+    /// there returned the empty "pending" image and refused the row for good
+    /// (the grid's 放到观片台 read as no reaction). Safe beside a worker
+    /// running get(): decode touches no mutable cache state.
+    QImage decode(const QString& path, int maxPixel) const;
+
     /// Drop every cached entry, memory and disk. The directory keeps standing.
     void clear();
 
@@ -95,7 +104,6 @@ public:
 
 private:
     QString entryName(const QString& path, int maxPixel) const;
-    QImage decode(const QString& path, int maxPixel) const;
     QImage decodeRaster(const QString& path, int maxPixel) const;
     static QImage placeholder(int maxPixel);
     void scanDisk();

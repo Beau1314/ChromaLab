@@ -60,6 +60,20 @@ ApplicationWindow {
             ? Localization.L("Only pictures developed in SpektraLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.")
             : ""
     }
+    // The develop page's own carry: the shown frame mapped back to its
+    // library row through the full source path, then the grid's carry.
+    function carryCurrentToLightTable() {
+        if (!preview.hasFrame) return
+        const uuid = library.uuidForPath(preview.currentSource)
+        // A frame opened outside the library has no row to map back to; the
+        // refusal reads on the table's strip, like the grid's empty carry.
+        if (uuid.length === 0) {
+            window.appMode = "lighttable"
+            lightTablePage.notice = Localization.L("Only pictures developed in SpektraLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.")
+            return
+        }
+        carryToLightTable([uuid])
+    }
     // The active library item is a half-frame pair (its `pair` map is filled).
     // The pair's own look sections stay live; the shared photo sections that
     // pairWireOf overrides are guarded against it below.
@@ -583,6 +597,17 @@ ApplicationWindow {
                     ModeButton { objectName: "modeLightTableButton"; label: Localization.epoch && Localization.L("Light Table"); mode: "lighttable" }
                 }
                 Item { Layout.fillWidth: true }
+                // The develop page's own carry (the grid's context menu is
+                // the other entrance): one press puts the shown frame on the
+                // light table and switches there.
+                ActionButton {
+                    objectName: "carryCurrentButton"
+                    visible: (window.appMode === "develop" || window.appMode === "edit") && preview.hasFrame
+                    implicitHeight: 25
+                    font.pixelSize: 12
+                    text: Localization.epoch && Localization.L("Put on Light Table")
+                    onClicked: carryCurrentToLightTable()
+                }
                 // The language picker: each language names itself, so
                 // the rows are the same string in all four UI
                 // languages and deliberately bypass L(). The char
