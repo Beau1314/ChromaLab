@@ -49,7 +49,11 @@ qt_add_executable(SpektraLabQt WIN32
     # Mac's LightTableModel.swift — the mm world, the viewport, the 1:1
     # guards, the admission filter, the true-mm sizes and the
     # lighttable.json store.
-    src/LightTableModel.hpp src/LightTableModel.cpp)
+    src/LightTableModel.hpp src/LightTableModel.cpp
+    # The executable icon (Explorer/taskbar/shortcuts read the PE resource):
+    # windres compiles the brand asset (shared with the Mac's Logo.imageset)
+    # into the exe.
+    app.rc)
 target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
 target_include_directories(SpektraLabQt PRIVATE src)
 target_link_libraries(SpektraLabQt PRIVATE
@@ -76,6 +80,11 @@ qt_add_qml_module(SpektraLabQt URI SpektraLab VERSION 1.0
 # xcstrings_to_json.py regenerates it from the Mac's Localizable.xcstrings.
 qt_add_resources(SpektraLabQt "localization_catalog"
     PREFIX "/" FILES assets/localization.json)
+# The runtime window icon (title bar and taskbar while running): the same
+# brand asset, compiled into the resource tree so it never depends on the
+# resources/ directory being present.
+qt_add_resources(SpektraLabQt "branding"
+    PREFIX "/" FILES assets/logo.png)
 set_target_properties(SpektraLabQt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/app")
 # qmlimportscanner passes the source tree through a UTF-8 response file, and
 # the Windows tool decodes it in the host code page — a non-ASCII checkout

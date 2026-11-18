@@ -1,0 +1,5 @@
+// The executable's icon (Explorer, the taskbar and shortcuts read it from
+// this resource): the brand asset shared with the Mac's Logo.imageset —
+// four stacked CMYK capsules on a white rounded square, the film-stack
+// mark of a film development simulator. Generated from logo@3x.png.
+1 ICON "assets/app.ico"

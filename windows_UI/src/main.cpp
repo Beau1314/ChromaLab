@@ -372,6 +372,10 @@ int main(int argc,char** argv) {
     });
     QGuiApplication app(argc,argv);
     app.setOrganizationName("SpektraLab");app.setApplicationName("SpektraLab Windows");
+    // The runtime window icon (title bar and taskbar): the brand asset
+    // compiled into the resource tree; the exe's own icon comes from the
+    // separate PE resource (app.rc).
+    app.setWindowIcon(QIcon(QStringLiteral(":/logo.png")));
     QQuickStyle::setStyle("Basic");
     // The localization core (task 6.0), before any QML loads: the embedded
     // catalog behind L(), the stored language — or, on the first launch only,
