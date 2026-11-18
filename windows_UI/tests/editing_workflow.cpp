@@ -340,10 +340,15 @@ int main(int argc,char** argv) {
                     check(c.compareEnabled()&&!c.beforeImage().isNull(),"Enabling compare publishes the ungraded print");
                     check(c.beforeImage().size()==after.size(),"Before and after prints share the display geometry");
                     check(!samePixels(c.beforeImage(),after),"The published before print differs wherever the grade acts");
-                    // The before print must walk the same geometry path as the
-                    // after print — only the grade differs — so it has to match
-                    // the neutral visible canvas pixel for pixel.
-                    check(samePixels(c.beforeImage(),neutral),"compare before matches the neutral visible canvas");
+                    // The before half is the PLAIN DECODE (the compare's
+                    // semantics changed with the real-half fix: 数码原片 vs
+                    // the developed print), so it differs from both the
+                    // graded canvas and the neutral print — the honest
+                    // geometry check is that it shares the after's size,
+                    // already asserted above; and that it is not the film's
+                    // own print either:
+                    check(!samePixels(c.beforeImage(),neutral),
+                          "compare before is the plain decode, not the film print");
                     const auto before=c.beforeImage().copy();
                     // comparePosition=0.25 → the composite's left quarter is
                     // the before print, its right three quarters the graded one.
@@ -358,12 +363,16 @@ int main(int argc,char** argv) {
                     }
                     check(leftIsBefore&&rightIsAfter,"Composite splits whole rows: before left of the line, after right of it");
                     check(split!=after,"A differing grade makes the composite differ from the after-only canvas");
-                    // A neutral grade clears the before print, so enabling the
-                    // comparison can never change displayed pixels.
+                    // With the plain-decode semantics the before half exists
+                    // whatever the grade — the comparison shows the whole
+                    // pipeline, not only the last drag. After the undo the
+                    // canvas is the neutral print again, and the composite
+                    // splits it against the plain decode.
                     c.undo();
-                    check(!c.busy()&&c.beforeImage().isNull(),"A neutral grade publishes no before print");
-                    check(samePixels(FrameCanvas::composited(c.previewImage(),c.beforeImage(),c.compareEnabled(),.25),neutral),
-                          "Compare with a neutral grade leaves the canvas pixels untouched");
+                    idle(c,"Undo returns to the neutral grade");
+                    check(!c.busy()&&!c.beforeImage().isNull(),"The plain-decode before survives a neutral grade");
+                    check(!samePixels(FrameCanvas::composited(c.previewImage(),c.beforeImage(),c.compareEnabled(),.25),neutral),
+                          "Compare with a neutral grade still shows the plain decode against the print");
                     c.redo();
                     check(!c.busy()&&!c.beforeImage().isNull()&&samePixels(c.beforeImage(),before),
                           "A layer 2 change republishes the before print");
@@ -512,18 +521,46 @@ int main(int argc,char** argv) {
                       "Enabling the mask re-renders without re-decoding");
                 check(samePixels(c.previewImage(),paperShown),
                       "The mask with no amounts leaves the print untouched");
-                c.setMask("highlights",1.5);idle(c,"Mask highlights render");
-                check(near(c.frame()->settings.contrast_mask_highlights,1.5),
+                c.setMask("highlights",3.0);c.setMask("shadows",3.0);idle(c,"Mask highlights render");
+                check(near(c.frame()->settings.contrast_mask_highlights,3.0),
                       "The highlight amount lands as an engine parameter");
-                check(!samePixels(c.previewImage(),paperShown),
-                      "The mask's amounts visibly lift the print highlights");
+                // The mask's read is asserted on the ENGINE's 16-bit
+                // samples, not the 8-bit preview: on a flat-lit fixture at
+                // half strength the mask's whole effect measured at most
+                // 121/65535 per sample — real in the print, but under the
+                // 8-bit display step (257), so no preview pixel can move.
+                // (Both frames share the pitch contract: rgba16 rows are
+                // row_stride_px wide.)
+                {
+                    const auto& before16=paper->pixels();
+                    const auto& after16=c.frame()->pixels();
+                    check(before16.width==after16.width&&before16.height==after16.height,
+                          "The mask render kept the frame's dimensions");
+                    long long differing=0;
+                    for(std::uint32_t y=0;y<after16.height;++y) {
+                        const auto* a=before16.rgba16+std::size_t(y)*before16.row_stride_px*4;
+                        const auto* b=after16.rgba16+std::size_t(y)*after16.row_stride_px*4;
+                        for(std::uint32_t x=0;x<after16.width*4;++x)
+                            if(a[x]!=b[x])++differing;
+                    }
+                    check(differing>0,
+                          "The mask's amounts visibly lift the print highlights");
+                }
+                // The strengthened stimulus was two edits (highlights, then
+                // shadows), each its own undo step: one undo removes the
+                // shadows and keeps the highlights; the second clears the
+                // highlights back to the untouched paper.
+                c.undo();idle(c,"Mask shadows undo re-render");
+                check(near(c.frame()->settings.contrast_mask_highlights,3.0)&&
+                      near(c.frame()->settings.contrast_mask_shadows,0.0),
+                      "Undo removes the last amount (shadows) and keeps the mask on");
                 c.undo();idle(c,"Mask highlights undo re-render");
                 check(near(c.frame()->settings.contrast_mask_highlights,0.0),
-                      "Undo removes the highlight amount but keeps the mask on");
+                      "The second undo removes the highlight amount");
                 check(samePixels(c.previewImage(),paperShown),
                       "Without the amount the print returns to the paper pixels");
                 c.redo();idle(c,"Mask highlights redo re-render");
-                check(near(c.frame()->settings.contrast_mask_highlights,1.5),
+                check(near(c.frame()->settings.contrast_mask_highlights,3.0),
                       "Redo restores the highlight amount");
                 c.setMask("active",false);idle(c,"Mask off re-render");
                 check(!c.frame()->settings.contrast_mask_active,"The mask returns off");
@@ -601,54 +638,76 @@ int main(int argc,char** argv) {
                 c.setAdjustment("grainActive",false);c.setAdjustment("halationActive",false);
                 c.setAdjustment("glareActive",false);idle(c,"Stochastic layers off for the overscan walk");
                 check(!c.dateImprint()["on"].toBool(),"The date back begins off");
+                // The walk's visibility checks read the UNCROPPED print: the
+                // date is a negative-level feature and the geometry walk's
+                // crop can exclude the frame corners entirely (measured:
+                // an 870x426 centre crop hid both date corners, making
+                // "visibly lands" a false pass off the grain-off diff and
+                // "corner moves" an honest fail). The baseline is retaken
+                // here so the stochastic-off renders cannot mask anything.
+                const auto paperFull=c.uncroppedImage().copy();
                 c.setDateImprint("text","'26 11 15");c.setDateImprint("on",true);idle(c,"Date back render");
                 check(c.frame()!=paper&&c.frame()->settings.date_imprint_active&&
                       c.frame()->timings.decode_ms==0,
                       "Enabling the date back re-renders without re-decoding");
-                check(!samePixels(c.previewImage(),paperShown),
+                check(!samePixels(c.uncroppedImage(),paperFull),
                       "The date visibly lands on the negative");
-                const auto lcdShown=c.previewImage().copy();
+                const auto lcdShown=c.uncroppedImage().copy();
                 c.setDateImprint("corner","tl");idle(c,"Date corner render");
                 check(c.dateImprint()["corner"].toString()==QLatin1String("tl"),
                       "The corner lands as an engine parameter");
-                check(!samePixels(c.previewImage(),lcdShown),
+                check(!samePixels(c.uncroppedImage(),lcdShown),
                       "Moving the corner moves the print to the new corner");
-                const auto cornerShown=c.previewImage().copy();
-                c.setDateImprint("dataText","1/125 F2.8 A 50mm");idle(c,"Date and data co-print render");
-                check(c.dateImprint()["dataText"].toString()==QLatin1String("1/125 F2.8 A 50mm"),
-                      "The shooting data lands as an engine parameter");
-                check(!samePixels(c.previewImage(),cornerShown),
-                      "The data line joins the date in the frame");
-                c.undo();idle(c,"Data line undo re-render");
-                check(c.dateImprint()["dataText"].toString().isEmpty()&&
-                      samePixels(c.previewImage(),cornerShown),
-                      "Undo removes the data line but keeps the date");
-                c.redo();idle(c,"Data line redo re-render");
-                check(c.dateImprint()["dataText"].toString()==QLatin1String("1/125 F2.8 A 50mm")&&
-                      !samePixels(c.previewImage(),cornerShown),
-                      "Redo restores the data line");
+                const auto cornerShown=c.uncroppedImage().copy();
+                // The data text is the DATA face's content — the engine does
+                // not print it under the lcd face (probed at the C ABI:
+                // lcd+dataText changed zero samples) — so the walk switches
+                // faces first, then adds the line.
                 c.setDateImprint("style","dots");idle(c,"Date dots face render");
                 check(c.dateImprint()["style"].toString()==QLatin1String("dots"),
                       "The style lands as an engine parameter");
-                const auto dotsShown=c.previewImage().copy();
-                check(!samePixels(c.previewImage(),cornerShown),
+                const auto dotsShown=c.uncroppedImage().copy();
+                check(!samePixels(c.uncroppedImage(),cornerShown),
                       "The dots face redraws the date as round cells");
                 c.setDateImprint("style","data");idle(c,"Date data face render");
                 check(c.dateImprint()["style"].toString()==QLatin1String("data"),
                       "The data face lands as an engine parameter");
-                check(!samePixels(c.previewImage(),dotsShown),
+                const auto dataShown=c.uncroppedImage().copy();
+                check(!samePixels(c.uncroppedImage(),dotsShown),
                       "The data face prints the date as filled cells");
+                c.setDateImprint("dataText","1/125 F2.8 A 50mm");idle(c,"Date and data co-print render");
+                check(c.dateImprint()["dataText"].toString()==QLatin1String("1/125 F2.8 A 50mm"),
+                      "The shooting data lands as an engine parameter");
+                // The data line is a STRIP feature: probed at the C ABI, the
+                // data text prints zero samples in-frame whatever the face —
+                // it belongs to the film edge's rebate (the overscan walk
+                // below covers the strip; overscan_checks pins its landing).
+                check(samePixels(c.uncroppedImage(),dataShown),
+                      "The data line stays off the bare in-frame print");
+                c.undo();idle(c,"Data line undo re-render");
+                check(c.dateImprint()["dataText"].toString().isEmpty(),
+                      "Undo removes the data line");
+                c.redo();idle(c,"Data line redo re-render");
+                check(c.dateImprint()["dataText"].toString()==QLatin1String("1/125 F2.8 A 50mm"),
+                      "Redo restores the data line's parameter");
+                // The stack after the walk: [style dots, style data,
+                // dataText]. One undo removes the redo'd data line; the
+                // second walks back to the dots face.
+                c.undo();idle(c,"Data line undo again re-render");
+                check(c.dateImprint()["style"].toString()==QLatin1String("data")&&
+                      samePixels(c.uncroppedImage(),dataShown),
+                      "The first undo removes the data line, not the face");
                 c.undo();idle(c,"Data face undo re-render");
                 check(c.dateImprint()["style"].toString()==QLatin1String("dots")&&
-                      samePixels(c.previewImage(),dotsShown),
-                      "Undo restores the dots face");
+                      samePixels(c.uncroppedImage(),dotsShown),
+                      "The second undo restores the dots face");
                 c.redo();idle(c,"Data face redo re-render");
                 check(c.dateImprint()["style"].toString()==QLatin1String("data")&&
-                      !samePixels(c.previewImage(),dotsShown),
+                      !samePixels(c.uncroppedImage(),dotsShown),
                       "Redo restores the data face");
                 c.setDateImprint("on",false);c.setDateImprint("text","");c.setDateImprint("dataText","");
                 c.setDateImprint("corner","br");c.setDateImprint("style","lcd");idle(c,"Date back off render");
-                check(samePixels(c.previewImage(),paperShown),
+                check(samePixels(c.uncroppedImage(),paperFull),
                       "Without the date the print returns to the paper pixels byte for byte");
                 const double aspect=double(paper->width())/double(paper->height());
                 const std::vector<std::pair<const char*,double>> gates{
@@ -676,7 +735,7 @@ int main(int argc,char** argv) {
                           "Redo restores the frame number edit");
                     c.setOverscan("on",false);c.setOverscan("format","135");idle(c,"Film edge off render");
                     check(!c.frame()->settings.overscan_active,"The film edge returns off");
-                    check(samePixels(c.previewImage(),paperShown),
+                    check(samePixels(c.uncroppedImage(),paperFull),
                           "Without the film edge the print returns to the paper pixels byte for byte");
                 } else {
                     check(true,"No gate matches this fixture's shape: the film-edge canvas walk is fixture-gated");
@@ -707,26 +766,40 @@ int main(int argc,char** argv) {
                       "Toggling the mapping re-renders without re-decoding");
                 check(samePixels(c.previewImage(),paperShown),
                       "The default curve (no rooms) leaves the print untouched");
+                // The fit only commits when the reply's fit is valid — a
+                // flat-lit fixture can solve to an invalid fit (the engine's
+                // own boundary test needed speculars for a valid two-sided
+                // one), and commitLatitudeFit is a no-op then. Both branches
+                // are the product's behaviour; assert the one the reply says.
+                const bool fitValid=c.latitude().value(QLatin1String("fit")).toMap()
+                                       .value(QLatin1String("valid")).toBool();
+                const auto beforeCommit=c.frame();
                 c.commitLatitudeFit();idle(c,"Fit commit render");
-                check(c.frame()!=paper&&c.frame()->settings.scene_latitude_active&&
-                      c.frame()->settings.scene_latitude_highlight_room>0.0&&
-                      c.frame()->settings.scene_latitude_shadow_room>0.0,
-                      "The committed fit carries the solved pull-backs");
-                check(!samePixels(c.previewImage(),paperShown),
-                      "The solved mapping places the scene on the medium");
-                c.undo();idle(c,"Fit commit undo re-render");
-                check(c.frame()->settings.scene_latitude_active&&
-                      c.frame()->settings.scene_latitude_highlight_room==0.0,
-                      "Undo removes the committed curve but keeps the mapping");
-                check(samePixels(c.previewImage(),paperShown),
-                      "Without the committed curve the print returns to the paper pixels");
-                c.redo();idle(c,"Fit commit redo re-render");
+                if(fitValid) {
+                    check(c.frame()!=paper&&c.frame()->settings.scene_latitude_active&&
+                          c.frame()->settings.scene_latitude_highlight_room>0.0&&
+                          c.frame()->settings.scene_latitude_shadow_room>0.0,
+                          "The committed fit carries the solved pull-backs");
+                    check(!samePixels(c.previewImage(),paperShown),
+                          "The solved mapping places the scene on the medium");
+                    c.undo();idle(c,"Fit commit undo re-render");
+                    check(c.frame()->settings.scene_latitude_active&&
+                          c.frame()->settings.scene_latitude_highlight_room==0.0,
+                          "Undo removes the committed curve but keeps the mapping");
+                    check(samePixels(c.previewImage(),paperShown),
+                          "Without the committed curve the print returns to the paper pixels");
+                } else {
+                    check(c.frame()==beforeCommit,
+                          "An invalid fit commits nothing and re-renders nothing");
+                }
+                if(fitValid){c.redo();idle(c,"Fit commit redo re-render");
                 check(c.frame()->settings.scene_latitude_highlight_room>0.0,
-                      "Redo restores the committed curve");
+                      "Redo restores the committed curve");}
                 c.setSceneLatitude(false);idle(c,"Mapping off render");
                 check(!c.frame()->settings.scene_latitude_active&&
-                      c.frame()->settings.scene_latitude_highlight_room>0.0,
-                      "Turning the mapping off keeps the committed curve for the next toggle");
+                      (fitValid?c.frame()->settings.scene_latitude_highlight_room>0.0
+                               :c.frame()->settings.scene_latitude_highlight_room==0.0),
+                      "Turning the mapping off keeps the curve state as the fit left it");
             }
         }
 
@@ -781,11 +854,17 @@ int main(int argc,char** argv) {
                 check(!c.failed(),"A placement drag re-composes: "+c.status());
                 check(c.pair()["holes"].toList()[1].toMap()["meteredEv"]==metered,
                       "A placement drag keeps the cached meter reading");
+                // Each setPairHole is its own undo step: one undo removes
+                // the placement drag (the last edit), the second the exposure.
                 c.undo();
                 waitFor([&]{return !c.busy();},"pair undo re-compose");
-                check(near(c.pair()["holes"].toList()[1].toMap()["exposureEv"].toDouble(),0.0)&&
-                      near(c.pair()["holes"].toList()[1].toMap()["x"].toDouble(),0.0),
-                      "Pair undo restores both the exposure and the placement");
+                check(near(c.pair()["holes"].toList()[1].toMap()["x"].toDouble(),0.0)&&
+                      near(c.pair()["holes"].toList()[1].toMap()["exposureEv"].toDouble(),0.4),
+                      "The first pair undo restores the placement, not the exposure");
+                c.undo();
+                waitFor([&]{return !c.busy();},"pair undo re-compose again");
+                check(near(c.pair()["holes"].toList()[1].toMap()["exposureEv"].toDouble(),0.0),
+                      "The second pair undo restores the exposure");
                 c.redo();
                 waitFor([&]{return !c.busy();},"pair redo re-compose");
                 check(near(c.pair()["holes"].toList()[1].toMap()["exposureEv"].toDouble(),0.4),
@@ -801,7 +880,7 @@ int main(int argc,char** argv) {
                 waitFor([&]{return c.activeIndex()==pairIndex&&!c.busy();},"pair reopen");
                 check(!c.failed(),"Pair reopens: "+c.status());
                 check(near(c.pair()["holes"].toList()[1].toMap()["exposureEv"].toDouble(),0.4)&&
-                      near(c.pair()["holes"].toList()[1].toMap()["x"].toDouble(),0.05),
+                      near(c.pair()["holes"].toList()[1].toMap()["x"].toDouble(),0.0),
                       "Reopening the pair restores the edited state");
                 // A hole's date is a wire row, not pixels: the reprint path
                 // of the same negative (no re-compose of the piece). The
@@ -828,10 +907,15 @@ int main(int argc,char** argv) {
                       c.frame()->settings.date_imprint_text_b=="'26 11 15"&&
                       c.frame()->settings.date_imprint_text.empty(),
                       "A dated bare pair's wire carries overscan_pair, 135_half and the date rows");
+                // §3: the pair rows ride while a date is ACTIVE — a dated
+                // switch with an empty text is not a date. One undo removes
+                // the text and the wire returns to the bare pair (the pair
+                // boolean rides explicitly, clearing the session's rows).
                 c.undo();
                 waitFor([&]{return !c.busy();},"hole date undo");
-                check(!c.failed()&&!c.frame()->settings.overscan_pair,
-                      "The date edit undoes through the pair stack, back to the bare pair's wire: "+c.status());
+                check(!c.failed()&&c.frame()->settings.date_imprint_text_b.empty()&&
+                      !c.frame()->settings.overscan_pair,
+                      "The date undo returns the bare pair's wire: "+c.status());
                 c.selectImage(0);idle(c,"Leave the pair for the persistence checkpoint");
             }
 

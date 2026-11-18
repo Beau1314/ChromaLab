@@ -67,10 +67,18 @@ desktop::RenderSettings pairWireOf(const editing::PairState& pair) {
     s.date_imprint_text=pair.holes[0].dated?pair.holes[0].date_text.toStdString():std::string();
     s.date_imprint_text_b=pair.holes[1].dated?pair.holes[1].date_text.toStdString():std::string();
     s.date_imprint_active=!s.date_imprint_text.empty()||!s.date_imprint_text_b.empty();
-    if(onStrip||s.date_imprint_active) {
-        s.overscan_pair=true;
-        s.overscan_format="135_half";
-    }
+    // The pair rows ride the wire EXPLICITLY both ways. A reprint's delta
+    // only carries changed keys, so a bare pair that omits them would leave
+    // a previously-dated session's overscan_pair=true standing and render
+    // the strip canvas on a piece the model calls bare (found by the first
+    // real-RAW gate run: undoing the dated switch left the frame's wire
+    // carrying pair=true while the model said dated=false). False is the
+    // default on a clean open, so stating it costs nothing.
+    s.overscan_pair=onStrip||s.date_imprint_active;
+    // The format row only rides when the pair does (§3: a bare pair sends
+    // neither); the boolean itself rides both ways so a reprint's delta
+    // clears a previously-dated session.
+    if(s.overscan_pair)s.overscan_format="135_half";
     return s;
 }
 
@@ -515,7 +523,23 @@ void PreviewController::changed(const QString& editKey){
 }
 void PreviewController::setFilmIndex(int v){if(!settingsEditable()||v<0||v>=films_.size()||v==film_index_)return;film_index_=v;changed("filmIndex");}
 void PreviewController::setPaperIndex(int v){if(!settingsEditable()||filmIsPositive()||v<0||v>=papers_.size()||v==paper_index_)return;paper_index_=v;changed("paperIndex");}
-void PreviewController::setDecodeMode(int v){if(!settingsEditable()||v<0||v>1||v==decode_mode_)return;decode_mode_=v;changed("decodeMode");}
+void PreviewController::setDecodeMode(int v){
+    if(!settingsEditable()||v<0||v>1||v==decode_mode_)return;
+    decode_mode_=v;
+    // The headroom decode keeps the file's own as-shot multipliers, so a WB
+    // override has nothing to attach to there (the engine host refuses the
+    // pair outright). The switch therefore clears the override — parking it
+    // would leave a slider showing a number the decode ignores and would
+    // make reopen refuse the photo outright (restore of wb+headroom was the
+    // first real-RAW gate run's failure: the persisted record held
+    // headroom+5500K and the engine's refusal turned into an unopenable
+    // photo). One undo step covers both rows because changed() snapshots the
+    // whole state after the reset.
+    if(v==1&&(extra_settings_.wb_temperature_k!=0.0||extra_settings_.wb_tint!=0.0)){
+        extra_settings_.wb_temperature_k=0.0;extra_settings_.wb_tint=0.0;
+    }
+    changed("decodeMode");
+}
 void PreviewController::setExposureEv(double v){if(!settingsEditable()||filmIsPositive()||!std::isfinite(v)||v< -2||v>2||v==exposure_ev_)return;exposure_ev_=v;changed("exposureEv");}
 void PreviewController::resetSettings(){if(!settingsEditable())return;loadSettings({},desktop::DecodeMode::compatible16);changed();}
 void PreviewController::openRaw(const QUrl& url) {
@@ -1511,8 +1535,14 @@ void PreviewController::submitPairWire(int index) {
     const auto held=snapshot.pair_frame;
     const auto cache=snapshot.meter_cache;
     const auto gen=++generation_;
-    submit([sources,pair,wire,held,cache,positive,gen,index](desktop::PreviewHost& host) {
-        Reply r;r.generation=gen;r.operation="render";r.library_index=index;
+    // The wire reply rides the ordinary render contract: without the
+    // settings revision the superseded check in accept() compares 0 against
+    // every post-edit revision and silently drops EVERY pair wire reply
+    // (found by the first real-RAW gate run — the walk had been
+    // compile-only before fixtures existed).
+    const auto revision=settings_revision_;
+    submit([sources,pair,wire,held,cache,positive,gen,revision,index](desktop::PreviewHost& host) {
+        Reply r;r.generation=gen;r.settings_revision=revision;r.operation="render";r.library_index=index;
         try {
             // The date and trim rows live on the wire, not in the pixels: a
             // live pair session reprints its kept negative. Anything else
