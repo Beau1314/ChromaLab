@@ -543,7 +543,18 @@ void PreviewController::openItem(int index) {
     const auto item=library_.at(index);const auto p=path(item.url);
     const auto gen=++generation_;
     submit([p,item,gen,index](auto& host){Reply r;r.generation=gen;r.operation="open";r.library_index=index;r.geometry=item.geometry;r.layer2=item.layer2;
-        try{r.frame=host.open_raw(p,item.mode,item.settings);}catch(const std::exception& e){r.error=text(e.what());}return r;},L("Decoding and rendering the RAW…"),"open");
+        try{
+            r.frame=host.open_raw(p,item.mode,item.settings);
+            // The compare's plain-decode half rides the open, at the frame's
+            // OWN resolution: the canvas composite requires the before to
+            // match the after's dimensions exactly or it silently shows the
+            // after on both sides of the split.
+            try{
+                const auto bytes=host.plain_decode_preview(0,&r.before_w,&r.before_h);
+                QImage img(bytes.data(),int(r.before_w),int(r.before_h),int(r.before_w)*3,QImage::Format_RGB888);
+                r.before_plain=img.copy();
+            }catch(const std::exception&){}
+        }catch(const std::exception& e){r.error=text(e.what());}return r;},L("Decoding and rendering the RAW…"),"open");
 }
 void PreviewController::apply() {
     if(!frame_||busy_||dialog_open_)return;
@@ -567,8 +578,18 @@ void PreviewController::apply() {
             // a display allocation failure). Reconcile against the image the
             // user is actually editing before reusing the worker's session.
             const auto active=host.current();
-            r.frame=active&&active->source==shown->source&&active->decode_mode==mode&&!wbChanged
-                ?host.render(s):host.open_raw(shown->source,mode,s);
+            const bool via_open=!(active&&active->source==shown->source&&active->decode_mode==mode&&!wbChanged);
+            if(via_open) {
+                r.frame=host.open_raw(shown->source,mode,s);
+                // A re-decode (white balance moved) changes the plain decode
+                // too — refresh the compare's before half or it keeps the
+                // old balance.
+                try{
+                    const auto bytes=host.plain_decode_preview(0,&r.before_w,&r.before_h);
+                    QImage img(bytes.data(),int(r.before_w),int(r.before_h),int(r.before_w)*3,QImage::Format_RGB888);
+                    r.before_plain=img.copy();
+                }catch(const std::exception&){}
+            } else r.frame=host.render(s);
         }catch(const std::exception& e){r.error=text(e.what());}return r;},
         wbChanged?L("Re-decoding with the white balance…"):L("Updating the film effects…"),"render");
 }

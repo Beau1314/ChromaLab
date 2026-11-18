@@ -487,19 +487,24 @@ int main(int argc,char** argv) {
                         controller.setLayer2("exposure",1.0);
                         QTimer::singleShot(1500,window,[&controller,window,snapshot]{
                             controller.setLayer2("exposure",0.0);
-                            const QImage grab=qobject_cast<QQuickWindow*>(window)?
-                                qobject_cast<QQuickWindow*>(window)->grabWindow():QImage();
-                            if(!grab.isNull()) {
-                                const int mid=grab.width()/2;
-                                const QImage left=grab.copy(0,0,mid,grab.height()).convertToFormat(QImage::Format_RGB32);
-                                const QImage right=grab.copy(mid,0,grab.width()-mid,grab.height()).convertToFormat(QImage::Format_RGB32);
+                            // The honest check: the two images the split
+                            // composites, not window halves (panels differ).
+                            const QImage b=controller.beforeImage().convertToFormat(QImage::Format_RGB32);
+                            const QImage a=controller.previewImage().convertToFormat(QImage::Format_RGB32);
+                            if(b.isNull()||a.isNull()||b.size()!=a.size())
+                                qWarning("COMPARE-DIAG beforeNull=%d afterNull=%d sizeMatch=%d (%dx%d vs %dx%d)",
+                                         b.isNull()?1:0,a.isNull()?1:0,b.size()==a.size()?1:0,
+                                         b.width(),b.height(),a.width(),a.height());
+                            else {
                                 long diff=0;
-                                for(int y=0;y<left.height();++y)
-                                    for(int x=0;x<left.width();++x)
-                                        if(left.pixel(x,y)!=right.pixel(x,y))++diff;
-                                const long total=long(left.width())*left.height();
+                                for(int y=0;y<b.height();++y)
+                                    for(int x=0;x<b.width();++x)
+                                        if(b.pixel(x,y)!=a.pixel(x,y))++diff;
+                                const long total=long(b.width())*b.height();
                                 qWarning("COMPARE-DIAG differing-pixels=%ld of %ld (%.1f%%)",diff,total,100.0*diff/total);
                             }
+                            const QImage grab=qobject_cast<QQuickWindow*>(window)?
+                                qobject_cast<QQuickWindow*>(window)->grabWindow():QImage();
                             if(!snapshot.isEmpty()&&!grab.isNull())grab.save(snapshot,"PNG");
                             QCoreApplication::exit(0);
                         });

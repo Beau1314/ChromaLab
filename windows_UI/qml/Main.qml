@@ -42,7 +42,7 @@ ApplicationWindow {
     // The light table (task 6.4): the third page, full-window except the
     // mode row this column keeps.
     readonly property bool lighttableMode: appMode === "lighttable"
-    onAppModeChanged: if (window.libraryMode && libraryPage.item !== null) libraryPage.item.takeFocus()
+    onAppModeChanged: if (window.libraryMode) gridPageRoot.takeFocus()
     // The grid's 放到印相台: carry the selection's frames through the
     // model's admission filter and true-mm sizes, then open the page. A
     // carry that lays nothing says so on the page's strip (the Mac's Add
@@ -1017,6 +1017,7 @@ ApplicationWindow {
             // stays 冲洗/编辑's browser — the full shared-browser
             // unification is future work.
             LibraryGridPage {
+                id: gridPageRoot
                 objectName: "libraryPageItem"
                 anchors.fill: parent
                 visible: window.libraryMode
