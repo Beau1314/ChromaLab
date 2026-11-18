@@ -1,4 +1,5 @@
 #include "PreviewController.hpp"
+#include "ColourTransform.hpp"
 #include "Histogram.hpp"
 #include "PairPiece.hpp"
 #include "core/json.hpp"
@@ -19,6 +20,7 @@ namespace desktop=spk::desktop;
 namespace output=desktop::output;
 namespace editing=desktop::editing;
 namespace l2=desktop::layer2;
+namespace colour=desktop::colour;
 namespace histogram=desktop::histogram;
 namespace pairc=desktop::pair;
 namespace io=spk::io;
@@ -527,6 +529,31 @@ void PreviewController::openRaw(const QUrl& url) {
     // still starts with the current preset; opening never overwrites a sidecar.
     openItem(index);
 }
+// The compare's before half: the plain decode (linear ProPhoto) through the
+// canonical output kernel — identity decode (the samples are linear), the
+// CAT02 matrix, the CAM16 roll-off and the sRGB encode — as an ARGB32
+// image the canvas composite can cut with the photo's geometry. Returns a
+// null image when the decode is empty; failures leave the compare after-only.
+QImage plainBeforeImage(desktop::PreviewHost& host) {
+    std::uint32_t w = 0, h = 0;
+    const auto lin = host.plain_decode_linear16(0, &w, &h);
+    QImage linear(int(w), int(h), QImage::Format_RGBA64);
+    if (linear.isNull()) return {};
+    for (std::uint32_t y = 0; y < h; ++y) {
+        auto* row = reinterpret_cast<std::uint16_t*>(linear.scanLine(int(y)));
+        const auto* src = lin.data() + size_t(y) * w * 3;
+        for (std::uint32_t x = 0; x < w; ++x) {
+            row[x * 4 + 0] = src[x * 3 + 0];
+            row[x * 4 + 1] = src[x * 3 + 1];
+            row[x * 4 + 2] = src[x * 3 + 2];
+            row[x * 4 + 3] = 65535;
+        }
+    }
+    auto setup = host.outputTransform("ProPhoto RGB", "sRGB");
+    setup.source_cctf_mode = 4;  // the samples are linear: decode is identity
+    return colour::apply_rgba64(linear, setup).convertToFormat(QImage::Format_ARGB32);
+}
+
 void PreviewController::openItem(int index) {
     endEditGesture();
     auto& mutableItem=library_.at(index);
@@ -549,11 +576,7 @@ void PreviewController::openItem(int index) {
             // OWN resolution: the canvas composite requires the before to
             // match the after's dimensions exactly or it silently shows the
             // after on both sides of the split.
-            try{
-                const auto bytes=host.plain_decode_preview(0,&r.before_w,&r.before_h);
-                QImage img(bytes.data(),int(r.before_w),int(r.before_h),int(r.before_w)*3,QImage::Format_RGB888);
-                r.before_plain=img.copy();
-            }catch(const std::exception&){}
+            try{r.before_plain=plainBeforeImage(host);}catch(const std::exception&){}
         }catch(const std::exception& e){r.error=text(e.what());}return r;},L("Decoding and rendering the RAW…"),"open");
 }
 void PreviewController::apply() {
@@ -584,11 +607,7 @@ void PreviewController::apply() {
                 // A re-decode (white balance moved) changes the plain decode
                 // too — refresh the compare's before half or it keeps the
                 // old balance.
-                try{
-                    const auto bytes=host.plain_decode_preview(0,&r.before_w,&r.before_h);
-                    QImage img(bytes.data(),int(r.before_w),int(r.before_h),int(r.before_w)*3,QImage::Format_RGB888);
-                    r.before_plain=img.copy();
-                }catch(const std::exception&){}
+                try{r.before_plain=plainBeforeImage(host);}catch(const std::exception&){}
             } else r.frame=host.render(s);
         }catch(const std::exception& e){r.error=text(e.what());}return r;},
         wbChanged?L("Re-decoding with the white balance…"):L("Updating the film effects…"),"render");

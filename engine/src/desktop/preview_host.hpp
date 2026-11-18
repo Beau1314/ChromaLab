@@ -298,13 +298,15 @@ public:
         const std::string& src_cs, const std::string& dst_cs,
         const std::string& gamut_compress_json = R"({"lightness_compression_active": false})") const;
     // The plain decode (the RAW's own pixels, no film, no paper) as packed
-    // top-down RGB888 — the compare's "数码原片" half. Linear ProPhoto float
-    // converted to encoded sRGB with the engine's own output transform, at
-    // the caller's preview size (0 = the decode's own). Throws when nothing
-    // is decoded. The bytes are the callee's own copy.
-    std::vector<std::uint8_t> plain_decode_preview(int preview_long_edge = 0,
-                                                   std::uint32_t* out_width = nullptr,
-                                                   std::uint32_t* out_height = nullptr) const;
+    // top-down RGB uint16 triples, LINEAR ProPhoto (the decode's own space;
+    // the sample float scaled by 65535) — the compare's "数码原片" half
+    // before its output transform, which the caller applies with the
+    // engine's own numbers (identity decode; the pixels are linear).
+    // preview_long_edge 0 = the decode's own resolution. Throws when
+    // nothing is decoded. The samples are the callee's own copy.
+    std::vector<std::uint16_t> plain_decode_linear16(int preview_long_edge = 0,
+                                                     std::uint32_t* out_width = nullptr,
+                                                     std::uint32_t* out_height = nullptr) const;
     // Where the film's gates sit on the canvas the last render drew
     // (`spk_overscan_geometry`): valid only with a film edge, and for a
     // half-frame pair the reply's "gates" array holds both. The reply is the

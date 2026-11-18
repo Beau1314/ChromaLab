@@ -1,4 +1,8 @@
 #include "ColourTransform.hpp"
+#include <algorithm>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 #include <algorithm>
 #include <cmath>
@@ -230,15 +234,47 @@ void apply_rgba16(std::vector<std::uint16_t>& rgba, int width, int height,
                   const OutputTransformData& setup) {
     if (width <= 0 || height <= 0 || rgba.size() != std::size_t(width) * std::size_t(height) * 4)
         throw std::runtime_error("the output transform's picture has invalid storage");
-    for (std::size_t i = 0; i < rgba.size(); i += 4) {
-        const std::array<double, 3> e = transform_pixel({double(rgba[i]) / 65535.0,
-                                                         double(rgba[i + 1]) / 65535.0,
-                                                         double(rgba[i + 2]) / 65535.0},
-                                                        setup);
-        rgba[i] = to16(e[0]);
-        rgba[i + 1] = to16(e[1]);
-        rgba[i + 2] = to16(e[2]);
+    // transform_pixel and to16 are pure and the writes are disjoint per
+    // pixel, so large pictures split over disjoint slices with the same
+    // arithmetic — a 22-MP compare half is ~25 s single-threaded. The
+    // first exception wins (rethrown after the join); small pictures stay
+    // inline.
+    const std::size_t pixels = rgba.size() / 4;
+    auto run = [&rgba, &setup](std::size_t begin, std::size_t end) {
+        for (std::size_t i = begin * 4; i < end * 4; i += 4) {
+            const std::array<double, 3> e = transform_pixel({double(rgba[i]) / 65535.0,
+                                                             double(rgba[i + 1]) / 65535.0,
+                                                             double(rgba[i + 2]) / 65535.0},
+                                                            setup);
+            rgba[i] = to16(e[0]);
+            rgba[i + 1] = to16(e[1]);
+            rgba[i + 2] = to16(e[2]);
+        }
+    };
+    const unsigned hardware = std::thread::hardware_concurrency();
+    const unsigned threads = pixels > (std::size_t(1) << 20)
+        ? std::clamp(hardware == 0 ? 1u : hardware, 1u, 16u) : 1u;
+    if (threads <= 1) { run(0, pixels); return; }
+    std::mutex first_lock;
+    std::exception_ptr first_error;
+    std::vector<std::thread> pool;
+    pool.reserve(threads - 1);
+    const std::size_t per = (pixels + threads - 1) / threads;
+    for (unsigned t = 1; t < threads; ++t) {
+        const std::size_t begin = std::min<std::size_t>(t * per, pixels);
+        const std::size_t end = std::min<std::size_t>(begin + per, pixels);
+        if (begin >= end) continue;
+        pool.emplace_back([&run, &first_lock, &first_error, begin, end] {
+            try { run(begin, end); }
+            catch (const std::exception&) {
+                std::lock_guard<std::mutex> lock(first_lock);
+                if (!first_error) first_error = std::current_exception();
+            }
+        });
     }
+    run(0, std::min<std::size_t>(per, pixels));
+    for (auto& worker : pool) worker.join();
+    if (first_error) std::rethrow_exception(first_error);
 }
 
 QImage apply_rgba64(const QImage& frame, const OutputTransformData& setup) {

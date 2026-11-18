@@ -474,7 +474,7 @@ int main(int argc,char** argv) {
                 if(!page){qWarning("SMOKE-OPEN: library page not found");return;}
                 const bool emitted=QMetaObject::invokeMethod(const_cast<QObject*>(page),"openRequested",Q_ARG(QString,smokeOpen));
                 qWarning("SMOKE-OPEN emitted=%d appMode=%s",emitted?1:0,window->property("appMode").toString().toUtf8().constData());
-                QTimer::singleShot(10000,window,[&controller,window,snapshot,emitted,smokeCompare]{
+                QTimer::singleShot(25000,window,[&controller,window,snapshot,emitted,smokeCompare]{
                     qWarning("SMOKE-OPEN result hasFrame=%d busy=%d status=[%s] mode=%s",
                              controller.hasFrame()?1:0,controller.busy()?1:0,
                              controller.status().toUtf8().constData(),
