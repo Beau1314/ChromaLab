@@ -112,12 +112,14 @@ Data-style tables, schema 1621) probes `supported: true` and links end to
 end — collections, album membership, ratings, colour tags, variants and
 referenced paths all sync into the mirror. Two Windows-port findings:
 
-- **Absolute locations resolve through `ZMACROOT` only.** `ZWINROOT` is
-  selected but contributes nothing, so a real Windows catalog (which stores
-  absolute roots in ZWINROOT with a NULL ZMACROOT) would come back with every
-  original offline (`/filename`, `exists: false`). First thing to check with a
-  real sample; the fix belongs in spklib (fall back to ZWINROOT).
-- `captured_local` stays null: no capture-time column name appears in the
-  host binary — 0.4.0 appears not to read it.
+- ~~Absolute locations resolve through `ZMACROOT` only.~~ **Fixed in this
+  tree (deviation 6):** `PathLocation::absolute_root()` (capture_one.hpp)
+  picks whichever root the row carries — ZMACROOT, else ZWINROOT with
+  backslashes normalised — and all three consumers now use it (capture_one.cpp
+  `resolve`, library.cpp's mirror upsert at two sites). A Windows-realistic
+  synthetic catalog (root in ZWINROOT, ZMACROOT NULL) links with every
+  original `exists: true`. Carry this patch when the SDK updates.
+- ~~`captured_local` stays null.~~ The reader takes the optional
+  `ZIMAGE.ZEXP_DATE`; a catalog without that column reads null by design.
 
 Repro: `tools/c1-sample/` (generator + line-protocol probe).

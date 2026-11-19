@@ -388,6 +388,14 @@ public:
     Reply<SourceInfo> libraryCreate(const QString& path, const QString& kind, const QString& name = {});
     Reply<SourceInfo> libraryOpen(const QString& path);
     Reply<bool> libraryClose(const QString& library);
+    /// capture_one.probe: the verdict on a .cocatalog before anything is
+    /// linked (document, format, counts, supported, reason).
+    Reply<QVariantMap> captureOneProbe(const QString& path);
+    /// capture_one.link: snapshot the catalog read-only into a mirror
+    /// library and open it. `path` is the mirror's directory prefix; the
+    /// reply is the whole result (handle under "library", SourceInfo-shaped
+    /// "info", sync report).
+    Reply<QVariantMap> captureOneLink(const QString& source, const QString& path);
     /// library.info as a passthrough map (uuid, kind, name, path, origin,
     /// copied_from, counts).
     Reply<QVariantMap> libraryInfo(const QString& library);

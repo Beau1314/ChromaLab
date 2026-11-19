@@ -722,6 +722,63 @@ bool LibraryModel::createCatalog(const QString& name, const QString& folder) {
     return true;
 }
 
+QVariantMap LibraryModel::probeCaptureOne(const QString& path) {
+    if (importBlocked()) return {};
+    const BusyGuard guard(this);
+    const auto probed = host_.captureOneProbe(path);
+    if (!probed.ok) {
+        setError(probed.errorMessage);
+        return {};
+    }
+    return probed.value;
+}
+
+bool LibraryModel::linkCaptureOne(const QString& path) {
+    if (importBlocked()) return false;
+    const BusyGuard guard(this);
+    // The mirror lives under the store's Linked/ shelf, keyed by the
+    // catalog's own name; a re-link of the same catalog finds the same
+    // mirror (the helper matches on the document UUID).
+    const QString base = QFileInfo(path).completeBaseName();
+    const QString dir = QDir(storeRoot_).filePath(QStringLiteral("Linked"));
+    if (!QDir().mkpath(dir)) {
+        setError(L("The catalog folder cannot be created"));
+        return false;
+    }
+    const auto linked = host_.captureOneLink(path, QDir(dir).filePath(base));
+    if (!linked.ok) {
+        setError(linked.errorMessage);
+        return false;
+    }
+    // The reply's info is the mirror's library.info shape; its path is the
+    // real .spkcatalog the helper created (never the requested prefix).
+    const auto info = linked.value.value(QStringLiteral("info")).toMap();
+    const QString realPath = info.value(QStringLiteral("path")).toString();
+    const QString name = info.value(QStringLiteral("name")).toString();
+    if (realPath.isEmpty()) {
+        setError(linked.errorMessage.isEmpty() ? L("The mirror library was not created")
+                                               : linked.errorMessage);
+        return false;
+    }
+    CatalogSourcesStore::Source source;
+    source.id = QUuid::createUuid();
+    source.kind = CatalogSourcesStore::Kind::Catalog;
+    source.name = name.isEmpty() ? base : name;
+    source.path = realPath;
+    source.addedAt = QDateTime::currentDateTimeUtc();
+    registry_.sources.push_back(source);
+    registry_.selected = source.id;
+    if (!store_.save(registry_)) {
+        setError(L("The sources registry file cannot be written"));
+        return false;
+    }
+    refreshSources();
+    setSelectedCollection(QString());
+    if (!openSource(realPath)) return false;
+    refresh();
+    return true;
+}
+
 bool LibraryModel::createSession(const QString& name, const QString& folder) {
     if (importBlocked()) return false;
     const BusyGuard guard(this);

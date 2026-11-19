@@ -17,7 +17,7 @@ python -I tools/c1-sample/probe_helper.py <spklib-host.exe> \
 
 生成器把 `D:/spk-fixtures/raw` 下的 CR2 作为被引用照片（referenced，非托管）。
 
-## 已验证的链路（2026-11-20，spklib 0.4.0）
+## 已验证的链路（2026-11-20，spklib 0.4.0 + deviation 6 修复）
 
 - `capture_one.probe` → supported: true（format 16.3.9.9 Pro Windows，schema 1621）
 - `capture_one.link` → 镜像库；集合树（project/group/album 实体名正确解析）
@@ -26,9 +26,9 @@ python -I tools/c1-sample/probe_helper.py <spklib-host.exe> \
 
 ## 边界与坑（真实目录会踩到的）
 
-- **绝对路径只认 `ZPATHLOCATION.ZMACROOT`**：spklib 是 macOS 移植，`ZWINROOT`
-  被读但取值为空——真实 **Windows** C1 目录的绝对路径写在 ZWINROOT、ZMACROOT 为
-  NULL，经此 host 链接会全部离线（path 退化为 `/文件名`，exists: false）。
-  真样本到手后第一件事：确认此边界，必要时在 spklib 补 ZWINROOT 回退。
+- **绝对路径只认 `ZPATHLOCATION.ZMACROOT` 的缺陷已修**（deviation 6）：
+  `PathLocation::absolute_root()` 择根（ZMACROOT 优先、空则 ZWINROOT 并归一
+  反斜杠），三处消费点统一走它。Windows 真实形态（根在 ZWINROOT）现已
+  exists: true。SDK 升级时需携带此补丁。
 - `captured_local` 恒 null：host 二进制里没有拍摄时间列名，疑似 0.4.0 未读取。
 - ZENTITIES 的键是 `Z_ENT` 列（非 Z_PK）：合成时两列同值最稳。

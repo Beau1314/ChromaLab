@@ -25,6 +25,7 @@
 #include "LightTableModel.hpp"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDeadlineTimer>
 #include <QDir>
 #include <QEventLoop>
@@ -1394,6 +1395,58 @@ void testRawCarryWalk(const QString& helperPath, const QString& rawPath) {
     std::printf("raw carry walk: async tile, develop join, admission, sizing, carry all held\n");
 }
 
+// The Capture One link (phase 5): probe, link, the mirror becomes the
+// selected source with its rows — and the catalog itself is never written
+// (the read-only discipline, asserted on the bytes before and after).
+void testCaptureOneWalk(const QString& helperPath, const QString& catalogPath) {
+    QTemporaryDir scratch;
+    check(scratch.isValid(), "temporary scratch root unavailable");
+    const QString dbFile = QDir(catalogPath).filePath(
+        QFileInfo(catalogPath).completeBaseName() + QStringLiteral(".cocatalogdb"));
+    check(QFileInfo::exists(dbFile), "the synthetic catalog carries its database");
+    QFile before(dbFile);
+    check(before.open(QIODevice::ReadOnly), "the catalog database opens for the baseline hash");
+    QCryptographicHash baseline(QCryptographicHash::Sha256);
+    check(baseline.addData(&before), "the baseline hash reads");
+    before.close();
+
+    model::LibraryModel::Deps deps;
+    deps.helper.helperPath = helperPath;
+    deps.helper.storePath = scratch.filePath(QString::fromUtf8("store"));
+    deps.registryPath = scratch.filePath(QString::fromUtf8("sources.json"));
+    deps.editDirectory = scratch.filePath(QString::fromUtf8("edits"));
+    deps.thumbnailDirectory = scratch.filePath(QString::fromUtf8("thumbs"));
+    model::LibraryModel library(deps);
+    check(library.start(), (std::string("start: ") +
+                            library.lastError().toStdString()).c_str());
+
+    const auto probe = library.probeCaptureOne(catalogPath);
+    check(!probe.isEmpty(), "the probe answers");
+    check(probe.value(QLatin1String("supported")).toBool(), "the synthetic catalog is supported");
+
+    check(library.linkCaptureOne(catalogPath), (std::string("linkCaptureOne: ") +
+                                                library.lastError().toStdString()).c_str());
+    check(library.sources().size() == 1, "the mirror is the one source");
+    check(library.selectedSource().value(QLatin1String("kind")).toString() == QLatin1String("catalog"),
+          "the mirror source is selected");
+    check(library.rowCount() == 3, "the catalog's three photographs arrive");
+    // The Windows-root fallback (spklib's deviation 6): absolute roots that
+    // live in ZWINROOT resolve, so every row's file exists on disk.
+    for (int r = 0; r < library.rowCount(); ++r) {
+        const QString path = cell(library, r, model::LibraryModel::PathRole).toString();
+        const std::string message = "row " + std::to_string(r) + " resolves to an existing file: " + path.toStdString();
+        check(QFileInfo::exists(path), message.c_str());
+    }
+
+    // Read-only discipline: the catalog's bytes never moved.
+    QFile after(dbFile);
+    check(after.open(QIODevice::ReadOnly), "the catalog database opens for the after hash");
+    QCryptographicHash post(QCryptographicHash::Sha256);
+    check(post.addData(&after), "the after hash reads");
+    check(post.result() == baseline.result(), "the catalog database is byte-identical after the link");
+    std::printf("capture one walk: probe, link, mirror rows, ZWINROOT roots, read-only discipline all held\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1414,6 +1467,10 @@ int main(int argc, char** argv) {
                 testRawCarryWalk(QString::fromUtf8(argv[1]), QString::fromUtf8(argv[2]));
             else
                 std::printf("raw carry walk skipped: no RAW fixture given\n");
+            if (argc > 3 && QFileInfo::exists(QString::fromUtf8(argv[3])))
+                testCaptureOneWalk(QString::fromUtf8(argv[1]), QString::fromUtf8(argv[3]));
+            else
+                std::printf("capture one walk skipped: no .cocatalog fixture given\n");
         } else {
             std::printf("model workflow skipped: no spklib-host given "
                         "(pure tier still verified)\n");

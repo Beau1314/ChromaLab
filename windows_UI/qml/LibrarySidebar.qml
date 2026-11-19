@@ -15,6 +15,9 @@ Rectangle {
     color: Theme.card
 
     property int tabIndex: 0
+    // The Capture One link's verdict line: a probe refusal's reason or a
+    // failed link's error, shown where the library's own errors show.
+    property string linkNotice: ""
     // The uuid the Info tab describes: the grid's current selection (its
     // first row, or the empty map that leaves the tab quiet).
     readonly property var infoUuid: library.selectedCount > 0 ? library.selectedUuids()[0] : ""
@@ -433,6 +436,33 @@ Rectangle {
                     text: Localization.epoch && Localization.L("Add a watched folder…")
                     onTriggered: watchedFolderDialog.open()
                 }
+                // The Capture One door (read-only): pick a .cocatalog, see
+                // the verdict, link the mirror. The catalog itself is never
+                // written.
+                MenuItem {
+                    objectName: "plusLinkCaptureOne"
+                    text: Localization.epoch && Localization.L("Link a Capture One catalog…")
+                    onTriggered: captureOneDialog.open()
+                }
+            }
+            FileDialog {
+                id: captureOneDialog
+                title: Localization.epoch && Localization.L("Choose a Capture One catalog · it is only read, never written")
+                nameFilters: Localization.epoch && [Localization.L("Capture One catalog (*.cocatalog *.cocatalogdb)")]
+                onAccepted: {
+                    const path = selectedFile.toString().replace("file:///", "")
+                    const probe = library.probeCaptureOne(path)
+                    if (probe.supported !== true) {
+                        sidebar.linkNotice = (probe !== undefined && probe.reason !== undefined && String(probe.reason).length > 0)
+                            ? String(probe.reason)
+                            : Localization.L("This catalog cannot be read")
+                        return
+                    }
+                    if (library.linkCaptureOne(path))
+                        sidebar.linkNotice = ""
+                    else
+                        sidebar.linkNotice = library.lastError
+                }
             }
             Popup {
                 id: nameDialog
@@ -521,11 +551,11 @@ Rectangle {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: library.lastError
+                    text: sidebar.linkNotice.length > 0 ? sidebar.linkNotice : library.lastError
                     color: "#ffb39f"
                     font.pixelSize: 10
                     elide: Text.ElideRight
-                    visible: library.lastError.length > 0
+                    visible: sidebar.linkNotice.length > 0 || library.lastError.length > 0
                 }
                 Item { Layout.fillWidth: true; visible: library.lastError.length === 0 }
             }

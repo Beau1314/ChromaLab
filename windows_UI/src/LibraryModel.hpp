@@ -255,6 +255,13 @@ public:
     /// A new `.spektralab` catalog under `folder` (default: the store root),
     /// registered, selected and opened.
     Q_INVOKABLE bool createCatalog(const QString& name, const QString& folder = {});
+    /// capture_one.probe's verdict on a .cocatalog (empty map + lastError on
+    /// a helper failure); the UI shows supported/reason/format/counts.
+    Q_INVOKABLE QVariantMap probeCaptureOne(const QString& path);
+    /// Link a Capture One catalog read-only: the helper snapshots it into a
+    /// mirror library under the store's Linked/ shelf, which becomes the
+    /// selected source. The catalog itself is never written.
+    Q_INVOKABLE bool linkCaptureOne(const QString& path);
     /// A new session folder under `folder` (default: the store root) — the
     /// helper creates the `.spksession` inside. Registered, selected, opened.
     Q_INVOKABLE bool createSession(const QString& name, const QString& folder = {});

@@ -1131,6 +1131,11 @@
       "zh-Hans": "Capture One",
       "zh-Hant": "Capture One"
     },
+    "Capture One catalog (*.cocatalog *.cocatalogdb)": {
+      "zh-Hans": "Capture One 目录 (*.cocatalog *.cocatalogdb)",
+      "zh-Hant": "Capture One 目錄 (*.cocatalog *.cocatalogdb)",
+      "ja": "Capture One カタログ (*.cocatalog *.cocatalogdb)"
+    },
     "Capture One is writing to it: read again in a moment": {
       "ja": "Capture Oneが書き込み中です。少し待ってから再読み込みしてください",
       "zh-Hans": "Capture One 正在写入它：稍后再重新读取",
@@ -1245,6 +1250,11 @@
       "ja": "フォルダを選択…",
       "zh-Hans": "选择文件夹…",
       "zh-Hant": "選擇檔案夾…"
+    },
+    "Choose a Capture One catalog · it is only read, never written": {
+      "zh-Hans": "选择 Capture One 目录 · 只读不写",
+      "zh-Hant": "選擇 Capture One 目錄 · 唯讀不寫",
+      "ja": "Capture One カタログを選択 · 読み取り専用で書き込みません"
     },
     "Choose a Folder…": {
       "ja": "フォルダを選択…",
@@ -3605,6 +3615,11 @@
       "ja": "上限",
       "zh-Hans": "上限",
       "zh-Hant": "上限"
+    },
+    "Link a Capture One catalog…": {
+      "zh-Hans": "链接 Capture One 目录…",
+      "zh-Hant": "連結 Capture One 目錄…",
+      "ja": "Capture One カタログをリンク…"
     },
     "Link a Folder": {
       "ja": "フォルダを連携",
@@ -6201,6 +6216,11 @@
       "zh-Hans": "日志在这台 Mac 上保存 7 天。“导出日志压缩包”会把它交给你自行发送。",
       "zh-Hant": "日誌在這台 Mac 上保存 7 天。「輸出日誌壓縮檔」會把它交給你自行傳送。"
     },
+    "The mirror library was not created": {
+      "zh-Hans": "未能创建镜像图库",
+      "zh-Hant": "未能建立鏡像圖庫",
+      "ja": "ミラーライブラリを作成できませんでした"
+    },
     "The name cannot be empty": {
       "ja": "名前は空にできません",
       "zh-Hans": "名称不能为空",
@@ -6520,6 +6540,11 @@
       "ja": "このバージョンは、このMacでの動作記録を残します。記録するのは、機種とmacOSのバージョン、現像と書き出しのそれぞれにかかった時間と使用したメモリ、使用したフィルムと設定、そして発生した問題です。写真、ファイル名、場所は一切記録しません。オン／オフの切り替え、記録内容の一覧、プライバシーポリシーは「設定」にあります。",
       "zh-Hans": "此版本会记录一份它在这台 Mac 上运行情况的日志：机型和 macOS 版本、每次冲洗和导出的耗时与占用的内存、你用过的胶片和设置，以及出了什么问题。日志里绝不会有照片、文件名或拍摄地点。开关、完整清单和隐私政策都在“设置”里。",
       "zh-Hant": "此版本會記錄一份它在這台 Mac 上執行情況的日誌：機型和 macOS 版本、每次沖洗和輸出的耗時與佔用的記憶體、你用過的底片和設定，以及出了什麼問題。日誌裡絕不會有照片、檔名或拍攝地點。開關、完整列表和隱私權政策都在「設定」裡。"
+    },
+    "This catalog cannot be read": {
+      "zh-Hans": "无法读取此目录",
+      "zh-Hant": "無法讀取此目錄",
+      "ja": "このカタログは読み取れません"
     },
     "This catalog was not copied from Capture One.": {
       "ja": "このカタログはCapture Oneからコピーされたものではありません。",

@@ -439,6 +439,21 @@ Reply<SourceInfo> LibraryHost::libraryOpen(const QString& path) {
     return callTyped<SourceInfo>(QStringLiteral("library.open"), params, protocol::parseSourceInfo);
 }
 
+Reply<QVariantMap> LibraryHost::captureOneProbe(const QString& path) {
+    QJsonObject params;
+    params.insert(QLatin1String("path"), path);
+    return callTyped<QVariantMap>(QStringLiteral("capture_one.probe"), params,
+                                  [](const QJsonObject& result) { return result.toVariantMap(); });
+}
+
+Reply<QVariantMap> LibraryHost::captureOneLink(const QString& source, const QString& path) {
+    QJsonObject params;
+    params.insert(QLatin1String("source"), source);
+    params.insert(QLatin1String("path"), path);
+    return callTyped<QVariantMap>(QStringLiteral("capture_one.link"), params,
+                                  [](const QJsonObject& result) { return result.toVariantMap(); });
+}
+
 Reply<bool> LibraryHost::libraryClose(const QString& library) {
     QJsonObject params;
     params.insert(QLatin1String("library"), library);
