@@ -3,6 +3,7 @@
 #include "LibraryModel.hpp"
 #include "LightTableModel.hpp"
 #include "Localization.hpp"
+#include "Updater.hpp"
 #include <QCommandLineParser>
 #include <QCryptographicHash>
 #include <QDir>
@@ -451,9 +452,15 @@ int main(int argc,char** argv) {
         parser.isSet("light-table-store")?QFileInfo(parser.value("light-table-store")).absoluteFilePath():
         QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/lighttable.json";
     lightTableModel.open(lightTableStore);
+    // The self-update channel (the repository's public Releases). The swap
+    // of a previous update may have left *.spk-old beside the exe: they go
+    // first, before any library could load code from those names.
+    spk::desktop::Updater::cleanupOldFiles();
+    spk::desktop::Updater updater;
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("preview",&controller);
     engine.rootContext()->setContextProperty("library",&libraryModel);
     engine.rootContext()->setContextProperty("lightTable",&lightTableModel);
+    engine.rootContext()->setContextProperty("updater",&updater);
     QObject::connect(&engine,&QQmlApplicationEngine::objectCreationFailed,&app,[]{QCoreApplication::exit(2);},Qt::QueuedConnection);
     engine.loadFromModule("SpektraLab","Main");
     if(engine.rootObjects().isEmpty())return 2;
@@ -589,6 +596,12 @@ int main(int argc,char** argv) {
     // Synchronous by the recorded decision (small local SQLite, the calls
     // are single-flight); a failure leaves the empty library state standing.
     libraryModel.start();
+    // The silent update check, a beat after the window stands (SPK_UPDATE_SKIP
+    // covers the smoke runners and the packaging machine; the manual button
+    // works either way). Only an AVAILABLE update raises the dialog —
+    // offline is the ordinary state of a laptop, not a warning.
+    if(qEnvironmentVariableIsEmpty("SPK_UPDATE_SKIP"))
+        QTimer::singleShot(8000,&updater,&spk::desktop::Updater::checkNow);
     std::unique_ptr<SelfTest> test;
     if(testing) {
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());if(!window)return 2;

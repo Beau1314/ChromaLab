@@ -7520,6 +7520,41 @@
       "ja": "＋ 新規",
       "zh-Hans": "＋ 新建",
       "zh-Hant": "＋ 新增"
+    },
+    "Checking for updates…": {
+      "zh-Hans": "正在检查更新…",
+      "zh-Hant": "正在檢查更新…",
+      "ja": "アップデートを確認中…"
+    },
+    "Downloading the update…": {
+      "zh-Hans": "正在下载更新…",
+      "zh-Hant": "正在下載更新…",
+      "ja": "アップデートをダウンロード中…"
+    },
+    "Installing the update…": {
+      "zh-Hans": "正在安装更新…",
+      "zh-Hant": "正在安裝更新…",
+      "ja": "アップデートをインストール中…"
+    },
+    "Update failed": {
+      "zh-Hans": "更新失败",
+      "zh-Hant": "更新失敗",
+      "ja": "アップデートに失敗しました"
+    },
+    "Version %@ is available": {
+      "zh-Hans": "发现新版本 %@",
+      "zh-Hant": "發現新版本 %@",
+      "ja": "新しいバージョン %@ が利用できます"
+    },
+    "SpektraLab is up to date": {
+      "zh-Hans": "SpektraLab 已是最新版本（%@）",
+      "zh-Hant": "SpektraLab 已是最新版本（%@）",
+      "ja": "SpektraLab は最新です（%@）"
+    },
+    "You are on %@; the new version installs in place and restarts the app.": {
+      "zh-Hans": "当前版本 %@。新版本将就地安装并自动重启应用。",
+      "zh-Hant": "當前版本 %@。新版本將就地安裝並自動重新啟動應用。",
+      "ja": "現在のバージョンは %@ です。新しいバージョンはその場でインストールされ、アプリが自動的に再起動します。"
     }
   },
   "version": 1

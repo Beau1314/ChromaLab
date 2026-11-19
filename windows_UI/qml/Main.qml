@@ -189,6 +189,125 @@ ApplicationWindow {
         onVisibleChanged: window.updateDialogState()
         onAccepted: preview.exportBatch(selectedFolder, window.exportFormat, window.exportQuality, window.exportLongEdge, window.exportColour)
     }
+    // The self-update dialog: an available release names itself, shows its
+    // notes and offers the one-click install; the manual check also answers
+    // "already latest" and the network's failure. While the update installs,
+    // the dialog cannot be dismissed — the swap either completes and the app
+    // restarts, or it fails and says so.
+    Popup {
+        id: updateDialog
+        property bool manualCheck: false
+        width: 440; padding: 16
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        closePolicy: (updater.state === "downloading" || updater.state === "installing" || updater.state === "restarting")
+                      ? Popup.NoAutoClose
+                      : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
+        background: Rectangle { color: Theme.card; border.color: Theme.line; radius: 6 }
+        onManualCheckChanged: if (manualCheck) open()
+        Connections {
+            target: updater
+            function onStateChanged() {
+                if (updater.state === "available") { updateDialog.open(); return }
+                // The silent startup check stays quiet about "latest" and
+                // about offline; only the manual button owes an answer.
+                if (updater.state === "uptodate" || updater.state === "failed") {
+                    if (updateDialog.manualCheck) updateDialog.open()
+                }
+                if (updater.state !== "checking") updateDialog.manualCheck = false
+            }
+        }
+        ColumnLayout {
+            width: parent.width; spacing: 12
+            Text {
+                Layout.fillWidth: true
+                color: Theme.text; font.pixelSize: 14; font.bold: true
+                wrapMode: Text.WordWrap
+                text: {
+                    if (updater.state === "checking")
+                        return Localization.epoch && Localization.L("Checking for updates…")
+                    if (updater.state === "downloading")
+                        return Localization.epoch && Localization.L("Downloading the update…")
+                    if (updater.state === "installing" || updater.state === "restarting")
+                        return Localization.epoch && Localization.L("Installing the update…")
+                    if (updater.state === "failed")
+                        return Localization.epoch && Localization.L("Update failed")
+                    if (updater.state === "available")
+                        return Localization.epoch && Localization.L("Version %@ is available",
+                                                                    [updater.latestVersion])
+                    return Localization.epoch && Localization.L("SpektraLab is up to date",
+                                                                [updater.currentVersion])
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: updater.state === "available"
+                color: Theme.muted; font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                text: Localization.epoch && Localization.L("You are on %@; the new version installs in place and restarts the app.",
+                                                            [updater.currentVersion])
+            }
+            // The release notes, exactly as the release wrote them.
+            Flickable {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(220, notesText.implicitHeight + 8)
+                visible: updater.state === "available" && updater.releaseNotes.length > 0
+                contentHeight: notesText.implicitHeight
+                clip: true
+                ScrollBar.vertical: ScrollBar { }
+                Text {
+                    id: notesText
+                    width: updateDialog.width - 44
+                    color: Theme.text; font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    text: updater.releaseNotes
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: updater.state === "failed"
+                color: "#ffb39f"; font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                text: updater.error
+            }
+            BusyIndicator {
+                visible: updater.state === "checking" || updater.state === "restarting"
+                running: visible
+                Layout.alignment: Qt.AlignHCenter
+                implicitWidth: 32; implicitHeight: 32
+            }
+            ProgressBar {
+                Layout.fillWidth: true
+                visible: updater.state === "downloading" || updater.state === "installing"
+                indeterminate: updater.progress < 0 || updater.state === "installing"
+                from: 0; to: 1; value: Math.max(0, updater.progress)
+            }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Item { Layout.fillWidth: true }
+                ActionButton {
+                    visible: updater.state === "available"
+                    implicitHeight: 26
+                    text: Localization.epoch && Localization.L("Later")
+                    onClicked: updateDialog.close()
+                }
+                ActionButton {
+                    objectName: "installUpdateButton"
+                    visible: updater.state === "available"
+                    implicitHeight: 26
+                    accented: true
+                    text: Localization.epoch && Localization.L("Update Now")
+                    onClicked: updater.startDownloadAndInstall()
+                }
+                ActionButton {
+                    visible: updater.state === "uptodate" || updater.state === "failed"
+                    implicitHeight: 26
+                    text: Localization.epoch && Localization.L("OK")
+                    onClicked: updateDialog.close()
+                }
+            }
+        }
+    }
     Shortcut { sequences: [StandardKey.Open]; enabled: window.canBrowse; onActivated: openDialog.open() }
     // The develop keys stand down in 图库 (they would operate the previously
     // opened frame invisibly behind the grid).
@@ -607,6 +726,19 @@ ApplicationWindow {
                     font.pixelSize: 12
                     text: Localization.epoch && Localization.L("Put on Light Table")
                     onClicked: carryCurrentToLightTable()
+                }
+                // The manual update check: the silent one runs a beat after
+                // launch and only speaks when something newer stands; this
+                // button always answers, even with "already latest".
+                ActionButton {
+                    objectName: "checkUpdateButton"
+                    implicitHeight: 25
+                    font.pixelSize: 12
+                    text: Localization.epoch && Localization.L("Check for Updates")
+                    onClicked: {
+                        window.updateDialog.manualCheck = true
+                        updater.checkNow()
+                    }
                 }
                 // The language picker: each language names itself, so
                 // the rows are the same string in all four UI

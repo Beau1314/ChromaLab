@@ -21,6 +21,12 @@ endif()
 if(NOT TARGET spk_desktop_host)
     message(FATAL_ERROR "Build the engine's spk_desktop_host before windows_UI")
 endif()
+# The application version, one source of truth for the exe and the releases:
+# the packaging script tags the GitHub Release with this exact string and the
+# running copy compares itself against it (Updater).
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" SPK_VERSION_RAW)
+string(STRIP "${SPK_VERSION_RAW}" SPK_VERSION)
+message(STATUS "SpektraLab Windows version: ${SPK_VERSION}")
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -53,11 +59,14 @@ qt_add_executable(SpektraLabQt WIN32
     # The executable icon (Explorer/taskbar/shortcuts read the PE resource):
     # windres compiles the brand asset (shared with the Mac's Logo.imageset)
     # into the exe.
-    app.rc)
+    app.rc
+    # The self-update channel over the repository's public Releases.
+    src/Updater.hpp src/Updater.cpp)
 target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
+target_compile_definitions(SpektraLabQt PRIVATE SPK_APP_VERSION="${SPK_VERSION}")
 target_include_directories(SpektraLabQt PRIVATE src)
 target_link_libraries(SpektraLabQt PRIVATE
-    spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
+    spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network)
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(SpektraLabQt URI SpektraLab VERSION 1.0
     QML_FILES qml/Main.qml qml/Theme.qml qml/Section.qml qml/ActionButton.qml
@@ -218,6 +227,14 @@ if(BUILD_TESTING)
     target_compile_features(spk_qt_settings_clip_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_settings_clip_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui)
     add_test(NAME spk_qt_settings_clip COMMAND spk_qt_settings_clip_test)
+    # The self-update channel's pure core: the version parse and the order
+    # it induces (the gate that decides a release looks newer).
+    qt_add_executable(spk_qt_updater_test tests/updater.cpp src/Updater.cpp)
+    target_include_directories(spk_qt_updater_test PRIVATE src)
+    target_compile_features(spk_qt_updater_test PRIVATE cxx_std_20)
+    target_compile_definitions(spk_qt_updater_test PRIVATE SPK_APP_VERSION="${SPK_VERSION}")
+    target_link_libraries(spk_qt_updater_test PRIVATE spk_desktop_host Qt6::Core Qt6::Gui Qt6::Network)
+    add_test(NAME spk_qt_updater COMMAND spk_qt_updater_test)
     # The localization core (task 6.0): the Mac catalog behind L() — the
     # lookup, the fallback, the switch's one signal, the first launch's
     # derive-then-persist, and the shipped asset's own script spot checks.
