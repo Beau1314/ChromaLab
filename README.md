@@ -53,8 +53,7 @@
 - **Nikon HE/HE\* RAW 不支持**（LibRaw 限制）
 - **显示器 ICC 感知、软打样**未接（画布按 sRGB 标记显示）
 - 印相台的 loupe 3× 与分带全尺寸渲染梯未移植；图库的会话导入、.spektrapair 行、部分 §5 快捷键为已披露的后续项
-- 一批验收 gate（含真实 RAW 的工作流测试）需 RAW 样张执行，本机尚无样张——测试为编译级验证
-- Capture One 集成的 wire 已就绪但未经真实目录验收
+- Capture One 集成已上线（合成目录全链路验收 + 只读字节级断言）；真实 .cocatalog 样本到手后复核一次 Windows 路径根的择根修复
 
 ## 许可
 

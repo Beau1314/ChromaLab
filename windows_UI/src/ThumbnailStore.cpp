@@ -1,6 +1,10 @@
 #include "ThumbnailStore.hpp"
 
 #include "CatalogSourcesStore.hpp"
+// spkhost::thumbnail — the engine's own RAW extractor (the embedded preview
+// first, a half-size sRGB decode as the fallback), now an in-process call
+// through spk_image_io instead of a spektralab-host round trip.
+#include "image_io.hpp"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -61,7 +65,12 @@ void ThumbnailStore::setBudget(qint64 bytes) {
 }
 
 QString ThumbnailStore::entryName(const QString& path, int maxPixel) const {
-    const QByteArray seed = path.toUtf8() + '@' + QByteArray::number(maxPixel);
+    // The leading generation tag: bump it whenever what a thumbnail IS
+    // changes (v2: RAWs moved from the striped placeholder to the engine's
+    // embedded-preview extractor) — every stale disk entry misses once and
+    // the new picture replaces it, without migrating or sweeping the cache.
+    const QByteArray seed =
+        QByteArrayLiteral("v2|") + path.toUtf8() + '@' + QByteArray::number(maxPixel);
     return QString::fromLatin1(QCryptographicHash::hash(seed, QCryptographicHash::Sha1).toHex()) +
            QLatin1String(kEntrySuffix);
 }
@@ -190,11 +199,30 @@ QImage ThumbnailStore::placeholder(int maxPixel) {
 
 QImage ThumbnailStore::decode(const QString& path, int maxPixel) const {
     if (path.isEmpty() || maxPixel <= 0 || !QFileInfo::exists(path)) return {};
-    // Qt decodes the rasters (including their EXIF orientation). A RAW gets
-    // the placeholder — the scope cut recorded in the header. Anything else
-    // that will not decode (a corrupt file) is an honest null.
+    // Qt decodes the rasters (including their EXIF orientation). A RAW goes
+    // through the engine's own extractor — the embedded preview when the
+    // camera left one, a half-size sRGB decode otherwise — the same code the
+    // host process serves, called in-process. Only a RAW the extractor
+    // cannot read falls to the placeholder; anything else that will not
+    // decode (a corrupt file) is an honest null.
     QImage image = decodeRaster(path, maxPixel);
-    if (image.isNull() && isRawByExtension(path)) image = placeholder(maxPixel);
+    if (image.isNull() && isRawByExtension(path)) {
+        spkhost::Rgba8 out;
+        std::string source, error;
+        if (spkhost::thumbnail(std::filesystem::path(path.toStdWString()),
+                               uint32_t(maxPixel), out, source, error) &&
+            out.width > 0 && out.height > 0) {
+            // Rgba8 is RGBA byte order; the copy detaches from the vector.
+            image = QImage(out.rgba.data(), int(out.width), int(out.height),
+                           int(out.width) * 4, QImage::Format_RGBA8888_Premultiplied)
+                        .copy();
+            image = image.convertToFormat(QImage::Format_RGB32);
+        } else {
+            qWarning("RAW thumbnail extractor failed for %s: %s",
+                     path.toUtf8().constData(), error.c_str());
+            image = placeholder(maxPixel);
+        }
+    }
     if (image.isNull()) return {};
     const int longEdge = qMax(image.width(), image.height());
     if (longEdge > maxPixel)

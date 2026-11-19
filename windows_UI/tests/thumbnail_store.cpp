@@ -15,6 +15,7 @@
 //   LRU/budget  — the byte budget evicts least-recently-used entries (exact
 //                 in-session order, no mtime rounding), get() touches
 #include "ThumbnailStore.hpp"
+#include "image_io.hpp"
 
 #include <QColor>
 #include <QCoreApplication>
@@ -261,8 +262,41 @@ void testMemoryTier() {
 
 } // namespace
 
+
+// A real RAW through the whole store: the engine's extractor (embedded
+// preview first, half-size decode as the fallback) must stand behind a
+// PICTURE, never the placeholder - and the cache remembers it.
+void testRealRawThroughStore(const char* rawPath) {
+    QTemporaryDir scratch;
+    check(scratch.isValid(), "temporary scratch root unavailable");
+    spk::desktop::ThumbnailStore::Options options;
+    options.directory = scratch.filePath(QStringLiteral("thumbs"));
+    spk::desktop::ThumbnailStore store(options);
+    const QString path = QString::fromUtf8(rawPath);
+    const QImage first = store.get(path, 256);
+    check(!first.isNull(), "a real RAW produces a thumbnail");
+    check(qMax(first.width(), first.height()) <= 256, "the thumbnail is scaled");
+    // Not the placeholder: that is a deterministic two-tone diagonal, while
+    // a photograph's channels differ and vary.
+    const QImage rgb = first.convertToFormat(QImage::Format_RGB32);
+    int minR = 255, maxR = 0, rG = 0;
+    for (int y = 0; y < rgb.height(); y += 7)
+        for (int x = 0; x < rgb.width(); x += 7) {
+            const QColor c = rgb.pixelColor(x, y);
+            minR = qMin(minR, c.red()); maxR = qMax(maxR, c.red());
+            rG = qMax(rG, qAbs(c.red() - c.green()));
+        }
+    check(maxR - minR > 20 || rG > 8, "the RAW thumbnail is a photograph, not the placeholder pattern");
+    const QImage second = spk::desktop::ThumbnailStore(options).get(path, 256);
+    check(second.size() == first.size(), "the RAW thumbnail survives the store");
+    std::printf("real RAW thumbnail: %dx%d through the store and its cache\n",
+                first.width(), first.height());
+}
+
 int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
+    if (argc > 1 && QFileInfo::exists(QString::fromUtf8(argv[1])))
+        testRealRawThroughStore(argv[1]);
     try {
         testDecodeAndScale();
         testDiskPersistence();

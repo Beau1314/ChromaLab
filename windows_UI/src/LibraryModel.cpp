@@ -447,7 +447,11 @@ void LibraryModel::thumbnailDecoded(const QString& path, int maxPixel, const QIm
     if (!image.isNull() && row.thumbnail.cacheKey() == image.cacheKey()) return;
     row.thumbnail = image;
     const QModelIndex changed = createIndex(index, 0);
-    emit dataChanged(changed, changed, {ThumbnailRole});
+    // BOTH roles: the delegate's cover rectangle keys on hasThumbnail, and a
+    // thumbnail-only signal leaves the "no preview" shade over the picture
+    // that just arrived (the RAW tier's asynchronous path found it; the
+    // raster tier always had its tile on the first synchronous ask).
+    emit dataChanged(changed, changed, {ThumbnailRole, HasThumbnailRole});
 }
 
 void LibraryModel::setSort(const QString& sort) {

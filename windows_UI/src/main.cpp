@@ -599,7 +599,11 @@ int main(int argc,char** argv) {
                 });
             });
         } else if(!snapshot.isEmpty())
-            QTimer::singleShot(1500,window,[window,snapshot]{
+            // SPK_SMOKE_SNAPSHOT_MS delays the grab: a library grab wants the
+            // grid's asynchronous thumbnails landed (the helper listing plus
+            // the RAW extraction), which 1500 ms does not cover.
+            QTimer::singleShot(qMax(1500,qEnvironmentVariableIntValue("SPK_SMOKE_SNAPSHOT_MS")),
+                window,[window,snapshot]{
                 const QImage grab=qobject_cast<QQuickWindow*>(window)?
                     qobject_cast<QQuickWindow*>(window)->grabWindow():QImage();
                 if(!grab.isNull())grab.save(snapshot,"PNG");

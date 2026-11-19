@@ -171,12 +171,18 @@ if(NOT APPLE)
             # multipliers_for/as_shot_temperature_tint, and every spk_image_io
             # consumer (desktop host, RAW tools, decoder tests) must be able
             # to resolve them without an extra dependency edge.
+            # image_io/tiff_ifd/stb_impl/platform joined for the same reason:
+            # spkhost::thumbnail (the RAW embedded-preview extractor, the
+            # library grid's thumbnail source) is now an in-process call from
+            # the Qt frontend instead of a spektralab-host round trip.
             add_library(spk_image_io STATIC
                 src/io/raw_decoder.cpp src/io/raw_headroom.cpp src/io/image_writer.cpp
-                host/white_balance.cpp)
+                host/white_balance.cpp host/image_io.cpp host/tiff_ifd.cpp
+                host/stb_impl.cpp host/platform.cpp)
             target_compile_features(spk_image_io PUBLIC cxx_std_20)
             target_include_directories(spk_image_io PUBLIC
-                "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/host")
+                "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/host"
+                "${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb")
             target_link_libraries(spk_image_io PRIVATE spk_libraw)
             if(WIN32)
                 # Win32-only RAW-to-TIFF tool; engine/host is the portable host.

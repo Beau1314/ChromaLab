@@ -1,12 +1,9 @@
 # spektralab-host: the engine as a child process (desktop/HOST-PROTOCOL.md).
+# The IO layer (image_io/tiff_ifd/stb_impl/platform/white_balance) lives in
+# spk_image_io now — shared with the Qt frontend's in-process thumbnail call.
 add_executable(spektralab-host
     main.cpp
-    image_io.cpp
     output.cpp
-    platform.cpp
-    stb_impl.cpp
-    tiff_ifd.cpp
-    white_balance.cpp
 )
 target_compile_features(spektralab-host PRIVATE cxx_std_20)
 target_include_directories(spektralab-host PRIVATE

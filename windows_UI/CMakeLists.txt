@@ -66,7 +66,8 @@ target_compile_features(SpektraLabQt PRIVATE cxx_std_20)
 target_compile_definitions(SpektraLabQt PRIVATE SPK_APP_VERSION="${SPK_VERSION}")
 target_include_directories(SpektraLabQt PRIVATE src)
 target_link_libraries(SpektraLabQt PRIVATE
-    spk_desktop_host Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network)
+    spk_desktop_host spk_image_io spk_libraw
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Network)
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(SpektraLabQt URI SpektraLab VERSION 1.0
     QML_FILES qml/Main.qml qml/Theme.qml qml/Section.qml qml/ActionButton.qml
@@ -217,6 +218,7 @@ if(BUILD_TESTING)
     # decode paths belong to a future engine seam, not this file.
     qt_add_executable(spk_qt_thumbnail_store_test tests/thumbnail_store.cpp
         src/ThumbnailStore.cpp src/CatalogSourcesStore.cpp)
+    target_link_libraries(spk_qt_thumbnail_store_test PRIVATE spk_image_io spk_libraw)
     target_include_directories(spk_qt_thumbnail_store_test PRIVATE src)
     target_compile_features(spk_qt_thumbnail_store_test PRIVATE cxx_std_20)
     target_link_libraries(spk_qt_thumbnail_store_test PRIVATE Qt6::Core Qt6::Gui)
