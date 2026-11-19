@@ -55,6 +55,12 @@ public:
     // Delete <appdir>/*.spk-old from a previous swap. Call once at startup
     // before any DLL could be loaded from those names.
     static void cleanupOldFiles();
+    // Land a previous swap's deferred files (*.spk-new → their names): the
+    // ones the old process held mapped and could not replace in place.
+    // Call BEFORE the engine constructs (it maps the constants for its
+    // lifetime); a failed landing removes the stage rather than wedging
+    // startup.
+    static void applyPendingFiles();
 
 signals:
     void stateChanged();

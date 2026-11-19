@@ -373,6 +373,11 @@ int main(int argc,char** argv) {
     });
     QGuiApplication app(argc,argv);
     app.setOrganizationName("SpektraLab");app.setApplicationName("SpektraLab Windows");
+    // A previous update's deferred files land FIRST, before anything — the
+    // controller below starts the engine on a worker thread the moment it
+    // exists, and the engine maps the constants file for its lifetime.
+    spk::desktop::Updater::applyPendingFiles();
+    spk::desktop::Updater::cleanupOldFiles();
     // The runtime window icon (title bar and taskbar): the brand asset
     // compiled into the resource tree; the exe's own icon comes from the
     // separate PE resource (app.rc).
@@ -452,11 +457,18 @@ int main(int argc,char** argv) {
         parser.isSet("light-table-store")?QFileInfo(parser.value("light-table-store")).absoluteFilePath():
         QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)+"/lighttable.json";
     lightTableModel.open(lightTableStore);
-    // The self-update channel (the repository's public Releases). The swap
-    // of a previous update may have left *.spk-old beside the exe: they go
-    // first, before any library could load code from those names.
-    spk::desktop::Updater::cleanupOldFiles();
+    // The self-update channel (the repository's public Releases).
     spk::desktop::Updater updater;
+    // The swap cannot move a file the library helper holds open — the drill
+    // caught spklib-host pinning resources/spektralab_constants.bin after
+    // every DLL had already moved aside. The helper stands down the moment
+    // the update enters its install step (a direct connection, so the
+    // shutdown completes before the first file moves); the restarted copy
+    // brings it back on its own.
+    QObject::connect(&updater,&spk::desktop::Updater::stateChanged,
+        &libraryModel,[&libraryModel,&updater]{
+            if(updater.state()==QStringLiteral("installing"))libraryModel.shutdown();
+        });
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("preview",&controller);
     engine.rootContext()->setContextProperty("library",&libraryModel);
     engine.rootContext()->setContextProperty("lightTable",&lightTableModel);
@@ -602,6 +614,27 @@ int main(int argc,char** argv) {
     // offline is the ordinary state of a laptop, not a warning.
     if(qEnvironmentVariableIsEmpty("SPK_UPDATE_SKIP"))
         QTimer::singleShot(8000,&updater,&spk::desktop::Updater::checkNow);
+    // The end-to-end update drill (SPK_UPDATE_DRILL=1 with
+    // SPK_UPDATE_FAKE_VERSION=0.5.0): check, auto-install, swap, restart.
+    // The marker stops the RESTARTED copy from drilling again — it inherits
+    // the fake version and would otherwise loop.
+    if(qEnvironmentVariable("SPK_UPDATE_DRILL")=="1") {
+        QTimer::singleShot(4000,&updater,&spk::desktop::Updater::checkNow);
+        const QString marker=QDir(QDir::temp()).filePath("spk-update/drilled");
+        QObject::connect(&updater,&spk::desktop::Updater::stateChanged,&app,
+            [&updater,marker]{
+                if(updater.state()==QStringLiteral("available")&&!QFileInfo::exists(marker)) {
+                    QDir().mkpath(QFileInfo(marker).absolutePath());
+                    QFile stamp(marker);
+                    if(stamp.open(QIODevice::WriteOnly))stamp.write("1");
+                    qWarning("DRILL: update available, installing in 2s");
+                    QTimer::singleShot(2000,&updater,&spk::desktop::Updater::startDownloadAndInstall);
+                }
+                if(updater.state()==QStringLiteral("failed"))
+                    qWarning("DRILL: failed — %s",updater.error().toUtf8().constData());
+            });
+        QTimer::singleShot(420000,&app,[]{QCoreApplication::exit(3);});
+    }
     std::unique_ptr<SelfTest> test;
     if(testing) {
         auto* window=qobject_cast<QQuickWindow*>(engine.rootObjects().first());if(!window)return 2;

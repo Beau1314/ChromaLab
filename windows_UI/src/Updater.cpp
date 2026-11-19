@@ -17,6 +17,9 @@
 #include <QTemporaryDir>
 #include <QUrl>
 
+#include <cstdio>
+#include <windows.h>
+
 namespace spk::desktop {
 namespace {
 
@@ -235,6 +238,13 @@ void Updater::startDownloadAndInstall() {
 }
 
 void Updater::applyExtractedFiles() {
+    // The swap's step-wise errno, for the failure message (the drill caught
+    // a locked file with no hint of WHICH step refused).
+    const auto lastError = [] {
+        char buffer[64];
+        std::snprintf(buffer, sizeof(buffer), " (GetLastError=%lu)", GetLastError());
+        return QString::fromLatin1(buffer);
+    };
     // The payload's root may be a single wrapping folder (the packaging
     // script zips the app directory as a prefix) — the walk starts at the
     // first directory that actually holds the exe.
@@ -253,12 +263,14 @@ void Updater::applyExtractedFiles() {
 
     const QString appDir = QCoreApplication::applicationDirPath();
     QDirIterator it(root, QDir::Files, QDirIterator::Subdirectories);
+    int deferred = 0;
     while (it.hasNext()) {
         const QString source = it.next();
         const QString relative = QDir(root).relativeFilePath(source);
         // Leftovers of an earlier swap ride back inside a packaged zip
         // sometimes; they are never part of the application.
-        if (relative.endsWith(QStringLiteral(".spk-old"))) continue;
+        if (relative.endsWith(QStringLiteral(".spk-old")) ||
+            relative.endsWith(QStringLiteral(".spk-new"))) continue;
         const QString target = QDir(appDir).filePath(relative);
         QDir().mkpath(QFileInfo(target).absolutePath());
         if (QFileInfo::exists(target)) QFile::remove(target);
@@ -268,11 +280,20 @@ void Updater::applyExtractedFiles() {
         // new copy under the original name.
         const QString aside = target + QStringLiteral(".spk-old");
         QFile::remove(aside);
-        if (!QFile::rename(target, aside) ||
-            !QFile::copy(source, target)) {
-            fail(QString::fromUtf8("Cannot replace: ") + relative);
+        if (QFile::rename(target, aside) && QFile::copy(source, target))
+            continue;
+        // A DATA mapping cannot even rename (unlike a DLL's image mapping):
+        // the engine's Blob holds the constants file mapped for the whole
+        // process. Land the new copy beside it and let the restarted
+        // process — before its engine wakes — move it into place
+        // (applyPendingFiles below).
+        const QString staged = target + QStringLiteral(".spk-new");
+        QFile::remove(staged);
+        if (!QFile::copy(source, staged)) {
+            fail(QString::fromUtf8("Cannot replace: ") + relative + lastError());
             return;
         }
+        ++deferred;
     }
     setState(QStringLiteral("restarting"));
     restart();
@@ -286,11 +307,29 @@ void Updater::restart() {
 }
 
 void Updater::cleanupOldFiles() {
+    // Recursive: a swap moves files aside in every subdirectory (the Qt
+    // plugin folders among them), not only beside the exe.
     const QString appDir = QCoreApplication::applicationDirPath();
-    const QStringList stale =
-        QDir(appDir).entryList({QStringLiteral("*.spk-old")}, QDir::Files);
-    for (const QString& name : stale)
-        QFile::remove(QDir(appDir).filePath(name));
+    QDirIterator it(appDir, {QStringLiteral("*.spk-old")}, QDir::Files,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) QFile::remove(it.next());
+}
+
+void Updater::applyPendingFiles() {
+    // The swap's deferred half: files this process itself held mapped (the
+    // engine's constants among them) landed as *.spk-new; the restarted
+    // process moves them into place before its engine opens anything.
+    const QString appDir = QCoreApplication::applicationDirPath();
+    QDirIterator it(appDir, {QStringLiteral("*.spk-new")}, QDir::Files,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString staged = it.next();
+        QString target = staged;
+        target.chop(QStringLiteral(".spk-new").size());
+        QFile::remove(target);
+        if (!QFile::rename(staged, target))
+            QFile::remove(staged); // never wedge startup on a stale stage
+    }
 }
 
 } // namespace spk::desktop
