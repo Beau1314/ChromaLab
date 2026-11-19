@@ -27,6 +27,11 @@ endif()
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" SPK_VERSION_RAW)
 string(STRIP "${SPK_VERSION_RAW}" SPK_VERSION)
 message(STATUS "SpektraLab Windows version: ${SPK_VERSION}")
+# A bumped VERSION must reconfigure on its own: without this, the build tree
+# keeps the previous SPK_APP_VERSION and the shipped exe under-reports (the
+# v0.6.4 zip carried a 0.6.3 string and would have offered its own update
+# forever).
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "../VERSION")
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 qt_standard_project_setup(REQUIRES 6.8)
 
