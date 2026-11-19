@@ -26,7 +26,7 @@ namespace {
 // The public releases channel. The repository is public, so every installed
 // copy checks and downloads anonymously — no token ships inside the exe.
 const char kReleasesLatest[] =
-    "https://api.github.com/repos/Beau1314/SpektraLab-Windows/releases/latest";
+    "https://api.github.com/repos/Beau1314/ChromaLab/releases/latest";
 
 QString tempRoot() {
     return QDir(QDir::temp()).filePath(QStringLiteral("spk-update"));
@@ -114,7 +114,7 @@ void Updater::checkNow() {
 
     QNetworkRequest request{QUrl(QString::fromLatin1(kReleasesLatest))};
     request.setHeader(QNetworkRequest::UserAgentHeader,
-                      QStringLiteral("SpektraLab-Windows-Updater"));
+                      QStringLiteral("ChromaLab-Updater"));
     request.setRawHeader("Accept", "application/vnd.github+json");
     QNetworkReply* reply = network_->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
@@ -185,7 +185,7 @@ void Updater::startDownloadAndInstall() {
 
     QNetworkRequest request{QUrl(downloadUrl_)};
     request.setHeader(QNetworkRequest::UserAgentHeader,
-                      QStringLiteral("SpektraLab-Windows-Updater"));
+                      QStringLiteral("ChromaLab-Updater"));
     QNetworkReply* reply = network_->get(request);
     connect(reply, &QNetworkReply::downloadProgress, this,
             [this](qint64 received, qint64 total) {
@@ -251,7 +251,7 @@ void Updater::applyExtractedFiles() {
     QString root = stageExtract();
     while (true) {
         const QDir dir(root);
-        if (QFileInfo::exists(dir.filePath(QStringLiteral("SpektraLabQt.exe")))) break;
+        if (QFileInfo::exists(dir.filePath(QStringLiteral("ChromaLab.exe")))) break;
         const QStringList entries = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
         if (entries.size() == 1) {
             root = dir.filePath(entries.first());
@@ -294,6 +294,17 @@ void Updater::applyExtractedFiles() {
             return;
         }
         ++deferred;
+    }
+    // Names a previous version of the application ran under (the ChromaLab
+    // rename): the zip carries no file of that name, so without this the old
+    // exe survives beside the new one and restart() — which relaunches the
+    // RUNNING file — would bring the retired version straight back.
+    static const char* const kRetiredExes[] = {"SpektraLabQt.exe"};
+    for (const char* name : kRetiredExes) {
+        const QString retired = QDir(appDir).filePath(QString::fromLatin1(name));
+        if (QFileInfo::exists(retired) &&
+            QFileInfo(retired) != QFileInfo(QCoreApplication::applicationFilePath()))
+            QFile::remove(retired);
     }
     setState(QStringLiteral("restarting"));
     restart();

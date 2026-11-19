@@ -1,6 +1,6 @@
-# SpektraLab Windows 移植版
+# ChromaLab — SpektraLab 的 Windows 移植版
 
-> 非官方 · 个人私有复刻。基于 [JamesQiu2005/SpektraLab](https://github.com/JamesQiu2005/SpektraLab)（macOS 版，GPL-3.0-or-later）的代码与数据，遵循其许可证移植到 Windows。**本仓库为私有个人备份，不构成发布；保留原名仅适用于私有场景，若未来公开发布构建须按上游商标条款更名并更换图标。**
+> **ChromaLab**（非官方）：基于 [JamesQiu2005/SpektraLab](https://github.com/JamesQiu2005/SpektraLab)（macOS 版，GPL-3.0-or-later）的代码与数据移植到 Windows。按上游商标条款，公开分发的构建使用自有名称 **ChromaLab** 与自有图标（RGB 光斑叠加）；本移植非官方，与上游 SpektraLab、spektrafilm 项目均无隶属或背书关系。
 
 一台 Windows 机器上的胶片模拟暗房：打开 RAW，选胶片与相纸，得到物理建模的印相——光线经 81 波长穿过胶片染料层与相纸层，带颗粒、光晕、DIR 成色剂与放大机滤镜包，全分辨率约一秒出图。
 
@@ -59,5 +59,6 @@
 ## 许可
 
 - 代码 GPL-3.0-or-later（`license/LICENSE`）；胶片/相纸档案与印相 LUT CC BY-SA 4.0（`license/SPEKTRAFILM_LICENSE.txt`）；TeX Gyre Heros 字体 GUST Font License（`license/GUST-FONT-LICENSE.txt`）；spklib MIT（独立仓库，本仓库 `docs/spklib/` 携带其 Windows 可移植性补丁与构建脚本）
-- SpektraLab™ 名称与图标归 Guangzhou Songzi Intelligent Technology Services Co., Ltd.；本移植为**非官方个人复刻**，与上游及 spektrafilm 项目无隶属关系
+- SpektraLab™ 名称与图标归 Guangzhou Songzi Intelligent Technology Services Co., Ltd.——**ChromaLab 之名与 RGB 光斑图标为本项目自有**，按上游商标条款用于公开分发；"基于 SpektraLab"仅为事实陈述，非官方
+- 发布的每个 zip 携带完整许可与来源文件（`license/`）及对应源码指引（GPL-3.0 §6）；源码即本仓库，Release 的 tag 与二进制一一对应
 - 详细边界与验收口径见 [`windows_UI/README.md`](windows_UI/README.md)；上游原版说明见 [`README.upstream.md`](README.upstream.md)

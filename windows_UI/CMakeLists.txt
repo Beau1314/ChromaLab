@@ -95,6 +95,10 @@ qt_add_resources(SpektraLabQt "localization_catalog"
 qt_add_resources(SpektraLabQt "branding"
     PREFIX "/" FILES assets/logo.png)
 set_target_properties(SpektraLabQt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/app")
+# The published name is ChromaLab (the upstream trademark terms: a public
+# build carries its own name and icon; the target's internal name is not a
+# brand surface and stays).
+set_target_properties(SpektraLabQt PROPERTIES OUTPUT_NAME "ChromaLab")
 # qmlimportscanner passes the source tree through a UTF-8 response file, and
 # the Windows tool decodes it in the host code page — a non-ASCII checkout
 # path (here: 项目复刻) reaches the scanner as mojibake and configure fails.

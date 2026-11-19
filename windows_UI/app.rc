@@ -1,5 +1,5 @@
 // The executable's icon (Explorer, the taskbar and shortcuts read it from
-// this resource): the brand asset shared with the Mac's Logo.imageset —
-// four stacked CMYK capsules on a white rounded square, the film-stack
-// mark of a film development simulator. Generated from logo@3x.png.
+// this resource): ChromaLab's own mark — three RGB light orbs in an
+// additive triangle on a dark rounded square (the upstream trademark
+// terms give a public build its own name and icon; this is ours).
 1 ICON "assets/app.ico"

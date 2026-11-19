@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-Packages and publishes a SpektraLab Windows release.
+Packages and publishes a ChromaLab release.
 
 .DESCRIPTION
 The self-update channel's publishing end. Builds the app, refreshes the
 deployed directory (windeployqt), zips it as one top-level folder, and
 creates the GitHub Release the installed copies check (Updater talks to
-repos/Beau1314/SpektraLab-Windows/releases/latest).
+repos/Beau1314/ChromaLab/releases/latest).
 
 The upload token comes from the git credential store (`git credential fill`
 for github.com) — the same credential that pushes — so no separate login is
@@ -40,7 +40,7 @@ $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent   # repo root 
 if (-not $Version) { $Version = (Get-Content (Join-Path $repoRoot 'VERSION') -Raw).Trim() }
 if (-not $Version -match '^\d+(\.\d+)*$') { throw "Version '$Version' is not dotted numbers; bump the VERSION file." }
 if ($NotesFile) { $Notes = Get-Content $NotesFile -Raw }
-$repo = 'Beau1314/SpektraLab-Windows'
+$repo = 'Beau1314/ChromaLab'
 $buildDir = Join-Path $repoRoot 'build/qt'
 $appDir = Join-Path $buildDir 'app'
 $deps = Join-Path (Split-Path $repoRoot -Parent) 'deps'
@@ -59,11 +59,11 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) { throw 'build failed' }
     # Refresh the deployed runtime: a new Qt module (QtNetwork joined the
     # app in the update work) must land its DLL beside the exe.
-    & "$qt/bin/windeployqt.exe" --qmldir (Join-Path $repoRoot 'windows_UI/qml') --release (Join-Path $appDir 'SpektraLabQt.exe')
+    & "$qt/bin/windeployqt.exe" --qmldir (Join-Path $repoRoot 'windows_UI/qml') --release (Join-Path $appDir 'ChromaLab.exe')
     if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
 }
 
-foreach ($probe in @('SpektraLabQt.exe','spklib-host.exe','resources','licenses')) {
+foreach ($probe in @('ChromaLab.exe','spklib-host.exe','resources','licenses')) {
     if (-not (Test-Path -LiteralPath (Join-Path $appDir $probe))) {
         throw "The app directory is missing $probe — build first (or see -SkipBuild)."
     }
@@ -72,12 +72,30 @@ foreach ($probe in @('SpektraLabQt.exe','spklib-host.exe','resources','licenses'
 Write-Host "== packaging" -ForegroundColor Cyan
 $stage = Join-Path $env:TEMP "spk-release-$Version"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
-$folder = "SpektraLab-Windows-v$Version-win64"
+$folder = "ChromaLab-Windows-v$Version-win64"
 $payload = Join-Path $stage $folder
 New-Item -ItemType Directory -Path $payload -Force | Out-Null
 # Robocopy exit codes 0-7 are success grades; anything else stops the release.
 robocopy $appDir $payload /E /XF '*.spk-old' '*.pdb' /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
+# The GPL compliance set: the project's own licences and notices (LICENSE,
+# NOTICE.md, SPEKTRAFILM/GUST/spklib texts) travel beside the components'
+# set (licenses/), and a source-code offer names the exact tag the zip was
+# built from (GPL-3.0 sections 5-6).
+Copy-Item -Recurse -Force (Join-Path $repoRoot 'license') (Join-Path $payload 'license')
+$sourceOffer = @"
+# Source code
+
+ChromaLab is free software under GPL-3.0-or-later. The complete source code
+of this build is the tag v$Version of:
+
+    https://github.com/Beau1314/ChromaLab/tree/v$Version
+
+Licences and attribution: see the license/ and licenses/ folders beside this
+file. ChromaLab is an unofficial port of SpektraLab; it is not affiliated
+with or endorsed by the SpektraLab or spektrafilm projects.
+"@
+Set-Content -Path (Join-Path $payload 'SOURCE-CODE.md') -Value $sourceOffer -Encoding UTF8
 $zip = Join-Path $stage "$folder.zip"
 Compress-Archive -Path $payload -DestinationPath $zip
 $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
@@ -89,6 +107,8 @@ $token = "protocol=https`nhost=github.com`n`n" | git credential fill |
 if (-not $token) { throw 'No github.com credential in the git store; push once or gh auth login.' }
 $headers = @{ Authorization = "Bearer $token"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
 
+$footer = "Licence: GPL-3.0-or-later (license/ and licenses/ inside the zip; full text included). Source code for this exact build: https://github.com/Beau1314/ChromaLab/tree/v$Version — ChromaLab is an unofficial port of SpektraLab (https://github.com/JamesQiu2005/SpektraLab), not affiliated with or endorsed by the SpektraLab or spektrafilm projects."
+
 # Windows PowerShell's Invoke-RestMethod throws on 404 — the tag's absence is
 # the expected first-release state, not an error.
 $existing = $null
@@ -97,8 +117,8 @@ if ($existing -and $existing.tag_name) { throw "Release v$Version already exists
 
 $body = @{
     tag_name = "v$Version"
-    name = "SpektraLab Windows v$Version"
-    body = if ($Notes) { $Notes } else { "SpektraLab Windows v$Version" }
+    name = "ChromaLab v$Version"
+    body = if ($Notes) { "$Notes`n`n---`n$footer" } else { $footer }
     target_commitish = 'master'
 } | ConvertTo-Json
 # UTF-8 bytes, not the 5.1 default encoding, or the Chinese notes mojibake.

@@ -226,10 +226,10 @@
       "zh-Hans": "其中 %@ 张照片无法读取，设置保持不变。",
       "zh-Hant": "其中 %@ 張照片無法讀取，設定維持不變。"
     },
-    "%@ of them were copied into SpektraLab; their originals go with them. The rest stay where they are.": {
-      "ja": "%@枚のオリジナルは SpektraLab 内に保存されており、一緒に削除されます。ほかのオリジナルは変更されません。",
-      "zh-Hans": "其中 %@ 张的原件存于 SpektraLab，将一并删除。其余原件不受影响。",
-      "zh-Hant": "其中 %@ 張的原件存於 SpektraLab，將一併刪除。其餘原件不受影響。"
+    "%@ of them were copied into ChromaLab; their originals go with them. The rest stay where they are.": {
+      "ja": "%@枚のオリジナルは ChromaLab 内に保存されており、一緒に削除されます。ほかのオリジナルは変更されません。",
+      "zh-Hans": "其中 %@ 张的原件存于 ChromaLab，将一并删除。其余原件不受影响。",
+      "zh-Hant": "其中 %@ 張的原件存於 ChromaLab，將一併刪除。其餘原件不受影響。"
     },
     "%@ on this Mac": {
       "ja": "このMacで%@を使用",
@@ -596,7 +596,7 @@
       "zh-Hans": "对不拥有自己的照片：两孔随各自源照片的解码与裁切；件的胶片、相纸与胶片边缘在下方共用面板调整。",
       "zh-Hant": "對不擁有自己的照片：兩孔隨各自源照片的解碼與裁切；件的膠片、相紙與膠片邊緣在下方共用面板調整。"
     },
-    "A picture to share: the table on a white desk, with the SpektraLab mark and a code to the app. Its style, format and size are fixed.": {
+    "A picture to share: the table on a white desk, with the ChromaLab mark and a code to the app. Its style, format and size are fixed.": {
       "ja": "ポスターの体裁、形式、寸法は固定です。",
       "zh-Hans": "海报的样式、格式和尺寸固定。",
       "zh-Hant": "海報的樣式、格式與尺寸固定。"
@@ -611,10 +611,10 @@
       "zh-Hans": "已有同名预设",
       "zh-Hant": "已有同名預設"
     },
-    "A program on this Mac, such as an AI agent, can then list, rate, label, import, develop and export your pictures through SpektraLab while it is open, and opens it when it is not. It can move pictures to a library's Trash and back, and never deletes a file. Off, every call is refused.": {
-      "ja": "オンにすると、この Mac 上のプログラム（AI エージェントなど）が、SpektraLab が開いている間、SpektraLab を通じて写真の一覧表示、レーティング、ラベル付け、読み込み、現像、書き出しを行えます。開いていなければ SpektraLab を開きます。写真をライブラリのゴミ箱に入れたり戻したりできますが、ファイルを削除することはありません。オフのときは、すべての呼び出しが拒否されます。",
-      "zh-Hans": "打开后，这台 Mac 上的程序（例如 AI 智能体）可以在 SpektraLab 打开时通过它列出、评级、标记、导入、冲洗和导出你的照片；SpektraLab 未打开时会将其打开。它可以把照片移到图库的废纸篓并放回，但从不删除任何文件。关闭时，所有调用都会被拒绝。",
-      "zh-Hant": "開啟後，這台 Mac 上的程式（例如 AI 智慧代理）可以在 SpektraLab 開啟時透過它列出、評級、標記、輸入、沖洗和輸出你的照片；SpektraLab 未開啟時會將其開啟。它可以把照片移到圖庫的垃圾桶並放回，但從不刪除任何檔案。關閉時，所有呼叫都會被拒絕。"
+    "A program on this Mac, such as an AI agent, can then list, rate, label, import, develop and export your pictures through ChromaLab while it is open, and opens it when it is not. It can move pictures to a library's Trash and back, and never deletes a file. Off, every call is refused.": {
+      "ja": "オンにすると、この Mac 上のプログラム（AI エージェントなど）が、ChromaLab が開いている間、ChromaLab を通じて写真の一覧表示、レーティング、ラベル付け、読み込み、現像、書き出しを行えます。開いていなければ ChromaLab を開きます。写真をライブラリのゴミ箱に入れたり戻したりできますが、ファイルを削除することはありません。オフのときは、すべての呼び出しが拒否されます。",
+      "zh-Hans": "打开后，这台 Mac 上的程序（例如 AI 智能体）可以在 ChromaLab 打开时通过它列出、评级、标记、导入、冲洗和导出你的照片；ChromaLab 未打开时会将其打开。它可以把照片移到图库的废纸篓并放回，但从不删除任何文件。关闭时，所有调用都会被拒绝。",
+      "zh-Hant": "開啟後，這台 Mac 上的程式（例如 AI 智慧代理）可以在 ChromaLab 開啟時透過它列出、評級、標記、輸入、沖洗和輸出你的照片；ChromaLab 未開啟時會將其開啟。它可以把照片移到圖庫的垃圾桶並放回，但從不刪除任何檔案。關閉時，所有呼叫都會被拒絕。"
     },
     "A scanned film is not printed": {
       "ja": "スキャンしたフィルムはプリントされません",
@@ -781,10 +781,10 @@
       "zh-Hans": "全部",
       "zh-Hant": "全部"
     },
-    "Allow agents to use SpektraLab": {
-      "ja": "エージェントに SpektraLab の使用を許可",
-      "zh-Hans": "允许智能体使用 SpektraLab",
-      "zh-Hant": "允許智慧代理使用 SpektraLab"
+    "Allow agents to use ChromaLab": {
+      "ja": "エージェントに ChromaLab の使用を許可",
+      "zh-Hans": "允许智能体使用 ChromaLab",
+      "zh-Hant": "允許智慧代理使用 ChromaLab"
     },
     "Already Imported": {
       "ja": "読み込み済み",
@@ -1141,10 +1141,10 @@
       "zh-Hans": "Capture One 正在写入它的目录。请稍后再试。",
       "zh-Hant": "Capture One 正在寫入它的目錄。請稍後再試。"
     },
-    "Capture One's catalog is never written: this one's previews are kept in SpektraLab's own library for it.": {
-      "ja": "Capture One のカタログには一切書き込みません。プレビューは SpektraLab がそのカタログ用に持つライブラリに保存されます。",
-      "zh-Hans": "Capture One 的目录永远不会被写入：它的预览保存在 SpektraLab 为它建立的图库中。",
-      "zh-Hant": "Capture One 的目錄永遠不會被寫入：它的預覽保存在 SpektraLab 為它建立的圖庫中。"
+    "Capture One's catalog is never written: this one's previews are kept in ChromaLab's own library for it.": {
+      "ja": "Capture One のカタログには一切書き込みません。プレビューは ChromaLab がそのカタログ用に持つライブラリに保存されます。",
+      "zh-Hans": "Capture One 的目录永远不会被写入：它的预览保存在 ChromaLab 为它建立的图库中。",
+      "zh-Hant": "Capture One 的目錄永遠不會被寫入：它的預覽保存在 ChromaLab 為它建立的圖庫中。"
     },
     "Cards, disks, iCloud Drive, in place": {
       "ja": "カード、ディスク、iCloud Drive",
@@ -1221,6 +1221,11 @@
       "zh-Hans": "自动检查更新",
       "zh-Hant": "自動檢查更新"
     },
+    "Checking for updates…": {
+      "zh-Hans": "正在检查更新…",
+      "zh-Hant": "正在檢查更新…",
+      "ja": "アップデートを確認中…"
+    },
     "Checking…": {
       "ja": "確認中…",
       "zh-Hans": "正在检查…",
@@ -1280,6 +1285,86 @@
       "ja": "選択…",
       "zh-Hans": "选择…",
       "zh-Hant": "選擇…"
+    },
+    "ChromaLab": {
+      "ja": "ChromaLab",
+      "zh-Hans": "ChromaLab",
+      "zh-Hant": "ChromaLab"
+    },
+    "ChromaLab %@ is available. You have %@.": {
+      "ja": "ChromaLab %1$@ が公開されています。お使いのバージョンは %2$@ です。",
+      "zh-Hans": "ChromaLab %1$@ 已发布，当前为 %2$@。",
+      "zh-Hant": "ChromaLab %1$@ 已發佈，目前為 %2$@。"
+    },
+    "ChromaLab %@ is the latest version.": {
+      "ja": "ChromaLab %@ は最新バージョンです。",
+      "zh-Hans": "ChromaLab %@ 已是最新版本。",
+      "zh-Hant": "ChromaLab %@ 已是最新版本。"
+    },
+    "ChromaLab %@ is the version on this Mac.": {
+      "ja": "この Mac のバージョンは ChromaLab %@ です。",
+      "zh-Hans": "这台 Mac 上的版本为 ChromaLab %@。",
+      "zh-Hant": "這台 Mac 上的版本為 ChromaLab %@。"
+    },
+    "ChromaLab Catalog": {
+      "ja": "ChromaLab カタログ",
+      "zh-Hans": "ChromaLab 目录",
+      "zh-Hant": "ChromaLab 目錄"
+    },
+    "ChromaLab Contact Sheet": {
+      "ja": "ChromaLabの密着焼き",
+      "zh-Hans": "ChromaLab 印样",
+      "zh-Hant": "ChromaLab 印樣"
+    },
+    "ChromaLab Library": {
+      "ja": "ChromaLab ライブラリ",
+      "zh-Hans": "ChromaLab 图库",
+      "zh-Hant": "ChromaLab 圖庫"
+    },
+    "ChromaLab Poster": {
+      "ja": "ChromaLabのポスター",
+      "zh-Hans": "ChromaLab 海报",
+      "zh-Hant": "ChromaLab 海報"
+    },
+    "ChromaLab changes at once. What macOS shows of its own, such as a Finder panel, follows the next time the app is opened.": {
+      "ja": "ChromaLabの表示はすぐに切り替わります。Finderのパネルなど、macOSが表示する部分は、次にAppを開いたときから切り替わります。",
+      "zh-Hans": "ChromaLab 会立即切换。macOS 自己显示的部分，例如访达的面板，要到下次打开 App 时才会跟着改变。",
+      "zh-Hant": "ChromaLab 會立即切換。macOS 自己顯示的部分，例如 Finder 的面板，要到下次開啟 App 時才會跟著改變。"
+    },
+    "ChromaLab engine": {
+      "ja": "ChromaLabエンジン",
+      "zh-Hans": "ChromaLab 引擎",
+      "zh-Hant": "ChromaLab 引擎"
+    },
+    "ChromaLab for the Mac is free and open source. Thank you to everyone who supports its development.": {
+      "ja": "Mac 版 ChromaLab は無料のオープンソースソフトウェアです。開発を支えてくださる皆さまに感謝します。",
+      "zh-Hans": "ChromaLab Mac 版免费并开源。感谢每一位支持它继续开发的朋友。",
+      "zh-Hant": "ChromaLab Mac 版免費且開源。感謝每一位支持它持續開發的朋友。"
+    },
+    "ChromaLab is up to date": {
+      "zh-Hans": "ChromaLab 已是最新版本（%@）",
+      "zh-Hant": "ChromaLab 已是最新版本（%@）",
+      "ja": "ChromaLab は最新です（%@）"
+    },
+    "ChromaLab keeps its own copy": {
+      "ja": "App内にコピーを保存",
+      "zh-Hans": "在 App 内另存一份",
+      "zh-Hant": "在 App 內另存一份"
+    },
+    "ChromaLab may no longer read it. Reconnect to allow it again.": {
+      "ja": "アクセス権がありません。「再接続」してください。",
+      "zh-Hans": "无访问权限，请“重新连接”。",
+      "zh-Hant": "無取用權限，請「重新連接」。"
+    },
+    "ChromaLab never changes or deletes anything in your folders or in a Capture One catalog. Edits live in the app.": {
+      "ja": "ChromaLabは、フォルダやCapture Oneのカタログの中身を変更したり削除したりしません。編集内容はApp内に保存されます。",
+      "zh-Hans": "ChromaLab 绝不会改动或删除你的文件夹或 Capture One 目录里的任何东西。编辑保存在 App 里。",
+      "zh-Hant": "ChromaLab 絕不會改動或刪除你的檔案夾或 Capture One 目錄裡的任何東西。編輯保存在 App 裡。"
+    },
+    "ChromaLab's server could not be reached from here (%@). Export Log Zip, and send it by hand.": {
+      "ja": "ここからChromaLabのサーバに接続できませんでした（%@）。「動作記録をZIPで書き出す」で書き出して、手動で送ってください。",
+      "zh-Hans": "从这里连不上 ChromaLab 的服务器（%@）。请用“导出日志压缩包”，再自行发送。",
+      "zh-Hant": "從這裡連不上 ChromaLab 的伺服器（%@）。請用「輸出日誌壓縮檔」，再自行傳送。"
     },
     "Cine": {
       "ja": "映画用",
@@ -1481,7 +1566,7 @@
       "zh-Hans": "已拷贝",
       "zh-Hant": "已拷貝"
     },
-    "Copied into SpektraLab": {
+    "Copied into ChromaLab": {
       "ja": "取り込み済み",
       "zh-Hans": "已拷贝",
       "zh-Hant": "已拷貝"
@@ -1526,10 +1611,10 @@
       "zh-Hans": "拷贝文件进来",
       "zh-Hant": "拷貝檔案進來"
     },
-    "Copy into SpektraLab": {
-      "ja": "SpektraLabに取り込む",
-      "zh-Hans": "拷贝到 SpektraLab",
-      "zh-Hant": "拷貝到 SpektraLab"
+    "Copy into ChromaLab": {
+      "ja": "ChromaLabに取り込む",
+      "zh-Hans": "拷贝到 ChromaLab",
+      "zh-Hant": "拷貝到 ChromaLab"
     },
     "Copy into the Catalog": {
       "ja": "カタログ内にコピー",
@@ -1546,15 +1631,15 @@
       "zh-Hans": "复制设置",
       "zh-Hant": "複製設定"
     },
+    "Copy to ChromaLab Catalog…": {
+      "ja": "ChromaLabカタログにコピー…",
+      "zh-Hans": "拷贝到 ChromaLab 目录…",
+      "zh-Hant": "拷貝到 ChromaLab 目錄…"
+    },
     "Copy to Folder…": {
       "ja": "フォルダにコピー…",
       "zh-Hans": "拷贝到文件夹…",
       "zh-Hant": "拷貝到檔案夾…"
-    },
-    "Copy to SpektraLab Catalog…": {
-      "ja": "SpektraLabカタログにコピー…",
-      "zh-Hans": "拷贝到 SpektraLab 目录…",
-      "zh-Hant": "拷貝到 SpektraLab 目錄…"
     },
     "Copying": {
       "ja": "取り込み中",
@@ -1566,10 +1651,10 @@
       "zh-Hans": "正在拷贝第 %@ 个，共 %@ 个…",
       "zh-Hant": "正在拷貝第 %@ 個，共 %@ 個…"
     },
-    "Copying into SpektraLab…": {
-      "ja": "SpektraLabに取り込み中…",
-      "zh-Hans": "正在拷贝到 SpektraLab…",
-      "zh-Hant": "正在拷貝到 SpektraLab…"
+    "Copying into ChromaLab…": {
+      "ja": "ChromaLabに取り込み中…",
+      "zh-Hans": "正在拷贝到 ChromaLab…",
+      "zh-Hant": "正在拷貝到 ChromaLab…"
     },
     "Core width": {
       "ja": "コアの幅",
@@ -1920,6 +2005,11 @@
       "ja": "ダウンロード",
       "zh-Hans": "下载",
       "zh-Hant": "下載"
+    },
+    "Downloading the update…": {
+      "zh-Hans": "正在下载更新…",
+      "zh-Hant": "正在下載更新…",
+      "ja": "アップデートをダウンロード中…"
     },
     "Drag": {
       "ja": "ドラッグ",
@@ -2576,10 +2666,10 @@
       "zh-Hans": "收起曲线图",
       "zh-Hant": "收合曲線圖"
     },
-    "For a folder, they are kept in SpektraLab's own library for it, on this Mac.": {
-      "ja": "フォルダの場合、プレビューはこの Mac 上の、SpektraLab がそのフォルダ用に持つライブラリに保存されます。",
-      "zh-Hans": "对于文件夹，预览保存在 SpektraLab 为它建立的图库中，位于这台 Mac 上。",
-      "zh-Hant": "對於檔案夾，預覽保存在 SpektraLab 為它建立的圖庫中，位於這台 Mac 上。"
+    "For a folder, they are kept in ChromaLab's own library for it, on this Mac.": {
+      "ja": "フォルダの場合、プレビューはこの Mac 上の、ChromaLab がそのフォルダ用に持つライブラリに保存されます。",
+      "zh-Hans": "对于文件夹，预览保存在 ChromaLab 为它建立的图库中，位于这台 Mac 上。",
+      "zh-Hant": "對於檔案夾，預覽保存在 ChromaLab 為它建立的圖庫中，位於這台 Mac 上。"
     },
     "Format": {
       "ja": "形式",
@@ -2661,10 +2751,10 @@
       "zh-Hans": "自由格式",
       "zh-Hant": "自由格式"
     },
-    "From now on your library is a SpektraLab catalog, a .spkcatalog you place where you like, as a Capture One catalog is. You can have several, and the one you used last opens.": {
-      "ja": "これからはライブラリがSpektraLabカタログになります。Capture Oneカタログと同じく、好きな場所に置ける.spkcatalogです。いくつでも持つことができ、最後に使ったものが開きます。",
-      "zh-Hans": "从现在起，你的图库是一个 SpektraLab 目录：一个放在你喜欢的任何位置的 .spkcatalog，就像 Capture One 目录一样。你可以有多个，打开的是你上次用的那个。",
-      "zh-Hant": "從現在起，你的圖庫是一個 SpektraLab 目錄：一個放在你喜歡的任何位置的 .spkcatalog，就像 Capture One 目錄一樣。你可以有多個，打開的是你上次用的那個。"
+    "From now on your library is a ChromaLab catalog, a .spkcatalog you place where you like, as a Capture One catalog is. You can have several, and the one you used last opens.": {
+      "ja": "これからはライブラリがChromaLabカタログになります。Capture Oneカタログと同じく、好きな場所に置ける.spkcatalogです。いくつでも持つことができ、最後に使ったものが開きます。",
+      "zh-Hans": "从现在起，你的图库是一个 ChromaLab 目录：一个放在你喜欢的任何位置的 .spkcatalog，就像 Capture One 目录一样。你可以有多个，打开的是你上次用的那个。",
+      "zh-Hant": "從現在起，你的圖庫是一個 ChromaLab 目錄：一個放在你喜歡的任何位置的 .spkcatalog，就像 Capture One 目錄一樣。你可以有多個，打開的是你上次用的那個。"
     },
     "From the camera's picture": {
       "ja": "カメラの画像から",
@@ -3116,15 +3206,15 @@
       "zh-Hans": "目录内",
       "zh-Hant": "目錄內"
     },
+    "In ChromaLab": {
+      "ja": "ChromaLab内",
+      "zh-Hans": "在 ChromaLab 中",
+      "zh-Hant": "在 ChromaLab 中"
+    },
     "In Photos": {
       "ja": "「写真」内",
       "zh-Hans": "在“照片”中",
       "zh-Hant": "在「照片」中"
-    },
-    "In SpektraLab": {
-      "ja": "SpektraLab内",
-      "zh-Hans": "在 SpektraLab 中",
-      "zh-Hant": "在 SpektraLab 中"
     },
     "In the Library": {
       "ja": "ライブラリで表示中",
@@ -3161,6 +3251,11 @@
       "zh-Hans": "输入：",
       "zh-Hant": "輸入："
     },
+    "Installing the update…": {
+      "zh-Hans": "正在安装更新…",
+      "zh-Hant": "正在安裝更新…",
+      "ja": "アップデートをインストール中…"
+    },
     "Interface scale": {
       "ja": "インターフェイスの拡大縮小",
       "zh-Hans": "界面缩放",
@@ -3186,10 +3281,10 @@
       "zh-Hans": "已不在“照片”图库中，可能已删除或无访问权限。",
       "zh-Hant": "已不在「照片」圖庫中，可能已刪除或無取用權限。"
     },
-    "It was copied into SpektraLab, so its original goes with it.": {
-      "ja": "SpektraLabに取り込んだものなので、元ファイルも一緒に削除されます。",
-      "zh-Hans": "它是拷贝进 SpektraLab 的，原件会一并移除。",
-      "zh-Hant": "它是拷貝進 SpektraLab 的，原始檔會一併移除。"
+    "It was copied into ChromaLab, so its original goes with it.": {
+      "ja": "ChromaLabに取り込んだものなので、元ファイルも一緒に削除されます。",
+      "zh-Hans": "它是拷贝进 ChromaLab 的，原件会一并移除。",
+      "zh-Hant": "它是拷貝進 ChromaLab 的，原始檔會一併移除。"
     },
     "It was moved, renamed or deleted. Reconnect to find it.": {
       "ja": "移動、名称変更、または削除されました。",
@@ -3201,10 +3296,10 @@
       "zh-Hans": "%@ 张照片及其编辑将从图库移除，文件夹中的文件不受影响。",
       "zh-Hant": "%@ 張照片及其編輯將從圖庫移除，檔案夾中的檔案不受影響。"
     },
-    "Its copy in SpektraLab is gone: it was removed from the app's storage.": {
-      "ja": "SpektraLab内のコピーは削除されています。",
-      "zh-Hans": "SpektraLab 中的副本已被移除。",
-      "zh-Hant": "SpektraLab 中的副本已被移除。"
+    "Its copy in ChromaLab is gone: it was removed from the app's storage.": {
+      "ja": "ChromaLab内のコピーは削除されています。",
+      "zh-Hans": "ChromaLab 中的副本已被移除。",
+      "zh-Hant": "ChromaLab 中的副本已被移除。"
     },
     "Its disk is not connected": {
       "ja": "ディスク未接続",
@@ -3256,10 +3351,10 @@
       "zh-Hans": "JPEG · 8 位",
       "zh-Hant": "JPEG · 8 位"
     },
-    "Keep SpektraLab open while it works.": {
-      "ja": "処理中はSpektraLabを開いたままにしてください。",
-      "zh-Hans": "冲洗期间请保持 SpektraLab 打开。",
-      "zh-Hant": "沖洗期間請保持 SpektraLab 開啟。"
+    "Keep ChromaLab open while it works.": {
+      "ja": "処理中はChromaLabを開いたままにしてください。",
+      "zh-Hans": "冲洗期间请保持 ChromaLab 打开。",
+      "zh-Hant": "沖洗期間請保持 ChromaLab 開啟。"
     },
     "Keep a local copy": {
       "ja": "端末内に保持",
@@ -3271,7 +3366,7 @@
       "zh-Hans": "保留去马赛克后的部分高光及负值；仍使用整数去马赛克。",
       "zh-Hant": "保留去馬賽克後的部分高光及負值；仍使用整數去馬賽克。"
     },
-    "Keeps the original in SpektraLab, so the photo can be deleted from Photos.": {
+    "Keeps the original in ChromaLab, so the photo can be deleted from Photos.": {
       "ja": "取り込んだ後は「写真」から元の写真を削除できます。",
       "zh-Hans": "拷贝后，可从“照片”中删除原图。",
       "zh-Hant": "拷貝後，可從「照片」中刪除原圖。"
@@ -3281,10 +3376,10 @@
       "zh-Hans": "存储内容",
       "zh-Hant": "儲存內容"
     },
-    "Kept in SpektraLab's own library for each Finder folder and Capture One catalog or session, on this Mac. No budget: Delete Previews, below, takes a library's.": {
-      "ja": "Finder のフォルダや Capture One のカタログ・セッションごとに SpektraLab が持つライブラリに、この Mac 上で保存されます。上限はありません。ライブラリのプレビューは下の「プレビューを削除」で削除します。",
-      "zh-Hans": "保存在 SpektraLab 为每个访达文件夹以及 Capture One 目录或会话建立的图库中，位于这台 Mac 上。没有上限：用下方的“删除预览”删除某个图库的预览。",
-      "zh-Hant": "保存在 SpektraLab 為每個 Finder 檔案夾以及 Capture One 目錄或工作階段建立的圖庫中，位於這台 Mac 上。沒有上限：用下方的「刪除預覽」刪除某個圖庫的預覽。"
+    "Kept in ChromaLab's own library for each Finder folder and Capture One catalog or session, on this Mac. No budget: Delete Previews, below, takes a library's.": {
+      "ja": "Finder のフォルダや Capture One のカタログ・セッションごとに ChromaLab が持つライブラリに、この Mac 上で保存されます。上限はありません。ライブラリのプレビューは下の「プレビューを削除」で削除します。",
+      "zh-Hans": "保存在 ChromaLab 为每个访达文件夹以及 Capture One 目录或会话建立的图库中，位于这台 Mac 上。没有上限：用下方的“删除预览”删除某个图库的预览。",
+      "zh-Hant": "保存在 ChromaLab 為每個 Finder 檔案夾以及 Capture One 目錄或工作階段建立的圖庫中，位於這台 Mac 上。沒有上限：用下方的「刪除預覽」刪除某個圖庫的預覽。"
     },
     "Keyboard Shortcuts": {
       "ja": "キーボードショートカット",
@@ -3521,10 +3616,10 @@
       "zh-Hans": "关联文件夹",
       "zh-Hant": "連結檔案夾"
     },
-    "Linked before the Mac library had sources of its own: every picture in them is a frame of the SpektraLab library. New folders are opened above instead.": {
-      "ja": "Macのライブラリに独自の読み込み元ができる前に連携したフォルダです。中のイメージはどれもSpektraLabライブラリの写真です。新しいフォルダは上から開いてください。",
-      "zh-Hans": "这些文件夹是在 Mac 图库有自己的来源之前关联的：其中每张图像都是 SpektraLab 图库里的一张照片。新的文件夹请改用上方的方式打开。",
-      "zh-Hant": "這些檔案夾是在 Mac 圖庫有自己的來源之前連結的：其中每張影像都是 SpektraLab 圖庫裡的一張照片。新的檔案夾請改用上方的方式開啟。"
+    "Linked before the Mac library had sources of its own: every picture in them is a frame of the ChromaLab library. New folders are opened above instead.": {
+      "ja": "Macのライブラリに独自の読み込み元ができる前に連携したフォルダです。中のイメージはどれもChromaLabライブラリの写真です。新しいフォルダは上から開いてください。",
+      "zh-Hans": "这些文件夹是在 Mac 图库有自己的来源之前关联的：其中每张图像都是 ChromaLab 图库里的一张照片。新的文件夹请改用上方的方式打开。",
+      "zh-Hant": "這些檔案夾是在 Mac 圖庫有自己的來源之前連結的：其中每張影像都是 ChromaLab 圖庫裡的一張照片。新的檔案夾請改用上方的方式開啟。"
     },
     "Linked folders": {
       "ja": "連携フォルダ",
@@ -3656,10 +3751,10 @@
       "zh-Hans": "组成半格组",
       "zh-Hant": "組成半格組"
     },
-    "Make a SpektraLab catalog, or open a catalog or a folder from the + menu below the sidebar.": {
-      "ja": "SpektraLabカタログを作成するか、サイドバー下の＋メニューからカタログまたはフォルダを開いてください。",
-      "zh-Hans": "新建一个 SpektraLab 目录，或从边栏下方的 + 菜单打开目录或文件夹。",
-      "zh-Hant": "新增一個 SpektraLab 目錄，或從側邊欄下方的 + 選單打開目錄或檔案夾。"
+    "Make a ChromaLab catalog, or open a catalog or a folder from the + menu below the sidebar.": {
+      "ja": "ChromaLabカタログを作成するか、サイドバー下の＋メニューからカタログまたはフォルダを開いてください。",
+      "zh-Hans": "新建一个 ChromaLab 目录，或从边栏下方的 + 菜单打开目录或文件夹。",
+      "zh-Hant": "新增一個 ChromaLab 目錄，或從側邊欄下方的 + 選單打開目錄或檔案夾。"
     },
     "Make a picture of the table to share": {
       "ja": "テーブルの画像を作って共有する",
@@ -4291,10 +4386,10 @@
       "zh-Hans": "在这台 Mac 上",
       "zh-Hant": "在這台 Mac 上"
     },
-    "Once, a few seconds after SpektraLab opens. Only the address of the latest release is asked for: nothing about you, your Mac or your pictures is sent.": {
-      "ja": "SpektraLab を開いて数秒後に一度確認します。最新リリースの所在を取得するだけで、あなたや Mac、写真についての情報は送信しません。",
-      "zh-Hans": "SpektraLab 打开几秒后检查一次。只读取最新版本的地址，不会发送任何关于你、你的 Mac 或照片的信息。",
-      "zh-Hant": "SpektraLab 開啟幾秒後檢查一次。只讀取最新版本的位址，不會傳送任何關於你、你的 Mac 或照片的資訊。"
+    "Once, a few seconds after ChromaLab opens. Only the address of the latest release is asked for: nothing about you, your Mac or your pictures is sent.": {
+      "ja": "ChromaLab を開いて数秒後に一度確認します。最新リリースの所在を取得するだけで、あなたや Mac、写真についての情報は送信しません。",
+      "zh-Hans": "ChromaLab 打开几秒后检查一次。只读取最新版本的地址，不会发送任何关于你、你的 Mac 或照片的信息。",
+      "zh-Hant": "ChromaLab 開啟幾秒後檢查一次。只讀取最新版本的位址，不會傳送任何關於你、你的 Mac 或照片的資訊。"
     },
     "One fewer": {
       "ja": "1つ減らす",
@@ -4306,20 +4401,20 @@
       "zh-Hans": "加一",
       "zh-Hant": "加一"
     },
-    "Only pictures developed in SpektraLab go on the Light Table.": {
-      "ja": "ライトテーブルに置けるのは、SpektraLab で現像したイメージだけです。",
-      "zh-Hans": "只有在 SpektraLab 中冲洗过的图像才能放到观片台上。",
-      "zh-Hant": "只有在 SpektraLab 中沖洗過的影像才能放到觀片台上。"
+    "Only pictures developed in ChromaLab go on the Light Table.": {
+      "ja": "ライトテーブルに置けるのは、ChromaLab で現像したイメージだけです。",
+      "zh-Hans": "只有在 ChromaLab 中冲洗过的图像才能放到观片台上。",
+      "zh-Hant": "只有在 ChromaLab 中沖洗過的影像才能放到觀片台上。"
     },
-    "Only pictures developed in SpektraLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.": {
-      "ja": "SpektraLabで現像した写真だけが引き伸ばし台に載ります。先に「現像」で写真を開くか、フィルム縁か2コマ組を与えてください。台は実寸（ミリ）で載せるため、現像記録のサイズが必要です。",
-      "zh-Hans": "只有经 SpektraLab 显影的照片才能上印相台：先在「冲洗」中打开照片，或给它胶片边缘/半幅对——印相台按真实毫米摆放，需要冲洗记录的尺寸。",
-      "zh-Hant": "只有經 SpektraLab 顯影的照片才能上觀片台：先在「沖洗」中打開照片，或給它膠片邊緣/半幅對——觀片台按真實毫米擺放，需要顯影記錄的尺寸。"
+    "Only pictures developed in ChromaLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.": {
+      "ja": "ChromaLabで現像した写真だけが引き伸ばし台に載ります。先に「現像」で写真を開くか、フィルム縁か2コマ組を与えてください。台は実寸（ミリ）で載せるため、現像記録のサイズが必要です。",
+      "zh-Hans": "只有经 ChromaLab 显影的照片才能上印相台：先在「冲洗」中打开照片，或给它胶片边缘/半幅对——印相台按真实毫米摆放，需要冲洗记录的尺寸。",
+      "zh-Hant": "只有經 ChromaLab 顯影的照片才能上觀片台：先在「沖洗」中打開照片，或給它膠片邊緣/半幅對——觀片台按真實毫米擺放，需要顯影記錄的尺寸。"
     },
-    "Only pictures developed in SpektraLab with a film size (a film edge, or a pair) go on the Light Table.": {
-      "ja": "ライトテーブルに置けるのは、SpektraLab で現像し、フィルムのサイズ（フィルムの縁、またはハーフ判の2コマ組）があるイメージだけです。",
-      "zh-Hans": "只有在 SpektraLab 中冲洗过、且有胶片尺寸（片边或半格组）的图像才能放到观片台上。",
-      "zh-Hant": "只有在 SpektraLab 中沖洗過、且有膠片尺寸（片邊或半格組）的影像才能放到觀片台上。"
+    "Only pictures developed in ChromaLab with a film size (a film edge, or a pair) go on the Light Table.": {
+      "ja": "ライトテーブルに置けるのは、ChromaLab で現像し、フィルムのサイズ（フィルムの縁、またはハーフ判の2コマ組）があるイメージだけです。",
+      "zh-Hans": "只有在 ChromaLab 中冲洗过、且有胶片尺寸（片边或半格组）的图像才能放到观片台上。",
+      "zh-Hant": "只有在 ChromaLab 中沖洗過、且有膠片尺寸（片邊或半格組）的影像才能放到觀片台上。"
     },
     "Only pictures, folders of pictures and catalogs can be imported.": {
       "ja": "読み込めるのはイメージ、イメージのフォルダ、カタログだけです。",
@@ -4346,10 +4441,10 @@
       "zh-Hans": "在冲洗中打开",
       "zh-Hant": "在沖洗中打開"
     },
-    "Open in another SpektraLab": {
-      "ja": "別のSpektraLabで開かれています",
-      "zh-Hans": "已在另一个 SpektraLab 中打开",
-      "zh-Hant": "已在另一個 SpektraLab 中開啟"
+    "Open in another ChromaLab": {
+      "ja": "別のChromaLabで開かれています",
+      "zh-Hans": "已在另一个 ChromaLab 中打开",
+      "zh-Hant": "已在另一個 ChromaLab 中開啟"
     },
     "Opened in Develop": {
       "ja": "現像で開いたもの",
@@ -5021,6 +5116,11 @@
       "zh-Hans": "去掉片边",
       "zh-Hant": "移除片邊"
     },
+    "Remove from ChromaLab": {
+      "ja": "ChromaLab から削除",
+      "zh-Hans": "从 ChromaLab 中移除",
+      "zh-Hant": "從 ChromaLab 中移除"
+    },
     "Remove from Library": {
       "ja": "ライブラリから取り除く",
       "zh-Hans": "从图库中移除",
@@ -5030,11 +5130,6 @@
       "ja": "リストから削除",
       "zh-Hans": "从列表中移除",
       "zh-Hant": "從列表中移除"
-    },
-    "Remove from SpektraLab": {
-      "ja": "SpektraLab から削除",
-      "zh-Hans": "从 SpektraLab 中移除",
-      "zh-Hant": "從 SpektraLab 中移除"
     },
     "Remove the Dates": {
       "ja": "日付を消す",
@@ -5431,15 +5526,15 @@
       "zh-Hans": "共享海报",
       "zh-Hant": "分享海報"
     },
-    "Share the log with SpektraLab": {
-      "ja": "SpektraLabと動作記録を共有",
-      "zh-Hans": "与 SpektraLab 共享日志",
-      "zh-Hant": "與 SpektraLab 分享日誌"
+    "Share the log with ChromaLab": {
+      "ja": "ChromaLabと動作記録を共有",
+      "zh-Hans": "与 ChromaLab 共享日志",
+      "zh-Hant": "與 ChromaLab 分享日誌"
     },
-    "Share the log with SpektraLab?": {
-      "ja": "SpektraLabと動作記録を共有しますか？",
-      "zh-Hans": "与 SpektraLab 共享日志？",
-      "zh-Hant": "與 SpektraLab 分享日誌？"
+    "Share the log with ChromaLab?": {
+      "ja": "ChromaLabと動作記録を共有しますか？",
+      "zh-Hans": "与 ChromaLab 共享日志？",
+      "zh-Hant": "與 ChromaLab 分享日誌？"
     },
     "Sharing is off. What was sent went under the number: %@": {
       "ja": "共有はオフです。送信済みの記録に使われた番号：%@",
@@ -5615,81 +5710,6 @@
       "ja": "間隔",
       "zh-Hans": "间距",
       "zh-Hant": "間距"
-    },
-    "SpektraLab": {
-      "ja": "SpektraLab",
-      "zh-Hans": "SpektraLab",
-      "zh-Hant": "SpektraLab"
-    },
-    "SpektraLab %@ is available. You have %@.": {
-      "ja": "SpektraLab %1$@ が公開されています。お使いのバージョンは %2$@ です。",
-      "zh-Hans": "SpektraLab %1$@ 已发布，当前为 %2$@。",
-      "zh-Hant": "SpektraLab %1$@ 已發佈，目前為 %2$@。"
-    },
-    "SpektraLab %@ is the latest version.": {
-      "ja": "SpektraLab %@ は最新バージョンです。",
-      "zh-Hans": "SpektraLab %@ 已是最新版本。",
-      "zh-Hant": "SpektraLab %@ 已是最新版本。"
-    },
-    "SpektraLab %@ is the version on this Mac.": {
-      "ja": "この Mac のバージョンは SpektraLab %@ です。",
-      "zh-Hans": "这台 Mac 上的版本为 SpektraLab %@。",
-      "zh-Hant": "這台 Mac 上的版本為 SpektraLab %@。"
-    },
-    "SpektraLab Catalog": {
-      "ja": "SpektraLab カタログ",
-      "zh-Hans": "SpektraLab 目录",
-      "zh-Hant": "SpektraLab 目錄"
-    },
-    "SpektraLab Contact Sheet": {
-      "ja": "SpektraLabの密着焼き",
-      "zh-Hans": "SpektraLab 印样",
-      "zh-Hant": "SpektraLab 印樣"
-    },
-    "SpektraLab Library": {
-      "ja": "SpektraLab ライブラリ",
-      "zh-Hans": "SpektraLab 图库",
-      "zh-Hant": "SpektraLab 圖庫"
-    },
-    "SpektraLab Poster": {
-      "ja": "SpektraLabのポスター",
-      "zh-Hans": "SpektraLab 海报",
-      "zh-Hant": "SpektraLab 海報"
-    },
-    "SpektraLab changes at once. What macOS shows of its own, such as a Finder panel, follows the next time the app is opened.": {
-      "ja": "SpektraLabの表示はすぐに切り替わります。Finderのパネルなど、macOSが表示する部分は、次にAppを開いたときから切り替わります。",
-      "zh-Hans": "SpektraLab 会立即切换。macOS 自己显示的部分，例如访达的面板，要到下次打开 App 时才会跟着改变。",
-      "zh-Hant": "SpektraLab 會立即切換。macOS 自己顯示的部分，例如 Finder 的面板，要到下次開啟 App 時才會跟著改變。"
-    },
-    "SpektraLab engine": {
-      "ja": "SpektraLabエンジン",
-      "zh-Hans": "SpektraLab 引擎",
-      "zh-Hant": "SpektraLab 引擎"
-    },
-    "SpektraLab for the Mac is free and open source. Thank you to everyone who supports its development.": {
-      "ja": "Mac 版 SpektraLab は無料のオープンソースソフトウェアです。開発を支えてくださる皆さまに感謝します。",
-      "zh-Hans": "SpektraLab Mac 版免费并开源。感谢每一位支持它继续开发的朋友。",
-      "zh-Hant": "SpektraLab Mac 版免費且開源。感謝每一位支持它持續開發的朋友。"
-    },
-    "SpektraLab keeps its own copy": {
-      "ja": "App内にコピーを保存",
-      "zh-Hans": "在 App 内另存一份",
-      "zh-Hant": "在 App 內另存一份"
-    },
-    "SpektraLab may no longer read it. Reconnect to allow it again.": {
-      "ja": "アクセス権がありません。「再接続」してください。",
-      "zh-Hans": "无访问权限，请“重新连接”。",
-      "zh-Hant": "無取用權限，請「重新連接」。"
-    },
-    "SpektraLab never changes or deletes anything in your folders or in a Capture One catalog. Edits live in the app.": {
-      "ja": "SpektraLabは、フォルダやCapture Oneのカタログの中身を変更したり削除したりしません。編集内容はApp内に保存されます。",
-      "zh-Hans": "SpektraLab 绝不会改动或删除你的文件夹或 Capture One 目录里的任何东西。编辑保存在 App 里。",
-      "zh-Hant": "SpektraLab 絕不會改動或刪除你的檔案夾或 Capture One 目錄裡的任何東西。編輯保存在 App 裡。"
-    },
-    "SpektraLab's server could not be reached from here (%@). Export Log Zip, and send it by hand.": {
-      "ja": "ここからSpektraLabのサーバに接続できませんでした（%@）。「動作記録をZIPで書き出す」で書き出して、手動で送ってください。",
-      "zh-Hans": "从这里连不上 SpektraLab 的服务器（%@）。请用“导出日志压缩包”，再自行发送。",
-      "zh-Hant": "從這裡連不上 SpektraLab 的伺服器（%@）。請用「輸出日誌壓縮檔」，再自行傳送。"
     },
     "Split": {
       "ja": "境界",
@@ -5921,6 +5941,16 @@
       "zh-Hans": "%@ 版面，底片按实际尺寸，可按 %@ 打印。",
       "zh-Hant": "%@ 版面，底片按實際尺寸，可按 %@ 列印。"
     },
+    "The ChromaLab Library Becomes a Catalog": {
+      "ja": "ChromaLab ライブラリがカタログになります",
+      "zh-Hans": "ChromaLab 图库将成为一个目录",
+      "zh-Hant": "ChromaLab 圖庫將成為一個目錄"
+    },
+    "The ChromaLab engine is a C++/Metal implementation derived from spektrafilm by Andrea Volpato (GPL-3.0-or-later).": {
+      "ja": "ChromaLabエンジンは、Andrea Volpatoによるspektrafilmから派生したC++/Metalによる実装です（GPL-3.0-or-later）。",
+      "zh-Hans": "ChromaLab 引擎是由 Andrea Volpato 的 spektrafilm 衍生而来的 C++/Metal 实现（GPL-3.0-or-later）。",
+      "zh-Hant": "ChromaLab 引擎是由 Andrea Volpato 的 spektrafilm 衍生而來的 C++/Metal 實作（GPL-3.0-or-later）。"
+    },
     "The Latitude card shades what was pulled.": {
       "ja": "寛容度のカードに、引き込んだ部分が色付きで示されます。",
       "zh-Hans": "宽容度卡片会标出收进来的部分。",
@@ -5936,16 +5966,6 @@
       "zh-Hans": "RAW 文件的白平衡，在上胶片之前。",
       "zh-Hant": "RAW 檔的白平衡，在上底片之前。"
     },
-    "The SpektraLab Library Becomes a Catalog": {
-      "ja": "SpektraLab ライブラリがカタログになります",
-      "zh-Hans": "SpektraLab 图库将成为一个目录",
-      "zh-Hant": "SpektraLab 圖庫將成為一個目錄"
-    },
-    "The SpektraLab engine is a C++/Metal implementation derived from spektrafilm by Andrea Volpato (GPL-3.0-or-later).": {
-      "ja": "SpektraLabエンジンは、Andrea Volpatoによるspektrafilmから派生したC++/Metalによる実装です（GPL-3.0-or-later）。",
-      "zh-Hans": "SpektraLab 引擎是由 Andrea Volpato 的 spektrafilm 衍生而来的 C++/Metal 实现（GPL-3.0-or-later）。",
-      "zh-Hant": "SpektraLab 引擎是由 Andrea Volpato 的 spektrafilm 衍生而來的 C++/Metal 實作（GPL-3.0-or-later）。"
-    },
     "The app's memory as it runs: how much it held and how much the Mac had left, at each page, and whenever it rose or fell.": {
       "ja": "Appの動作中のメモリ：使用量とMacの残りを、各画面で、また増減したときに記録します。",
       "zh-Hans": "App 运行时的内存：它占用了多少、Mac 还剩多少，记录于每个页面，以及内存升降的时候。",
@@ -5956,10 +5976,10 @@
       "zh-Hans": "保持长宽比例，不放大图像。PNG 无损保存，JPEG 为有损压缩。",
       "zh-Hant": "保持長寬比例，不放大圖像。PNG 無損保存，JPEG 為有損壓縮。"
     },
-    "The black-and-white films and their paper are SpektraLab's own profiles, built from their makers' published data sheets, under CC BY-SA 4.0 as well.": {
-      "ja": "白黒フィルムとその印画紙は、各製造元が公開している技術資料をもとに作成したSpektraLab独自の特性データで、同じくCC BY-SA 4.0で提供しています。",
-      "zh-Hans": "黑白胶片及其相纸是 SpektraLab 自制的特性文件，依据厂商公开的技术资料制作，同样以 CC BY-SA 4.0 许可。",
-      "zh-Hant": "黑白底片及其相紙是 SpektraLab 自製的描述檔，依據廠商公開的技術資料製作，同樣以 CC BY-SA 4.0 授權。"
+    "The black-and-white films and their paper are ChromaLab's own profiles, built from their makers' published data sheets, under CC BY-SA 4.0 as well.": {
+      "ja": "白黒フィルムとその印画紙は、各製造元が公開している技術資料をもとに作成したChromaLab独自の特性データで、同じくCC BY-SA 4.0で提供しています。",
+      "zh-Hans": "黑白胶片及其相纸是 ChromaLab 自制的特性文件，依据厂商公开的技术资料制作，同样以 CC BY-SA 4.0 许可。",
+      "zh-Hant": "黑白底片及其相紙是 ChromaLab 自製的描述檔，依據廠商公開的技術資料製作，同樣以 CC BY-SA 4.0 授權。"
     },
     "The body sets the gate, the margins and where the holes fall.": {
       "ja": "本体によって、画枠、余白、送り穴の位置が決まります。",
@@ -6141,10 +6161,10 @@
       "zh-Hans": "最近查看过的图像的全尺寸冲洗结果，再次放大或导出它们时不必等待。超出预算时，先清除最久没看过的。",
       "zh-Hant": "最近檢視過的影像的全尺寸沖洗結果，再次放大或輸出它們時不必等待。超出預算時，先清除最久沒看過的。"
     },
-    "The interface scale applies to the library, the develop page and every page over them, at once. 100% is a little larger than SpektraLab was; 80% is about its old develop page.": {
-      "ja": "インターフェイスの拡大縮小は、ライブラリ、現像ページ、その上に開くすべてのページにすぐに反映されます。100% は以前の SpektraLab より少し大きく、80% は以前の現像ページとほぼ同じです。",
-      "zh-Hans": "界面缩放立即作用于图库、冲洗页面及其上的所有页面。100% 比 SpektraLab 以前的界面稍大；80% 约等于以前的冲洗页面。",
-      "zh-Hant": "介面縮放立即作用於圖庫、沖洗頁面及其上的所有頁面。100% 比 SpektraLab 以前的介面稍大；80% 約等於以前的沖洗頁面。"
+    "The interface scale applies to the library, the develop page and every page over them, at once. 100% is a little larger than ChromaLab was; 80% is about its old develop page.": {
+      "ja": "インターフェイスの拡大縮小は、ライブラリ、現像ページ、その上に開くすべてのページにすぐに反映されます。100% は以前の ChromaLab より少し大きく、80% は以前の現像ページとほぼ同じです。",
+      "zh-Hans": "界面缩放立即作用于图库、冲洗页面及其上的所有页面。100% 比 ChromaLab 以前的界面稍大；80% 约等于以前的冲洗页面。",
+      "zh-Hant": "介面縮放立即作用於圖庫、沖洗頁面及其上的所有頁面。100% 比 ChromaLab 以前的介面稍大；80% 約等於以前的沖洗頁面。"
     },
     "The latitude analysis returned an invalid result": {
       "ja": "寛容度の分析が無効な結果を返しました",
@@ -6436,10 +6456,15 @@
       "zh-Hans": "照片需要时会重新生成。你的文件夹和目录里的原件绝不会被移动或删除。这台 Mac 最大可冲洗 %@ MP。",
       "zh-Hant": "照片需要時會重新產生。你的檔案夾和目錄裡的原始檔絕不會被移動或刪除。這台 Mac 最大可沖洗 %@ MP。"
     },
-    "They were copied into SpektraLab, so their originals go with them.": {
-      "ja": "元ファイルはSpektraLab内にあるため、一緒に削除されます。",
-      "zh-Hans": "这些照片的原件存于 SpektraLab，将一并删除。",
-      "zh-Hant": "這些照片的原始檔存於 SpektraLab，將一併刪除。"
+    "They were copied into ChromaLab, so their originals go with them.": {
+      "ja": "元ファイルはChromaLab内にあるため、一緒に削除されます。",
+      "zh-Hans": "这些照片的原件存于 ChromaLab，将一并删除。",
+      "zh-Hant": "這些照片的原始檔存於 ChromaLab，將一併刪除。"
+    },
+    "This ChromaLab's library helper cannot copy a Capture One catalog yet.": {
+      "ja": "このChromaLabのライブラリヘルパーはまだCapture Oneカタログをコピーできません。",
+      "zh-Hans": "此 ChromaLab 的图库助手还不能拷贝 Capture One 目录。",
+      "zh-Hant": "此 ChromaLab 的圖庫助手還不能拷貝 Capture One 目錄。"
     },
     "This Mac cannot write HEIF": {
       "ja": "このMacではHEIFを書き出せません",
@@ -6461,15 +6486,10 @@
       "zh-Hans": "这台 Mac 写不出 TIFF",
       "zh-Hant": "這台 Mac 寫不出 TIFF"
     },
-    "This Mac: its model, its macOS, its language and region setting, its memory, Low Power Mode and heat, and this build of SpektraLab with its settings.": {
-      "ja": "このMac：機種、macOSのバージョン、言語と地域の設定、メモリ、低電力モードと温度、このバージョンのSpektraLabとその設定。",
-      "zh-Hans": "这台 Mac：机型、macOS 版本、语言和地区设置、内存、低电量模式和发热状态，以及 SpektraLab 的这个版本和它的设置。",
-      "zh-Hant": "這台 Mac：機型、macOS 版本、語言和地區設定、記憶體、低耗電模式和發熱狀態，以及 SpektraLab 的這個版本和它的設定。"
-    },
-    "This SpektraLab's library helper cannot copy a Capture One catalog yet.": {
-      "ja": "このSpektraLabのライブラリヘルパーはまだCapture Oneカタログをコピーできません。",
-      "zh-Hans": "此 SpektraLab 的图库助手还不能拷贝 Capture One 目录。",
-      "zh-Hant": "此 SpektraLab 的圖庫助手還不能拷貝 Capture One 目錄。"
+    "This Mac: its model, its macOS, its language and region setting, its memory, Low Power Mode and heat, and this build of ChromaLab with its settings.": {
+      "ja": "このMac：機種、macOSのバージョン、言語と地域の設定、メモリ、低電力モードと温度、このバージョンのChromaLabとその設定。",
+      "zh-Hans": "这台 Mac：机型、macOS 版本、语言和地区设置、内存、低电量模式和发热状态，以及 ChromaLab 的这个版本和它的设置。",
+      "zh-Hant": "這台 Mac：機型、macOS 版本、語言和地區設定、記憶體、低耗電模式和發熱狀態，以及 ChromaLab 的這個版本和它的設定。"
     },
     "This app": {
       "ja": "このアプリ",
@@ -6486,10 +6506,10 @@
       "zh-Hans": "此版本",
       "zh-Hant": "此版本"
     },
-    "This build develops no picture: a frame keeps its camera's own preview, and the bundled demo frames are the ones SpektraLab developed.": {
-      "ja": "このバージョンでは現像しません。写真にはカメラのプレビューがそのまま使われ、付属のサンプル写真がSpektraLabで現像したものです。",
-      "zh-Hans": "此版本不冲洗照片：每张照片保留相机自带的预览，随 App 附带的示例照片才是 SpektraLab 冲洗的。",
-      "zh-Hant": "此版本不沖洗照片：每張照片保留相機自帶的預覽，隨 App 附帶的範例照片才是 SpektraLab 沖洗的。"
+    "This build develops no picture: a frame keeps its camera's own preview, and the bundled demo frames are the ones ChromaLab developed.": {
+      "ja": "このバージョンでは現像しません。写真にはカメラのプレビューがそのまま使われ、付属のサンプル写真がChromaLabで現像したものです。",
+      "zh-Hans": "此版本不冲洗照片：每张照片保留相机自带的预览，随 App 附带的示例照片才是 ChromaLab 冲洗的。",
+      "zh-Hant": "此版本不沖洗照片：每張照片保留相機自帶的預覽，隨 App 附帶的範例照片才是 ChromaLab 沖洗的。"
     },
     "This build has no address to check for updates.": {
       "ja": "このビルドにはアップデートを確認するアドレスがありません。",
@@ -6851,6 +6871,11 @@
       "zh-Hans": "立即更新",
       "zh-Hant": "立即更新"
     },
+    "Update failed": {
+      "zh-Hans": "更新失败",
+      "zh-Hant": "更新失敗",
+      "ja": "アップデートに失敗しました"
+    },
     "Update from Capture One": {
       "ja": "Capture Oneから更新",
       "zh-Hans": "从 Capture One 更新",
@@ -6895,6 +6920,11 @@
       "ja": "バージョン",
       "zh-Hans": "版本",
       "zh-Hant": "版本"
+    },
+    "Version %@ is available": {
+      "zh-Hans": "发现新版本 %@",
+      "zh-Hant": "發現新版本 %@",
+      "ja": "新しいバージョン %@ が利用できます"
     },
     "Vertical inset": {
       "ja": "縦のインセット",
@@ -7006,10 +7036,10 @@
       "zh-Hans": "存放位置",
       "zh-Hant": "存放位置"
     },
-    "Where the SpektraLab Library's catalog is kept": {
-      "ja": "SpektraLab ライブラリのカタログの保存場所",
-      "zh-Hans": "SpektraLab 图库的目录的存放位置",
-      "zh-Hant": "SpektraLab 圖庫的目錄的存放位置"
+    "Where the ChromaLab Library's catalog is kept": {
+      "ja": "ChromaLab ライブラリのカタログの保存場所",
+      "zh-Hans": "ChromaLab 图库的目录的存放位置",
+      "zh-Hant": "ChromaLab 圖庫的目錄的存放位置"
     },
     "Where the copy of %@ is kept": {
       "ja": "%@ のコピーの保存場所",
@@ -7126,6 +7156,11 @@
       "zh-Hans": "昨天",
       "zh-Hant": "昨天"
     },
+    "You are on %@; the new version installs in place and restarts the app.": {
+      "zh-Hans": "当前版本 %@。新版本将就地安装并自动重启应用。",
+      "zh-Hant": "當前版本 %@。新版本將就地安裝並自動重新啟動應用。",
+      "ja": "現在のバージョンは %@ です。新しいバージョンはその場でインストールされ、アプリが自動的に再起動します。"
+    },
     "You can drop several photos at once": {
       "ja": "複数の写真を一度にドロップできます",
       "zh-Hans": "支持一次拖入多张照片",
@@ -7146,10 +7181,10 @@
       "zh-Hans": "图库的统计数字：照片数量、来源、尺寸、拍摄它们的相机，以及占用的储存空间。",
       "zh-Hant": "圖庫的統計數字：照片數量、來源、尺寸、拍攝它們的相機，以及佔用的儲存空間。"
     },
-    "Your library is a SpektraLab catalog now. The pictures are read where they are; nothing is moved or copied.": {
-      "ja": "ライブラリはSpektraLabカタログになりました。写真は元の場所で読み込まれ、何も移動もコピーもされません。",
-      "zh-Hans": "你的图库现在是一个 SpektraLab 目录。照片在原处读取，不会移动或拷贝任何东西。",
-      "zh-Hant": "你的圖庫現在是一個 SpektraLab 目錄。照片在原處讀取，不會移動或拷貝任何東西。"
+    "Your library is a ChromaLab catalog now. The pictures are read where they are; nothing is moved or copied.": {
+      "ja": "ライブラリはChromaLabカタログになりました。写真は元の場所で読み込まれ、何も移動もコピーもされません。",
+      "zh-Hans": "你的图库现在是一个 ChromaLab 目录。照片在原处读取，不会移动或拷贝任何东西。",
+      "zh-Hant": "你的圖庫現在是一個 ChromaLab 目錄。照片在原處讀取，不會移動或拷貝任何東西。"
     },
     "Your pictures. Their file names. Where they were taken. When a photograph in your library was taken. Your name. Your Apple Account.": {
       "ja": "写真そのもの。ファイル名。撮影場所。ライブラリにある写真の撮影日時。お名前。Apple Account。",
@@ -7520,41 +7555,6 @@
       "ja": "＋ 新規",
       "zh-Hans": "＋ 新建",
       "zh-Hant": "＋ 新增"
-    },
-    "Checking for updates…": {
-      "zh-Hans": "正在检查更新…",
-      "zh-Hant": "正在檢查更新…",
-      "ja": "アップデートを確認中…"
-    },
-    "Downloading the update…": {
-      "zh-Hans": "正在下载更新…",
-      "zh-Hant": "正在下載更新…",
-      "ja": "アップデートをダウンロード中…"
-    },
-    "Installing the update…": {
-      "zh-Hans": "正在安装更新…",
-      "zh-Hant": "正在安裝更新…",
-      "ja": "アップデートをインストール中…"
-    },
-    "Update failed": {
-      "zh-Hans": "更新失败",
-      "zh-Hant": "更新失敗",
-      "ja": "アップデートに失敗しました"
-    },
-    "Version %@ is available": {
-      "zh-Hans": "发现新版本 %@",
-      "zh-Hant": "發現新版本 %@",
-      "ja": "新しいバージョン %@ が利用できます"
-    },
-    "SpektraLab is up to date": {
-      "zh-Hans": "SpektraLab 已是最新版本（%@）",
-      "zh-Hant": "SpektraLab 已是最新版本（%@）",
-      "ja": "SpektraLab は最新です（%@）"
-    },
-    "You are on %@; the new version installs in place and restarts the app.": {
-      "zh-Hans": "当前版本 %@。新版本将就地安装并自动重启应用。",
-      "zh-Hant": "當前版本 %@。新版本將就地安裝並自動重新啟動應用。",
-      "ja": "現在のバージョンは %@ です。新しいバージョンはその場でインストールされ、アプリが自動的に再起動します。"
     }
   },
   "version": 1

@@ -11,7 +11,7 @@ ApplicationWindow {
     minimumWidth: 1100; minimumHeight: 740
     visible: true
     color: Theme.card
-    title: (preview.hasFrame ? preview.fileName + " — " : "") + "SpektraLab"
+    title: (preview.hasFrame ? preview.fileName + " — " : "") + "ChromaLab"
     font.family: "Segoe UI"
     font.pixelSize: 12
     palette.window: Theme.card
@@ -57,7 +57,7 @@ ApplicationWindow {
         // wrote to undefined and threw, so the refusal never reached the
         // user — an empty table read as "no reaction".
         lightTablePage.notice = placed === 0
-            ? Localization.L("Only pictures developed in SpektraLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.")
+            ? Localization.L("Only pictures developed in ChromaLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.")
             : ""
     }
     // The develop page's own carry: the shown frame mapped back to its
@@ -69,7 +69,7 @@ ApplicationWindow {
         // refusal reads on the table's strip, like the grid's empty carry.
         if (uuid.length === 0) {
             window.appMode = "lighttable"
-            lightTablePage.notice = Localization.L("Only pictures developed in SpektraLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.")
+            lightTablePage.notice = Localization.L("Only pictures developed in ChromaLab go on the Light Table. Open a photo in Develop first, or give it a film edge or a half-frame pair — the table shows true millimetres, so it needs the develop's size.")
             return
         }
         carryToLightTable([uuid])
@@ -235,7 +235,7 @@ ApplicationWindow {
                     if (updater.state === "available")
                         return Localization.epoch && Localization.L("Version %@ is available",
                                                                     [updater.latestVersion])
-                    return Localization.epoch && Localization.L("SpektraLab is up to date",
+                    return Localization.epoch && Localization.L("ChromaLab is up to date",
                                                                 [updater.currentVersion])
                 }
             }
