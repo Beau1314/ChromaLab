@@ -104,3 +104,20 @@ changes stay limited to the three source files listed here.
   `std::variant` internals reached from `library.cpp` (libstdc++ false
   positive on `Val` binds), 1 × `-std=c++20` not valid for C (sqlite3.c via
   `gcc`, benign).
+
+## Capture One reader (2026-11-20, synthetic-catalog drill)
+
+A synthetic `.cocatalog` (per the public reverse-engineering notes: Core
+Data-style tables, schema 1621) probes `supported: true` and links end to
+end — collections, album membership, ratings, colour tags, variants and
+referenced paths all sync into the mirror. Two Windows-port findings:
+
+- **Absolute locations resolve through `ZMACROOT` only.** `ZWINROOT` is
+  selected but contributes nothing, so a real Windows catalog (which stores
+  absolute roots in ZWINROOT with a NULL ZMACROOT) would come back with every
+  original offline (`/filename`, `exists: false`). First thing to check with a
+  real sample; the fix belongs in spklib (fall back to ZWINROOT).
+- `captured_local` stays null: no capture-time column name appears in the
+  host binary — 0.4.0 appears not to read it.
+
+Repro: `tools/c1-sample/` (generator + line-protocol probe).
